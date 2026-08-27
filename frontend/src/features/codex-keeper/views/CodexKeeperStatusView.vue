@@ -98,7 +98,7 @@ const CODEX_FIVE_HOUR_WINDOW_SECONDS = 5 * 60 * 60
 const CODEX_WEEK_WINDOW_SECONDS = 7 * 24 * 60 * 60
 const CODEX_MONTH_WINDOW_SECONDS = 30 * 24 * 60 * 60
 const disabledTableScrollX = 1302
-const normalTableScrollX = 1966
+const normalTableScrollX = 1926
 const KEEPER_STATUS_POLL_INTERVAL_MS = 3000
 const REFRESH_STATUS_POLL_INTERVAL_MS = 1500
 const message = useMessage()
@@ -1203,7 +1203,7 @@ function renderQuotaPredictionCell(account: CodexKeeperAccount) {
         [
           h(
             'span',
-            { class: ['quota-usage-chip', 'is-cost', needsRefresh ? 'is-stale' : undefined] },
+            { class: ['quota-usage-chip', 'is-projection', needsRefresh ? 'is-stale' : undefined] },
             [
               h('span', { class: 'quota-usage-chip-label' }, t('额度', 'Quota')),
               h(
@@ -1749,7 +1749,7 @@ const baseColumns = computed<DataTableColumns<CodexKeeperAccount>>(() => [
   {
     title: t('窗口预测', 'Window Projection'),
     key: 'quota_prediction',
-    width: 150,
+    width: 110,
     render: (row) => renderQuotaPredictionCell(row),
   },
   {
@@ -3635,8 +3635,8 @@ onBeforeUnmount(() => {
   --usage-accent: var(--cpa-accent-orange);
 }
 
-:global(.quota-usage-chip.is-cost) {
-  --usage-accent: var(--cpa-accent-orange);
+:global(.quota-usage-chip.is-projection) {
+  --usage-accent: var(--cpa-accent-purple);
 }
 
 :global(.quota-usage-chip-label),
