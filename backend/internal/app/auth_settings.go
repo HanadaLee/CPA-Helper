@@ -259,6 +259,7 @@ func (a *App) userCredentialsByUsername(ctx context.Context, username string) (A
 type settingsUpdateRequest struct {
 	CLIProxyURL          *string  `json:"cliaproxy_url"`
 	ModelRequestURL      *string  `json:"model_request_url"`
+	CPAMCURL             *string  `json:"cpamc_url"`
 	ManagementKey        *string  `json:"management_key"`
 	CollectorEnabled     *bool    `json:"collector_enabled"`
 	QueueName            *string  `json:"queue_name"`
@@ -318,6 +319,13 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) error {
 			}
 			cfg.ModelRequestURL = value
 		}
+		if payload.CPAMCURL != nil {
+			value := strings.TrimSpace(*payload.CPAMCURL)
+			if value == "" {
+				return validationError("CPAMC 页面地址不能为空")
+			}
+			cfg.CPAMCURL = value
+		}
 		if payload.ManagementKey != nil {
 			cfg.Collector.ManagementKey = strings.TrimSpace(*payload.ManagementKey)
 		}
@@ -364,6 +372,7 @@ func settingsResponse(cfg AppConfig) map[string]any {
 	return map[string]any{
 		"cliaproxy_url":          collector.CLIProxyURL,
 		"model_request_url":      cfg.ModelRequestURL,
+		"cpamc_url":              cfg.CPAMCURL,
 		"management_key":         collector.ManagementKey,
 		"management_key_set":     strings.TrimSpace(collector.ManagementKey) != "",
 		"collector_enabled":      collector.Enabled,

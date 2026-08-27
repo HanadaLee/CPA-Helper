@@ -63,6 +63,16 @@ func TestRunMigrationsCreatesGooseVersionAndFinalSchema(t *testing.T) {
 	if !testColumnExists(t, app.db, "app_settings", "model_request_url") {
 		t.Fatal("app_settings.model_request_url was not created")
 	}
+	if !testColumnExists(t, app.db, "app_settings", "cpamc_url") {
+		t.Fatal("app_settings.cpamc_url was not created")
+	}
+	var cpamcURL string
+	if err := app.db.QueryRow(`SELECT cpamc_url FROM app_settings WHERE id = 1`).Scan(&cpamcURL); err != nil {
+		t.Fatalf("query app_settings.cpamc_url: %v", err)
+	}
+	if cpamcURL != "/management.html" {
+		t.Fatalf("app_settings.cpamc_url = %q, want /management.html", cpamcURL)
+	}
 	if !testColumnExists(t, app.db, "users", "quota_lifetime_usd") {
 		t.Fatal("users.quota_lifetime_usd was not created")
 	}

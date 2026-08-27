@@ -34,6 +34,7 @@ const collectorStatus = ref<CollectorStatus | null>(null)
 const settingsForm = reactive({
   cliaproxy_url: 'http://127.0.0.1:8317',
   model_request_url: 'http://127.0.0.1:8317',
+  cpamc_url: '/management.html',
   management_key: '',
   collector_enabled: false,
   batch_size: 100,
@@ -73,6 +74,7 @@ async function refresh() {
     ])
     settingsForm.cliaproxy_url = settings.cliaproxy_url
     settingsForm.model_request_url = settings.model_request_url
+    settingsForm.cpamc_url = settings.cpamc_url
     settingsForm.management_key = settings.management_key
     settingsForm.collector_enabled = settings.collector_enabled
     settingsForm.batch_size = settings.batch_size
@@ -92,6 +94,7 @@ async function saveSettings() {
     const payload: SettingsUpdatePayload = {
       cliaproxy_url: settingsForm.cliaproxy_url,
       model_request_url: settingsForm.model_request_url,
+      cpamc_url: settingsForm.cpamc_url,
       management_key: settingsForm.management_key,
       collector_enabled: settingsForm.collector_enabled,
       batch_size: settingsForm.batch_size,
@@ -117,7 +120,7 @@ onMounted(refresh)
     <div class="page-header">
       <div>
         <h1 class="page-title">{{ t('系统设置', 'System Settings') }}</h1>
-        <p class="page-subtitle">{{ t('集中管理采集配置', 'Manage collection settings in one place') }}</p>
+        <p class="page-subtitle">{{ t('集中管理系统与采集配置', 'Manage system and collection settings in one place') }}</p>
       </div>
       <NSpace>
         <NButton secondary :loading="isLoading" @click="refresh">{{ t('刷新', 'Refresh') }}</NButton>
@@ -163,7 +166,7 @@ onMounted(refresh)
     <div class="grid-two">
       <section class="panel">
         <div class="panel-inner">
-          <h2 class="section-title">{{ t('采集配置', 'Collection Settings') }}</h2>
+          <h2 class="section-title">{{ t('系统配置', 'System Settings') }}</h2>
           <NForm :model="settingsForm" label-placement="top">
             <div class="form-grid">
               <div class="field-stack">
@@ -178,6 +181,14 @@ onMounted(refresh)
                   :placeholder="t('例如：http://192.168.26.50:8317', 'Example: http://192.168.26.50:8317')"
                 />
                 <div class="form-help">{{ t('仅用于 API 密钥页「请求测试」生成 URL 和示例。', 'Only used to generate URLs and examples for request tests on the API keys page.') }}</div>
+              </div>
+              <div class="field-stack">
+                <div class="field-label">{{ t('CPAMC 页面地址', 'CPAMC page URL') }}</div>
+                <NInput
+                  v-model:value="settingsForm.cpamc_url"
+                  :placeholder="t('例如：/management.html', 'Example: /management.html')"
+                />
+                <div class="form-help">{{ t('用于 CPAMC 页面内嵌 iframe，支持站内路径或完整 URL。', 'Used by the embedded iframe on the CPAMC page. Supports site paths or full URLs.') }}</div>
               </div>
               <NFormItem :label="t('管理密钥', 'Management key')">
                 <NInput

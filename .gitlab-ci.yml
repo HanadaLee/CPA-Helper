@@ -1,0 +1,79 @@
+variables:
+  HARBOR_IMAGE: registry.hanada.info/hanada/cpa-helper
+  DOCKER_BUILDKIT: "1"
+
+stages:
+  - build
+  - manifest
+
+.docker-job:
+  only:
+    refs:
+      - main
+      - ext
+  before_script:
+    - |
+      set -eu
+
+      APP_VERSION="$(tr -d '[:space:]' < VERSION)"
+      APP_VERSION="${APP_VERSION#v}"
+
+      if [ -z "$APP_VERSION" ]; then
+        echo "VERSION file is empty" >&2
+        exit 1
+      fi
+
+      VERSION="${APP_VERSION}"
+      export APP_VERSION VERSION
+      echo "Building CPA-Helper ${VERSION}"
+    - |
+      printf '%s' "$HARBOR_PASSWORD" | docker login registry.hanada.info --username "$HARBOR_USERNAME" --password-stdin
+
+build-amd64:
+  extends: .docker-job
+  stage: build
+  tags:
+    - debian-x86_64
+  script:
+    - |
+      docker build \
+        --tag "${HARBOR_IMAGE}:${VERSION}-amd64" \
+        .
+
+      docker push "${HARBOR_IMAGE}:${VERSION}-amd64"
+
+build-arm64:
+  extends: .docker-job
+  stage: build
+  tags:
+    - debian-aarch64
+  script:
+    - |
+      docker build \
+        --tag "${HARBOR_IMAGE}:${VERSION}-arm64" \
+        .
+
+      docker push "${HARBOR_IMAGE}:${VERSION}-arm64"
+
+create-manifest:
+  extends: .docker-job
+  stage: manifest
+  tags:
+    - debian-x86_64
+  needs:
+    - build-amd64
+    - build-arm64
+  script:
+    - |
+      docker manifest inspect "${HARBOR_IMAGE}:${VERSION}-amd64"
+      docker manifest inspect "${HARBOR_IMAGE}:${VERSION}-arm64"
+
+      docker manifest create --amend "${HARBOR_IMAGE}:${VERSION}" \
+        --amend "${HARBOR_IMAGE}:${VERSION}-amd64" \
+        --amend "${HARBOR_IMAGE}:${VERSION}-arm64"
+      docker manifest push --purge "${HARBOR_IMAGE}:${VERSION}"
+
+      docker manifest create --amend "${HARBOR_IMAGE}:latest" \
+        --amend "${HARBOR_IMAGE}:${VERSION}-amd64" \
+        --amend "${HARBOR_IMAGE}:${VERSION}-arm64"
+      docker manifest push --purge "${HARBOR_IMAGE}:latest"
