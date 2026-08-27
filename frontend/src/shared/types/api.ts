@@ -30,6 +30,7 @@ export interface FirstAdminSetupPayload {
 export interface SettingsResponse {
   cliaproxy_url: string
   model_request_url: string
+  cpamc_url: string
   management_key: string
   management_key_set: boolean
   collector_enabled: boolean
@@ -42,6 +43,7 @@ export interface SettingsResponse {
 export interface SettingsUpdatePayload {
   cliaproxy_url?: string
   model_request_url?: string
+  cpamc_url?: string
   management_key?: string
   collector_enabled?: boolean
   queue_name?: string
