@@ -75,6 +75,7 @@ type AccountAction = 'toggle' | 'priority' | 'delete' | 'refresh'
 type AccountConfirmType = 'default' | 'warning' | 'error' | 'primary'
 type QuotaWindowItem = {
   label: string
+  usedPercent: number
   remainingPercent: number
   resetAt: string | null
   usage: CodexKeeperQuotaWindowUsage | null
@@ -97,7 +98,7 @@ const CODEX_FIVE_HOUR_WINDOW_SECONDS = 5 * 60 * 60
 const CODEX_WEEK_WINDOW_SECONDS = 7 * 24 * 60 * 60
 const CODEX_MONTH_WINDOW_SECONDS = 30 * 24 * 60 * 60
 const disabledTableScrollX = 1302
-const normalTableScrollX = 1816
+const normalTableScrollX = 1966
 const KEEPER_STATUS_POLL_INTERVAL_MS = 3000
 const REFRESH_STATUS_POLL_INTERVAL_MS = 1500
 const message = useMessage()
@@ -905,6 +906,7 @@ function quotaWindowItems(account: CodexKeeperAccount): QuotaWindowItem[] {
   const items = [
     {
       label: labels.primary,
+      usedPercent: Math.max(0, Math.min(100, account.primary_used_percent)),
       remainingPercent: remainingQuotaPercent(account.primary_used_percent),
       resetAt: account.primary_reset_at,
       usage: account.primary_window_usage,
@@ -913,6 +915,7 @@ function quotaWindowItems(account: CodexKeeperAccount): QuotaWindowItem[] {
   if (account.secondary_used_percent !== null && !isFreeQuotaWindow(account)) {
     items.push({
       label: labels.secondary,
+      usedPercent: Math.max(0, Math.min(100, account.secondary_used_percent)),
       remainingPercent: remainingQuotaPercent(account.secondary_used_percent),
       resetAt: account.secondary_reset_at,
       usage: account.secondary_window_usage,
@@ -1052,6 +1055,32 @@ function quotaWindowUsageTone(item: QuotaWindowItem): string {
   return !item.resetAt || item.usage?.stale === true ? 'is-stale' : ''
 }
 
+function quotaWindowProjectedCost(item: QuotaWindowItem): number | null {
+  if (!item.resetAt || item.usage?.stale === true || item.usedPercent <= 0) {
+    return null
+  }
+  const cost = item.usage?.estimated_cost_usd ?? 0
+  if (!Number.isFinite(cost) || cost < 0) {
+    return null
+  }
+  return cost / (item.usedPercent / 100)
+}
+
+function quotaWindowPredictionTitle(item: QuotaWindowItem): string {
+  if (!item.resetAt || item.usage?.stale === true) {
+    return t(`${item.label} 窗口预测需刷新额度数据`, `${item.label} projection needs refreshed quota data`)
+  }
+  const projectedCost = quotaWindowProjectedCost(item)
+  if (projectedCost === null) {
+    return t(`${item.label} 已用限额为 0%，暂无窗口预测`, `${item.label} usage is 0%; no projection yet`)
+  }
+  const currentCost = item.usage?.estimated_cost_usd ?? 0
+  return t(
+    `${item.label} 窗口预测：${formatUsd(currentCost)} ÷ ${item.usedPercent}% = ${formatUsd(projectedCost)}`,
+    `${item.label} projection: ${formatUsd(currentCost)} ÷ ${item.usedPercent}% = ${formatUsd(projectedCost)}`,
+  )
+}
+
 function latestActionText(account: CodexKeeperAccount): string {
   const text = account.last_error?.trim() || account.latest_action?.trim()
   return text ? serverText(text, '账号状态', 'Account status') : '-'
@@ -1151,6 +1180,46 @@ function renderQuotaUsageCell(account: CodexKeeperAccount) {
         ),
       ),
     ),
+  )
+}
+
+function renderQuotaPredictionCell(account: CodexKeeperAccount) {
+  const items = quotaWindowItems(account)
+  if (items.length === 0) {
+    return '-'
+  }
+  return h(
+    'div',
+    { class: 'quota-usage-cell' },
+    items.map((item) => {
+      const projectedCost = quotaWindowProjectedCost(item)
+      const needsRefresh = !item.resetAt || item.usage?.stale === true
+      return h(
+        'div',
+        {
+          class: 'quota-usage-item is-projection',
+          title: quotaWindowPredictionTitle(item),
+        },
+        [
+          h(
+            'span',
+            { class: ['quota-usage-chip', 'is-cost', needsRefresh ? 'is-stale' : undefined] },
+            [
+              h('span', { class: 'quota-usage-chip-label' }, t('额度', 'Quota')),
+              h(
+                'strong',
+                { class: 'quota-usage-chip-value' },
+                needsRefresh
+                  ? t('需刷新', 'Refresh needed')
+                  : projectedCost === null
+                    ? '-'
+                    : formatUsd(projectedCost),
+              ),
+            ],
+          ),
+        ],
+      )
+    }),
   )
 }
 
@@ -1678,6 +1747,12 @@ const baseColumns = computed<DataTableColumns<CodexKeeperAccount>>(() => [
     render: (row) => renderQuotaUsageCell(row),
   },
   {
+    title: t('窗口预测', 'Window Projection'),
+    key: 'quota_prediction',
+    width: 150,
+    render: (row) => renderQuotaPredictionCell(row),
+  },
+  {
     title: t('最近巡检', 'Last Inspection'),
     key: 'last_checked_at',
     width: 150,
@@ -1693,7 +1768,9 @@ const baseColumns = computed<DataTableColumns<CodexKeeperAccount>>(() => [
 
 const disabledBaseColumns = computed<DataTableColumns<CodexKeeperAccount>>(
   () => baseColumns.value.filter(
-    (column) => !('key' in column) || (column.key !== 'quota' && column.key !== 'quota_usage'),
+    (column) =>
+      !('key' in column) ||
+      (column.key !== 'quota' && column.key !== 'quota_usage' && column.key !== 'quota_prediction'),
   ),
 )
 
@@ -3526,6 +3603,10 @@ onBeforeUnmount(() => {
   min-height: 38px;
 }
 
+:global(.quota-usage-item.is-projection) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 :global(.quota-usage-chip) {
   --usage-accent: var(--cpa-primary);
   display: grid;
@@ -3551,6 +3632,10 @@ onBeforeUnmount(() => {
 }
 
 :global(.quota-usage-chip:nth-child(3)) {
+  --usage-accent: var(--cpa-accent-orange);
+}
+
+:global(.quota-usage-chip.is-cost) {
   --usage-accent: var(--cpa-accent-orange);
 }
 
