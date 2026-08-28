@@ -1476,13 +1476,10 @@ onBeforeUnmount(() => {
         <div class="dashboard-columns">
           <div class="dashboard-column dashboard-column-left">
             <section class="panel heatmap-panel area-heatmap">
+              <div class="panel-heading-row dashboard-panel-heading">
+                <h2 class="section-title">{{ t('小时活跃（今日）', 'Hourly activity (today)') }}</h2>
+              </div>
               <div class="panel-inner compact-panel-inner">
-                <div class="panel-heading-row">
-                  <h2 class="section-title">{{ t('小时活跃（今日）', 'Hourly activity (today)') }}</h2>
-                  <span class="panel-subtle-text">
-                    {{ auxiliaryError ? t('辅助数据降级', 'Auxiliary data degraded') : t('请求数 / Token', 'Requests / tokens') }}
-                  </span>
-                </div>
                 <div class="heatmap-groups">
                   <div class="heatmap-group is-records">
                     <div class="heatmap-group-heading">
@@ -1565,11 +1562,11 @@ onBeforeUnmount(() => {
 
           <div class="dashboard-column dashboard-column-middle">
             <section class="panel anomaly-panel area-anomaly">
+              <div class="panel-heading-row dashboard-panel-heading">
+                <h2 class="section-title">{{ t('异常概览', 'Anomaly overview') }}</h2>
+                <NButton v-if="canOpenRecords" size="small" quaternary @click="goRecords({ failed: true })">{{ t('更多', 'More') }}</NButton>
+              </div>
               <div class="panel-inner compact-panel-inner">
-                <div class="panel-heading-row">
-                  <h2 class="section-title">{{ t('异常概览', 'Anomaly overview') }}</h2>
-                  <NButton v-if="canOpenRecords" size="small" quaternary @click="goRecords({ failed: true })">{{ t('更多', 'More') }}</NButton>
-                </div>
                 <div class="anomaly-stat-grid">
                   <div
                     v-for="item in anomalyStats"
@@ -1642,18 +1639,18 @@ onBeforeUnmount(() => {
 
           <div class="dashboard-column dashboard-column-right">
             <section class="panel ranking-panel area-primary-ranking">
+              <div class="panel-heading-row dashboard-panel-heading">
+                <h2 class="section-title">{{ rankingTitle }}</h2>
+                <NSelect
+                  class="ranking-sort-select"
+                  size="tiny"
+                  :value="primaryRankingSort"
+                  :options="rankingSortOptions"
+                  :consistent-menu-width="false"
+                  @update:value="handlePrimaryRankingSortChange"
+                />
+              </div>
               <div class="panel-inner compact-panel-inner">
-                <div class="panel-heading-row">
-                  <h2 class="section-title">{{ rankingTitle }}</h2>
-                  <NSelect
-                    class="ranking-sort-select"
-                    size="tiny"
-                    :value="primaryRankingSort"
-                    :options="rankingSortOptions"
-                    :consistent-menu-width="false"
-                    @update:value="handlePrimaryRankingSortChange"
-                  />
-                </div>
                 <div class="ranking-list">
                   <div v-if="primaryRankingRows.length === 0" class="empty-inline">{{ t('暂无排行数据', 'No ranking data') }}</div>
                   <div
@@ -1684,18 +1681,18 @@ onBeforeUnmount(() => {
             </section>
 
             <section class="panel ranking-panel area-model-ranking">
+              <div class="panel-heading-row dashboard-panel-heading">
+                <h2 class="section-title">{{ t('模型排行', 'Model ranking') }}</h2>
+                <NSelect
+                  class="ranking-sort-select"
+                  size="tiny"
+                  :value="modelRankingSort"
+                  :options="rankingSortOptions"
+                  :consistent-menu-width="false"
+                  @update:value="handleModelRankingSortChange"
+                />
+              </div>
               <div class="panel-inner compact-panel-inner">
-                <div class="panel-heading-row">
-                  <h2 class="section-title">{{ t('模型排行', 'Model ranking') }}</h2>
-                  <NSelect
-                    class="ranking-sort-select"
-                    size="tiny"
-                    :value="modelRankingSort"
-                    :options="rankingSortOptions"
-                    :consistent-menu-width="false"
-                    @update:value="handleModelRankingSortChange"
-                  />
-                </div>
                 <div class="ranking-list">
                   <div v-if="modelRankingRows.length === 0" class="empty-inline">{{ t('暂无模型数据', 'No model data') }}</div>
                   <div
@@ -2035,11 +2032,6 @@ onBeforeUnmount(() => {
   height: 146px;
 }
 
-.token-panel.chart-panel :deep(.chart-heading),
-.distribution-panel.chart-panel :deep(.chart-heading) {
-  padding: 14px 16px 10px;
-}
-
 .token-panel.chart-panel :deep(.chart-footer),
 .distribution-panel.chart-panel :deep(.chart-footer) {
   padding: 0 16px 14px;
@@ -2051,7 +2043,7 @@ onBeforeUnmount(() => {
 }
 
 .heatmap-panel .compact-panel-inner {
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr) auto;
   min-height: 0;
   overflow: hidden;
 }
@@ -2067,13 +2059,13 @@ onBeforeUnmount(() => {
 }
 
 .anomaly-panel .compact-panel-inner {
-  grid-template-rows: auto auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
   min-height: 0;
   overflow: hidden;
 }
 
 .ranking-panel .compact-panel-inner {
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   min-height: 0;
   overflow: hidden;
 }
@@ -2082,7 +2074,8 @@ onBeforeUnmount(() => {
   display: grid;
   align-content: start;
   gap: 10px;
-  height: 100%;
+  box-sizing: border-box;
+  height: calc(100% - 52px);
   padding: 14px;
 }
 
@@ -2094,16 +2087,17 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 
+.dashboard-panel-heading {
+  box-sizing: border-box;
+  align-items: center;
+  min-height: 52px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--cpa-border);
+}
+
 .panel-heading-row .section-title {
   min-width: 0;
   margin: 0;
-}
-
-.panel-subtle-text {
-  flex: 0 0 auto;
-  color: var(--cpa-text-muted);
-  font-size: 12px;
-  white-space: nowrap;
 }
 
 .ranking-sort-select {
@@ -2850,10 +2844,6 @@ onBeforeUnmount(() => {
 
   .panel-heading-row {
     align-items: flex-start;
-  }
-
-  .panel-subtle-text {
-    white-space: normal;
   }
 
   .anomaly-stat-grid {

@@ -195,7 +195,9 @@ onBeforeUnmount(() => {
   gap: 12px;
   align-items: center;
   justify-content: space-between;
-  padding: 18px 18px 12px;
+  box-sizing: border-box;
+  min-height: 52px;
+  padding: 12px 16px;
   border-bottom: 1px solid var(--cpa-border);
 }
 
