@@ -1518,14 +1518,6 @@ onBeforeUnmount(() => {
                     </div>
                   </div>
                 </div>
-                <div class="heatmap-scale">
-                  <span>{{ t('低', 'Low') }}</span>
-                  <div class="heatmap-scale-bars" aria-hidden="true">
-                    <i class="is-records" />
-                    <i class="is-tokens" />
-                  </div>
-                  <span>{{ t('高', 'High') }}</span>
-                </div>
               </div>
             </section>
 
@@ -1986,11 +1978,14 @@ onBeforeUnmount(() => {
 
 .area-anomaly,
 .area-heatmap,
-.area-primary-ranking,
-.area-model-ranking,
 .area-provider,
 .area-endpoint {
   height: var(--dashboard-card-height);
+}
+
+.area-primary-ranking,
+.area-model-ranking {
+  height: calc(var(--dashboard-card-height) + 30px);
 }
 
 .usage-trend-panel.chart-panel {
@@ -2043,7 +2038,7 @@ onBeforeUnmount(() => {
 }
 
 .heatmap-panel .compact-panel-inner {
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr);
   min-height: 0;
   overflow: hidden;
 }
@@ -2054,7 +2049,7 @@ onBeforeUnmount(() => {
 }
 
 .ranking-panel {
-  min-height: var(--dashboard-card-height);
+  min-height: calc(var(--dashboard-card-height) + 30px);
   overflow: hidden;
 }
 
@@ -2396,35 +2391,6 @@ onBeforeUnmount(() => {
   border-color: color-mix(in srgb, var(--cpa-border) 70%, transparent);
   background: var(--cpa-surface-muted);
   color: var(--cpa-text-muted);
-}
-
-.heatmap-scale {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: center;
-  color: var(--cpa-text-muted);
-  font-size: 12px;
-}
-
-.heatmap-scale-bars {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-}
-
-.heatmap-scale-bars i {
-  display: block;
-  height: 6px;
-  border-radius: 999px;
-}
-
-.heatmap-scale-bars .is-records {
-  background: linear-gradient(90deg, var(--cpa-surface-muted), var(--cpa-accent-blue));
-}
-
-.heatmap-scale-bars .is-tokens {
-  background: linear-gradient(90deg, var(--cpa-surface-muted), var(--cpa-chart-3, #7e66f2));
 }
 
 .ranking-row {
