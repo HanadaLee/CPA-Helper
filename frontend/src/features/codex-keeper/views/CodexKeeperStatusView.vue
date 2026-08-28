@@ -24,16 +24,12 @@ import {
 import {
   Activity,
   ArrowLeft,
-  BarChart3,
-  ChevronDown,
-  CircleDot,
   Gauge,
   PauseCircle,
   Pencil,
   RefreshCw,
   ShieldAlert,
   ShieldCheck,
-  Table2,
   Trash2,
   Upload,
   Users,
@@ -75,7 +71,6 @@ type PriorityTypeFilter = `type:${string}`
 type PriorityFilter = FixedPriorityFilter | PriorityTypeFilter
 type AccountStatusFilter = 'all' | 'enabled' | 'disabled' | 'unauthorized' | 'quotaExhausted'
 type AccountDisplaySize = 50 | 100 | 150 | 200 | 'all'
-type AccountListViewMode = 'table' | 'bar' | 'ring'
 type AccountSortKey = 'quotaDay' | 'quotaWeek' | 'accountType' | 'status' | 'priority' | 'lastCheckedAt'
 type SortDirection = 'asc' | 'desc'
 type PriorityMode = 'low' | 'high' | 'default'
@@ -91,7 +86,6 @@ type QuotaWindowItem = {
 type QuotaUsageTag = { label: string; value: string; tone?: 'stale' }
 type AccountStatusPreferences = {
   displaySize?: unknown
-  viewMode?: unknown
   sort?: {
     key?: unknown
     direction?: unknown
@@ -126,10 +120,8 @@ const ACCOUNT_TABLE_VIRTUAL_THRESHOLD = 200
 const CODEX_FIVE_HOUR_WINDOW_SECONDS = 5 * 60 * 60
 const CODEX_WEEK_WINDOW_SECONDS = 7 * 24 * 60 * 60
 const CODEX_MONTH_WINDOW_SECONDS = 30 * 24 * 60 * 60
-const disabledManageTableScrollX = 1082
-const disabledReadOnlyTableScrollX = 886
-const normalManageTableScrollX = 1590
-const normalReadOnlyTableScrollX = 1486
+const accountManageTableScrollX = 1622
+const accountReadOnlyTableScrollX = 1426
 const KEEPER_STATUS_POLL_INTERVAL_MS = 3000
 const REFRESH_STATUS_POLL_INTERVAL_MS = 1500
 const message = useMessage()
@@ -150,15 +142,16 @@ const accountPageSubtitle = computed(() =>
         'View Codex auth file health, quota, and priority maintenance results',
       ),
 )
-const disabledTableScrollX = computed(() =>
-  canManageAccounts.value ? disabledManageTableScrollX : disabledReadOnlyTableScrollX,
-)
-const normalTableScrollX = computed(() =>
-  canManageAccounts.value ? normalManageTableScrollX : normalReadOnlyTableScrollX,
+const accountTableScrollX = computed(() =>
+  canManageAccounts.value ? accountManageTableScrollX : accountReadOnlyTableScrollX,
 )
 const isLoading = ref(false)
 const isBulkDeleting = ref(false)
 const isBulkRefreshing = ref(false)
+const bulkToggleAction = ref<'enable' | 'disable' | null>(null)
+const isBulkOperationRunning = computed(
+  () => isBulkDeleting.value || isBulkRefreshing.value || bulkToggleAction.value !== null,
+)
 const actingActions = ref<Set<string>>(new Set())
 const accounts = ref<CodexKeeperAccount[]>([])
 const priorityRules = ref<CodexKeeperPriorityRule[]>([])
@@ -167,18 +160,13 @@ const selectedAccount = ref<CodexKeeperAccount | null>(null)
 const selectedAccountNote = ref<string | null>(null)
 const isSelectedAccountNoteLoading = ref(false)
 let selectedAccountNoteRequestID = 0
-const selectedDisabledAccountKeys = ref<DataTableRowKey[]>([])
-const refreshSelectMode = ref(false)
-const selectedRefreshAccountNames = ref<string[]>([])
+const selectedAccountKeys = ref<DataTableRowKey[]>([])
 const detailOpen = ref(false)
 const authFileInput = ref<HTMLInputElement | null>(null)
 const isUploadingAuthFiles = ref(false)
 const authFileEditor = ref<AuthFileEditorState | null>(null)
 const accountDisplaySize = ref<AccountDisplaySize>(50)
-const disabledAccountPage = ref(1)
-const normalAccountPage = ref(1)
-const cardAccountPage = ref(1)
-const accountListViewMode = ref<AccountListViewMode>('table')
+const accountListPage = ref(1)
 const relativeTimeNow = ref(Date.now())
 const filters = reactive({
   keyword: '',
@@ -192,7 +180,6 @@ const accountSort = reactive({
 })
 const bulkDeleteDialog = reactive({
   show: false,
-  source: 'selection' as 'selection' | 'disabled401',
 })
 const accountConfirmDialog = reactive({
   show: false,
@@ -240,11 +227,6 @@ const accountDisplaySizeOptions = computed<Array<{ label: string; value: Account
   { label: '200', value: 200 },
   { label: t('全部', 'All'), value: 'all' },
 ])
-const accountListViewOptions = computed(() => [
-  { label: t('表格', 'Table'), key: 'table', icon: () => h(NIcon, null, { default: () => h(Table2) }) },
-  { label: t('进度条卡片', 'Progress Cards'), key: 'bar', icon: () => h(NIcon, null, { default: () => h(BarChart3) }) },
-  { label: t('圆环卡片', 'Ring Cards'), key: 'ring', icon: () => h(NIcon, null, { default: () => h(CircleDot) }) },
-])
 const quotaSortOptions = computed(() => [
   { label: t('天', 'Day'), key: 'quotaDay' },
   { label: t('月/周', 'Month/Week'), key: 'quotaWeek' },
@@ -280,20 +262,16 @@ const filteredNormalAccounts = computed(() =>
     compareNormalAccounts,
   ),
 )
+const sortedListAccounts = computed(() =>
+  accountSort.key === null
+    ? [...filteredDisabledAccounts.value, ...filteredNormalAccounts.value]
+    : sortAccountsForDisplay(filteredAccounts.value),
+)
 const tableLoading = computed(() => isLoading.value)
 const enabledAccountCount = computed(() => accounts.value.filter((account) => !account.disabled).length)
 const disabledAccountCount = computed(() => accounts.value.filter((account) => account.disabled).length)
 const hasDisabledAccounts = computed(() => disabledAccountCount.value > 0)
-const showDisabledSection = computed(
-  () => filters.status !== 'enabled' && filteredDisabledAccounts.value.length > 0,
-)
-const showNormalSection = computed(
-  () => filters.status !== 'disabled' && filteredNormalAccounts.value.length > 0,
-)
-const showTableLoadingState = computed(() => isLoading.value && accounts.value.length === 0)
-const showEmptyTableState = computed(
-  () => !showTableLoadingState.value && !showDisabledSection.value && !showNormalSection.value,
-)
+const showListLoadingState = computed(() => isLoading.value && accounts.value.length === 0)
 const isKeeperRunning = computed(() => keeperStatus.value?.running === true)
 const isKeeperDaemonRunning = computed(() => keeperStatus.value?.daemon_running === true)
 const keeperStateType = computed(() => {
@@ -334,85 +312,32 @@ const activeFilterCount = computed(
     Number(filters.priority !== 'all') +
     Number(filters.status !== 'all'),
 )
-const isTableView = computed(() => accountListViewMode.value === 'table')
-const isBarCardView = computed(() => accountListViewMode.value === 'bar')
-const accountListViewLabel = computed(() => {
-  if (accountListViewMode.value === 'bar') {
-    return t('进度条卡片', 'Progress Cards')
-  }
-  if (accountListViewMode.value === 'ring') {
-    return t('圆环卡片', 'Ring Cards')
-  }
-  return t('表格', 'Table')
-})
-const sortedCardAccounts = computed(() => [
-  ...filteredDisabledAccounts.value,
-  ...filteredNormalAccounts.value,
-])
 const isDisplayAllAccounts = computed(() => accountDisplaySize.value === 'all')
-const disabledTableDisplayProps = computed(() =>
-  accountTableDisplayProps(visibleDisabledAccounts.value.length),
-)
-const normalTableDisplayProps = computed(() =>
-  accountTableDisplayProps(visibleNormalAccounts.value.length),
+const accountTableDisplayOptions = computed(() =>
+  accountTableDisplayProps(visibleListAccounts.value.length),
 )
 const accountPaginationPageSize = computed(() =>
   accountDisplaySize.value === 'all' ? 1 : accountDisplaySize.value,
 )
-const disabledAccountPageCount = computed(() => accountPageCount(filteredDisabledAccounts.value.length))
-const normalAccountPageCount = computed(() => accountPageCount(filteredNormalAccounts.value.length))
-const cardAccountPageCount = computed(() => accountPageCount(sortedCardAccounts.value.length))
-const showDisabledPagination = computed(() =>
-  shouldShowAccountPagination(filteredDisabledAccounts.value.length),
+const accountListPageCount = computed(() => accountPageCount(sortedListAccounts.value.length))
+const showAccountPagination = computed(() =>
+  shouldShowAccountPagination(sortedListAccounts.value.length),
 )
-const showNormalPagination = computed(() =>
-  shouldShowAccountPagination(filteredNormalAccounts.value.length),
+const visibleListAccounts = computed(() =>
+  pagedAccounts(sortedListAccounts.value, accountListPage.value),
 )
-const showCardPagination = computed(() =>
-  shouldShowAccountPagination(sortedCardAccounts.value.length),
-)
-const visibleDisabledAccounts = computed(() =>
-  pagedAccounts(filteredDisabledAccounts.value, disabledAccountPage.value),
-)
-const visibleNormalAccounts = computed(() =>
-  pagedAccounts(filteredNormalAccounts.value, normalAccountPage.value),
-)
-const visibleCardAccounts = computed(() =>
-  pagedAccounts(sortedCardAccounts.value, cardAccountPage.value),
-)
-const disabledSectionDisplayText = computed(() =>
+const accountSectionDisplayText = computed(() =>
   accountDisplayText(
-    visibleDisabledAccounts.value.length,
-    filteredDisabledAccounts.value.length,
-    disabledAccountPage.value,
-    disabledAccountPageCount.value,
+    visibleListAccounts.value.length,
+    sortedListAccounts.value.length,
+    accountListPage.value,
+    accountListPageCount.value,
   ),
 )
-const normalSectionDisplayText = computed(() =>
-  accountDisplayText(
-    visibleNormalAccounts.value.length,
-    filteredNormalAccounts.value.length,
-    normalAccountPage.value,
-    normalAccountPageCount.value,
-  ),
-)
-const cardSectionDisplayText = computed(() =>
-  accountDisplayText(
-    visibleCardAccounts.value.length,
-    sortedCardAccounts.value.length,
-    cardAccountPage.value,
-    cardAccountPageCount.value,
-  ),
-)
-const showCardLoadingState = computed(() => isLoading.value && accounts.value.length === 0)
 const displaySizeHelpText = computed(() =>
-  isTableView.value
-    ? isDisplayAllAccounts.value
-      ? t('当前筛选结果全部展示，账号较多时自动使用虚拟滚动。', 'All filtered results are shown. Virtual scrolling is used automatically for large account sets.')
-      : t(`每个分组每页显示 ${accountDisplaySize.value} 个账号。`, `${accountDisplaySize.value} accounts per group per page.`)
-    : isDisplayAllAccounts.value
-      ? t('当前筛选结果全部以卡片展示，账号较多时使用轻量渲染优化。', 'All filtered results are shown as cards. Lightweight rendering is used for large account sets.')
-      : t(`统一列表每页显示 ${accountDisplaySize.value} 个账号。`, `${accountDisplaySize.value} accounts per page in the unified list.`),
+  isDisplayAllAccounts.value
+    ? t('当前筛选结果全部展示，账号较多时自动使用虚拟滚动。', 'All filtered results are shown. Virtual scrolling is used automatically for large account sets.')
+    : t(`统一列表每页显示 ${accountDisplaySize.value} 个账号。`, `${accountDisplaySize.value} accounts per page in the unified list.`),
 )
 const activeQuotaSortLabel = computed(() => {
   if (accountSort.key === 'quotaDay') {
@@ -477,23 +402,15 @@ function clampPage(page: number, pageCount: number): number {
 }
 
 function resetAccountPages() {
-  disabledAccountPage.value = 1
-  normalAccountPage.value = 1
-  cardAccountPage.value = 1
+  accountListPage.value = 1
 }
 
 function clampAccountPages() {
-  disabledAccountPage.value = clampPage(disabledAccountPage.value, disabledAccountPageCount.value)
-  normalAccountPage.value = clampPage(normalAccountPage.value, normalAccountPageCount.value)
-  cardAccountPage.value = clampPage(cardAccountPage.value, cardAccountPageCount.value)
+  accountListPage.value = clampPage(accountListPage.value, accountListPageCount.value)
 }
 
 function isAccountDisplaySize(value: unknown): value is AccountDisplaySize {
   return value === 50 || value === 100 || value === 150 || value === 200 || value === 'all'
-}
-
-function isAccountListViewMode(value: unknown): value is AccountListViewMode {
-  return value === 'table' || value === 'bar' || value === 'ring'
 }
 
 function isAccountSortKey(value: unknown): value is AccountSortKey {
@@ -535,9 +452,6 @@ function restoreAccountStatusPreferences() {
   if (isAccountDisplaySize(preferences.displaySize)) {
     accountDisplaySize.value = preferences.displaySize
   }
-  if (isAccountListViewMode(preferences.viewMode)) {
-    accountListViewMode.value = preferences.viewMode
-  }
   const sort = preferences.sort
   if (!sort || typeof sort !== 'object') {
     return
@@ -562,7 +476,6 @@ function saveAccountStatusPreferences() {
       ACCOUNT_STATUS_PREFERENCE_STORAGE_KEY,
       JSON.stringify({
         displaySize: accountDisplaySize.value,
-        viewMode: accountListViewMode.value,
         sort: {
           key: accountSort.key,
           direction: accountSort.direction,
@@ -573,49 +486,42 @@ function saveAccountStatusPreferences() {
     // Keep the page usable when local storage is unavailable.
   }
 }
-const selectedDisabledAccountNames = computed(() =>
-  selectedDisabledAccountKeys.value.map((key) => String(key)),
+const selectedAccountNames = computed(() =>
+  selectedAccountKeys.value.map((key) => String(key)),
 )
-const filteredUnauthorizedDisabledAccounts = computed(() =>
-  filteredDisabledAccounts.value.filter((account) => account.last_status_code === 401),
+const selectedAccounts = computed(() => {
+  const selectedNames = new Set(selectedAccountNames.value)
+  return accounts.value.filter((account) => selectedNames.has(account.name))
+})
+const selectedDisabledAccounts = computed(() =>
+  selectedAccounts.value.filter((account) => account.disabled),
 )
-const filteredUnauthorizedDisabledAccountNames = computed(() =>
-  filteredUnauthorizedDisabledAccounts.value.map((account) => account.name),
+const selectedEnabledAccounts = computed(() =>
+  selectedAccounts.value.filter((account) => !account.disabled),
 )
-const selectedDisabledCount = computed(() => selectedDisabledAccountNames.value.length)
-const canBulkDelete = computed(() => selectedDisabledCount.value > 0 && !isBulkDeleting.value)
-const canBulkDeleteFilteredUnauthorizedDisabledAccounts = computed(
-  () =>
-    filteredUnauthorizedDisabledAccountNames.value.length > 0 &&
-    !isBulkDeleting.value &&
-    !isBulkRefreshing.value &&
-    !isLoading.value,
+const selectedAccountCount = computed(() => selectedAccountNames.value.length)
+const canBulkDelete = computed(() =>
+  selectedAccountCount.value > 0 && !isBulkOperationRunning.value,
 )
-const filteredAccountNames = computed(() => filteredAccounts.value.map((account) => account.name))
-const selectedRefreshAccountNameSet = computed(() => new Set(selectedRefreshAccountNames.value))
-const selectedRefreshCount = computed(() => selectedRefreshAccountNames.value.length)
 const canRefreshSelected = computed(
-  () => selectedRefreshCount.value > 0 && !isBulkRefreshing.value && !isLoading.value,
+  () => selectedAccountCount.value > 0 && !isBulkOperationRunning.value && !isLoading.value,
 )
-const bulkDeletePreviewNames = computed(() => selectedDisabledAccountNames.value.slice(0, 5))
+const canBulkEnable = computed(
+  () => selectedDisabledAccounts.value.length > 0 && !isBulkOperationRunning.value,
+)
+const canBulkDisable = computed(
+  () => selectedEnabledAccounts.value.length > 0 && !isBulkOperationRunning.value,
+)
+const bulkDeletePreviewNames = computed(() => selectedAccountNames.value.slice(0, 5))
 const bulkDeletePreviewOverflow = computed(() =>
-  Math.max(0, selectedDisabledCount.value - bulkDeletePreviewNames.value.length),
+  Math.max(0, selectedAccountCount.value - bulkDeletePreviewNames.value.length),
 )
-const bulkDeleteDialogTitle = computed(() =>
-  bulkDeleteDialog.source === 'disabled401'
-    ? t('批量删除 401 已禁用账号', 'Bulk Delete 401 Disabled Accounts')
-    : t('批量删除已禁用账号', 'Bulk Delete Disabled Accounts'),
-)
+const bulkDeleteDialogTitle = computed(() => t('批量删除账号', 'Bulk Delete Accounts'))
 const bulkDeleteWarningText = computed(() =>
-  bulkDeleteDialog.source === 'disabled401'
-    ? t(
-        `将删除当前筛选下 ${selectedDisabledCount.value} 个 HTTP 401 已禁用账号，并从 CPA 删除 auth file。此操作不可恢复。`,
-        `This will delete ${selectedDisabledCount.value} HTTP 401 disabled accounts in the current filter and remove their auth files from CPA. This cannot be undone.`,
-      )
-    : t(
-        `将删除已选 ${selectedDisabledCount.value} 个已禁用账号，并从 CPA 删除 auth file。此操作不可恢复。`,
-        `This will delete ${selectedDisabledCount.value} selected disabled accounts and remove their auth files from CPA. This cannot be undone.`,
-      ),
+  t(
+    `将删除已选 ${selectedAccountCount.value} 个账号，并从 CPA 删除 auth file。此操作不可恢复。`,
+    `This will delete ${selectedAccountCount.value} selected accounts and remove their auth files from CPA. This cannot be undone.`,
+  ),
 )
 const canSubmitPriority = computed(() => {
   if (priorityDialog.mode === 'default') {
@@ -703,22 +609,12 @@ function matchesStatusFilter(account: CodexKeeperAccount, value: AccountStatusFi
   return true
 }
 
-function hasAccountError(account: CodexKeeperAccount): boolean {
-  return (account.last_error?.trim() ?? '') !== ''
-}
-
 function toggleStatusFilter(value: Exclude<AccountStatusFilter, 'all'>) {
   filters.status = filters.status === value ? 'all' : value
 }
 
 function isStatusFilterActive(value: Exclude<AccountStatusFilter, 'all'>): boolean {
   return filters.status === value
-}
-
-function handleAccountListViewSelect(key: string | number) {
-  if (key === 'table' || key === 'bar' || key === 'ring') {
-    accountListViewMode.value = key
-  }
 }
 
 function defaultSortDirection(key: AccountSortKey): SortDirection {
@@ -1088,11 +984,6 @@ function quotaWindowUsageTags(item: QuotaWindowItem): QuotaUsageTag[] {
   ]
 }
 
-function quotaWindowResetText(item: QuotaWindowItem): string {
-  const resetTime = formatQuotaResetTime(item.resetAt)
-  return resetTime ? t(`刷新 ${resetTime}`, `Refreshes ${resetTime}`) : t('未记录刷新时间', 'No refresh time recorded')
-}
-
 function quotaWindowUsageTitle(item: QuotaWindowItem): string {
   const usage = item.usage
   if (!item.resetAt || usage?.stale === true) {
@@ -1146,27 +1037,11 @@ function latestActionText(account: CodexKeeperAccount): string {
   return text ? serverText(text, '账号状态', 'Account status') : '-'
 }
 
-function disabledCardErrorText(account: CodexKeeperAccount): string {
-  if (!account.disabled) {
-    return ''
-  }
-  const text =
-    account.last_error?.trim() ||
-    account.latest_action?.trim() ||
-    disabledStatusCodeTitle(account)
-  return text ? serverText(text, '报错信息', 'Error details') : t('暂无报错信息', 'No error details')
-}
-
 function disabledStatusCodeText(account: CodexKeeperAccount): string | null {
   if (!account.disabled || account.last_status_code == null) {
     return null
   }
   return `${account.last_status_code}`
-}
-
-function disabledStatusCodeTitle(account: CodexKeeperAccount): string | null {
-  const text = disabledStatusCodeText(account)
-  return text === null ? null : `HTTP ${text}`
 }
 
 function renderQuotaCell(account: CodexKeeperAccount) {
@@ -1379,83 +1254,15 @@ function accountRowKey(account: CodexKeeperAccount): string {
   return account.name
 }
 
-function handleDisabledSelectionUpdate(keys: DataTableRowKey[]) {
-  selectedDisabledAccountKeys.value = keys
+function handleAccountSelectionUpdate(keys: DataTableRowKey[]) {
+  selectedAccountKeys.value = keys
 }
 
-function pruneSelectedDisabledAccountKeys() {
-  const availableNames = new Set(visibleDisabledAccounts.value.map((account) => account.name))
-  selectedDisabledAccountKeys.value = selectedDisabledAccountKeys.value.filter((key) =>
+function pruneSelectedAccountKeys() {
+  const availableNames = new Set(visibleListAccounts.value.map((account) => account.name))
+  selectedAccountKeys.value = selectedAccountKeys.value.filter((key) =>
     availableNames.has(String(key)),
   )
-}
-
-function pruneSelectedRefreshAccountNames() {
-  const availableNames = new Set(filteredAccountNames.value)
-  selectedRefreshAccountNames.value = selectedRefreshAccountNames.value.filter((name) =>
-    availableNames.has(name),
-  )
-}
-
-function toggleRefreshSelectMode() {
-  refreshSelectMode.value = !refreshSelectMode.value
-  if (!refreshSelectMode.value) {
-    selectedRefreshAccountNames.value = []
-  }
-}
-
-function exitRefreshSelectMode() {
-  refreshSelectMode.value = false
-  selectedRefreshAccountNames.value = []
-}
-
-function isRefreshAccountSelected(account: CodexKeeperAccount): boolean {
-  return selectedRefreshAccountNameSet.value.has(account.name)
-}
-
-function toggleRefreshAccountSelection(account: CodexKeeperAccount) {
-  if (isRowActing(account) || isBulkRefreshing.value || isBulkDeleting.value) {
-    return
-  }
-  if (isRefreshAccountSelected(account)) {
-    selectedRefreshAccountNames.value = selectedRefreshAccountNames.value.filter(
-      (name) => name !== account.name,
-    )
-    return
-  }
-  selectedRefreshAccountNames.value = [...selectedRefreshAccountNames.value, account.name]
-}
-
-function selectAllFilteredRefreshAccounts() {
-  selectedRefreshAccountNames.value = filteredAccountNames.value
-}
-
-function handleAccountCardClick(account: CodexKeeperAccount) {
-  if (refreshSelectMode.value) {
-    toggleRefreshAccountSelection(account)
-    return
-  }
-  openDetail(account)
-}
-
-function accountTableRowProps(account: CodexKeeperAccount) {
-  const isSelected = isRefreshAccountSelected(account)
-  return {
-    class: {
-      'is-refresh-selectable': refreshSelectMode.value,
-      'is-refresh-selected': isSelected,
-    },
-    onClick: (event: MouseEvent) => {
-      if (!refreshSelectMode.value) {
-        return
-      }
-      const target = event.target instanceof HTMLElement ? event.target : null
-      if (target?.closest('button, a, input, textarea, select, .n-checkbox, .n-base-selection')) {
-        return
-      }
-      toggleRefreshAccountSelection(account)
-    },
-  }
 }
 
 function authFileStringField(value: unknown): string {
@@ -1837,24 +1644,11 @@ function openBulkDeleteDialog() {
   if (!canBulkDelete.value) {
     return
   }
-  bulkDeleteDialog.source = 'selection'
-  bulkDeleteDialog.show = true
-}
-
-function openFilteredUnauthorizedDisabledBulkDeleteDialog() {
-  if (!canBulkDeleteFilteredUnauthorizedDisabledAccounts.value) {
-    return
-  }
-  selectedDisabledAccountKeys.value = filteredUnauthorizedDisabledAccountNames.value
-  if (!canBulkDelete.value) {
-    return
-  }
-  bulkDeleteDialog.source = 'disabled401'
   bulkDeleteDialog.show = true
 }
 
 async function submitBulkDelete() {
-  const authNames = selectedDisabledAccountNames.value
+  const authNames = selectedAccountNames.value
   if (authNames.length === 0) {
     return
   }
@@ -1862,7 +1656,7 @@ async function submitBulkDelete() {
   try {
     const result = await bulkDeleteCodexKeeperAccounts({ auth_names: authNames })
     const deletedNames = new Set(result.deleted)
-    selectedDisabledAccountKeys.value = selectedDisabledAccountKeys.value.filter(
+    selectedAccountKeys.value = selectedAccountKeys.value.filter(
       (key) => !deletedNames.has(String(key)),
     )
     if (result.failed.length > 0 && result.deleted.length > 0) {
@@ -1870,7 +1664,7 @@ async function submitBulkDelete() {
     } else if (result.failed.length > 0) {
       message.error(t(`批量删除失败：失败 ${result.failed.length} 个`, `Bulk delete failed: ${result.failed.length} failed`))
     } else {
-      message.success(t(`已删除 ${result.deleted.length} 个已禁用账号`, `Deleted ${result.deleted.length} disabled accounts`))
+      message.success(t(`已删除 ${result.deleted.length} 个账号`, `Deleted ${result.deleted.length} accounts`))
     }
     bulkDeleteDialog.show = false
     await loadAccounts()
@@ -1879,6 +1673,81 @@ async function submitBulkDelete() {
   } finally {
     isBulkDeleting.value = false
   }
+}
+
+async function toggleSelectedAccounts(action: 'enable' | 'disable') {
+  const targets = action === 'enable' ? selectedDisabledAccounts.value : selectedEnabledAccounts.value
+  if (targets.length === 0 || isBulkOperationRunning.value) {
+    return
+  }
+  bulkToggleAction.value = action
+  try {
+    const results = await Promise.allSettled(
+      targets.map((account) =>
+        action === 'enable'
+          ? enableCodexKeeperAccount(account.name)
+          : disableCodexKeeperAccount(account.name),
+      ),
+    )
+    const succeededNames = new Set(
+      targets
+        .filter((_, index) => results[index]?.status === 'fulfilled')
+        .map((account) => account.name),
+    )
+    const failedCount = results.length - succeededNames.size
+    selectedAccountKeys.value = selectedAccountKeys.value.filter(
+      (key) => !succeededNames.has(String(key)),
+    )
+    if (succeededNames.size > 0) {
+      await loadAccounts()
+    }
+    const zhAction = action === 'enable' ? '启用' : '禁用'
+    const enAction = action === 'enable' ? 'enable' : 'disable'
+    if (failedCount > 0 && succeededNames.size > 0) {
+      message.warning(t(
+        `批量${zhAction}完成：成功 ${succeededNames.size} 个，失败 ${failedCount} 个`,
+        `Bulk ${enAction} complete: ${succeededNames.size} succeeded, ${failedCount} failed`,
+      ))
+    } else if (failedCount > 0) {
+      message.error(t(
+        `批量${zhAction}失败：失败 ${failedCount} 个`,
+        `Bulk ${enAction} failed: ${failedCount} failed`,
+      ))
+    } else {
+      message.success(t(
+        `已${zhAction} ${succeededNames.size} 个账号`,
+        `${succeededNames.size} accounts ${action === 'enable' ? 'enabled' : 'disabled'}`,
+      ))
+    }
+  } finally {
+    bulkToggleAction.value = null
+  }
+}
+
+function confirmToggleSelectedAccounts(action: 'enable' | 'disable') {
+  const count = action === 'enable'
+    ? selectedDisabledAccounts.value.length
+    : selectedEnabledAccounts.value.length
+  if (count === 0) {
+    return
+  }
+  if (action === 'enable') {
+    openAccountConfirm(
+      t('批量启用账号', 'Bulk Enable Accounts'),
+      t(`确认启用已选的 ${count} 个已禁用账号？`, `Enable the ${count} selected disabled accounts?`),
+      t('确认启用', 'Confirm Enable'),
+      'primary',
+      () => toggleSelectedAccounts('enable'),
+    )
+    return
+  }
+  openAccountConfirm(
+    t('批量禁用账号', 'Bulk Disable Accounts'),
+    t(`确认禁用已选的 ${count} 个正常账号？`, `Disable the ${count} selected enabled accounts?`),
+    t('确认禁用', 'Confirm Disable'),
+    'warning',
+    () => toggleSelectedAccounts('disable'),
+  )
 }
 
 async function loadSelectedAccountNote(accountName: string, requestID: number) {
@@ -2055,7 +1924,7 @@ function refreshAccount(account: CodexKeeperAccount, options: { closeDetail?: bo
 }
 
 async function refreshSelectedAccounts() {
-  await refreshAccounts(selectedRefreshAccountNames.value, { clearSelection: true })
+  await refreshAccounts(selectedAccountNames.value, { clearSelection: true })
 }
 
 function uniqueAccountNames(raw: string[]): string[] {
@@ -2102,7 +1971,7 @@ async function refreshAccounts(
     .map((name) => accounts.value.find((account) => account.name === name))
     .filter((account): account is CodexKeeperAccount => account !== undefined)
     .map((account) => accountActionKey(account, 'refresh'))
-  if (refreshKeys.some((key) => actingActions.value.has(key)) || isBulkRefreshing.value) {
+  if (refreshKeys.some((key) => actingActions.value.has(key)) || isBulkOperationRunning.value) {
     return
   }
   const nextActions = new Set(actingActions.value)
@@ -2120,7 +1989,7 @@ async function refreshAccounts(
       detailOpen.value = false
     }
     if (options.clearSelection) {
-      exitRefreshSelectMode()
+      selectedAccountKeys.value = []
     }
     void pollRefreshUntilIdle()
   } catch (error) {
@@ -2180,7 +2049,7 @@ const baseColumns = computed<DataTableColumns<CodexKeeperAccount>>(() => [
   {
     title: t('账号', 'Account'),
     key: 'identity',
-    width: 270,
+    width: 220,
     render: (row) => renderAccountIdentityCell(row),
   },
   {
@@ -2198,7 +2067,7 @@ const baseColumns = computed<DataTableColumns<CodexKeeperAccount>>(() => [
   {
     title: t('额度窗口', 'Quota Window'),
     key: 'quota',
-    width: 250,
+    width: 270,
     render: (row) => renderQuotaCell(row),
   },
   {
@@ -2216,7 +2085,7 @@ const baseColumns = computed<DataTableColumns<CodexKeeperAccount>>(() => [
   {
     title: t('最近巡检', 'Last Inspection'),
     key: 'last_checked_at',
-    width: 120,
+    width: 100,
     render: (row) => renderLastCheckedCell(row),
   },
   {
@@ -2227,15 +2096,7 @@ const baseColumns = computed<DataTableColumns<CodexKeeperAccount>>(() => [
   },
 ])
 
-const disabledBaseColumns = computed<DataTableColumns<CodexKeeperAccount>>(
-  () => baseColumns.value.filter(
-    (column) =>
-      !('key' in column) ||
-      (column.key !== 'quota' && column.key !== 'quota_usage' && column.key !== 'quota_prediction'),
-  ),
-)
-
-const disabledActionColumn = computed<DataTableColumns<CodexKeeperAccount>[number]>(() => ({
+const manageActionColumn = computed<DataTableColumns<CodexKeeperAccount>[number]>(() => ({
   title: '',
   key: 'actions',
   width: 224,
@@ -2256,12 +2117,12 @@ const disabledActionColumn = computed<DataTableColumns<CodexKeeperAccount>[numbe
             {
               size: 'small',
               quaternary: true,
-              type: 'primary',
-              disabled: isRowActing(row) || isBulkDeleting.value || isBulkRefreshing.value,
+              type: row.disabled ? 'primary' : 'warning',
+              disabled: isRowActing(row) || isBulkOperationRunning.value,
               loading: isActionLoading(row, 'toggle'),
-              onClick: () => confirmEnableAccount(row),
+              onClick: () => row.disabled ? confirmEnableAccount(row) : confirmDisableAccount(row),
             },
-            { default: () => t('启用', 'Enable') },
+            { default: () => row.disabled ? t('启用', 'Enable') : t('禁用', 'Disable') },
           ),
           h(
             NButton,
@@ -2269,7 +2130,7 @@ const disabledActionColumn = computed<DataTableColumns<CodexKeeperAccount>[numbe
               size: 'small',
               quaternary: true,
               type: 'error',
-              disabled: isRowActing(row) || isBulkDeleting.value || isBulkRefreshing.value,
+              disabled: isRowActing(row) || isBulkOperationRunning.value,
               loading: isActionLoading(row, 'delete'),
               onClick: () => confirmDeleteAccount(row),
             },
@@ -2281,53 +2142,7 @@ const disabledActionColumn = computed<DataTableColumns<CodexKeeperAccount>[numbe
               size: 'small',
               quaternary: true,
               type: 'primary',
-              disabled: isRowActing(row) || isBulkDeleting.value || isBulkRefreshing.value,
-              loading: isActionLoading(row, 'refresh'),
-              onClick: () => refreshAccount(row),
-            },
-            { default: () => t('刷新', 'Refresh') },
-          ),
-        ],
-      },
-    )
-  },
-}))
-
-const normalActionColumn = computed<DataTableColumns<CodexKeeperAccount>[number]>(() => ({
-  title: '',
-  key: 'actions',
-  width: 176,
-  fixed: 'right',
-  render: (row: CodexKeeperAccount) => {
-    return h(
-      NSpace,
-      { class: 'account-actions', size: 4, wrap: false },
-      {
-        default: () => [
-          h(
-            NButton,
-            { size: 'small', quaternary: true, onClick: () => openDetail(row) },
-            { default: () => t('详情', 'Details') },
-          ),
-          h(
-            NButton,
-            {
-              size: 'small',
-              quaternary: true,
-              type: 'warning',
-              disabled: isRowActing(row) || isBulkDeleting.value || isBulkRefreshing.value,
-              loading: isActionLoading(row, 'toggle'),
-              onClick: () => confirmDisableAccount(row),
-            },
-            { default: () => t('禁用', 'Disable') },
-          ),
-          h(
-            NButton,
-            {
-              size: 'small',
-              quaternary: true,
-              type: 'primary',
-              disabled: isRowActing(row) || isBulkDeleting.value || isBulkRefreshing.value,
+              disabled: isRowActing(row) || isBulkOperationRunning.value,
               loading: isActionLoading(row, 'refresh'),
               onClick: () => refreshAccount(row),
             },
@@ -2352,35 +2167,30 @@ const readOnlyActionColumn = computed<DataTableColumns<CodexKeeperAccount>[numbe
     ),
 }))
 
-const disabledColumns = computed<DataTableColumns<CodexKeeperAccount>>(() =>
+const accountColumns = computed<DataTableColumns<CodexKeeperAccount>>(() =>
   canManageAccounts.value
     ? [
         {
           type: 'selection',
           width: 44,
-          disabled: (row: CodexKeeperAccount) => isRowActing(row) || isBulkDeleting.value,
+          disabled: (row: CodexKeeperAccount) =>
+            isRowActing(row) || isBulkOperationRunning.value,
         },
-        ...disabledBaseColumns.value,
-        disabledActionColumn.value,
+        ...baseColumns.value,
+        manageActionColumn.value,
       ]
-    : [...disabledBaseColumns.value, readOnlyActionColumn.value],
+    : [...baseColumns.value, readOnlyActionColumn.value],
 )
-
-const normalColumns = computed<DataTableColumns<CodexKeeperAccount>>(() => [
-  ...baseColumns.value,
-  canManageAccounts.value ? normalActionColumn.value : readOnlyActionColumn.value,
-])
 
 restoreAccountStatusPreferences()
 
 watch(
-  [accountDisplaySize, accountListViewMode, () => accountSort.key, () => accountSort.direction],
+  [accountDisplaySize, () => accountSort.key, () => accountSort.direction],
   saveAccountStatusPreferences,
 )
 watch(
   [
     accountDisplaySize,
-    accountListViewMode,
     () => accountSort.key,
     () => accountSort.direction,
     () => filters.keyword,
@@ -2390,12 +2200,8 @@ watch(
   ],
   resetAccountPages,
 )
-watch(
-  [disabledAccountPageCount, normalAccountPageCount, cardAccountPageCount],
-  clampAccountPages,
-)
-watch(visibleDisabledAccounts, pruneSelectedDisabledAccountKeys)
-watch(filteredAccounts, pruneSelectedRefreshAccountNames)
+watch(accountListPageCount, clampAccountPages)
+watch(visibleListAccounts, pruneSelectedAccountKeys)
 
 onMounted(() => {
   void loadAccounts()
@@ -2562,55 +2368,6 @@ onBeforeUnmount(() => {
           />
         </div>
         <div class="list-control-row">
-          <div class="list-main-controls">
-            <NDropdown
-              trigger="click"
-              :options="accountListViewOptions"
-              @select="handleAccountListViewSelect"
-            >
-              <NButton secondary size="small">
-                <template #icon>
-                  <NIcon :component="ChevronDown" />
-                </template>
-                {{ t(`切换样式：${accountListViewLabel}`, `Switch View: ${accountListViewLabel}`) }}
-              </NButton>
-            </NDropdown>
-            <NButton
-              v-if="canManageAccounts"
-              secondary
-              size="small"
-              :type="refreshSelectMode ? 'primary' : 'default'"
-              @click="toggleRefreshSelectMode"
-            >
-              {{ t('多选刷新', 'Multi-select Refresh') }}
-            </NButton>
-            <template v-if="canManageAccounts && refreshSelectMode">
-              <NTag size="small" type="info" :bordered="false">
-                {{ t(`${selectedRefreshCount} 已选`, `${selectedRefreshCount} selected`) }}
-              </NTag>
-              <NButton
-                secondary
-                size="small"
-                :disabled="filteredAccountNames.length === 0 || isBulkRefreshing"
-                @click="selectAllFilteredRefreshAccounts"
-              >
-                {{ t('全选当前筛选', 'Select Current Filter') }}
-              </NButton>
-              <NButton
-                secondary
-                type="primary"
-                size="small"
-                :disabled="!canRefreshSelected"
-                :loading="isBulkRefreshing"
-                @click="refreshSelectedAccounts"
-              >
-                {{ t('刷新已选', 'Refresh Selected') }}
-              </NButton>
-              <NButton secondary size="small" :disabled="isBulkRefreshing" @click="exitRefreshSelectMode">
-                {{ t('退出选择', 'Exit Selection') }}
-              </NButton>
-            </template>
-          </div>
           <div class="sort-control-row" :aria-label="t('账号排序', 'Account Sorting')">
             <span class="sort-control-label">{{ t('排序', 'Sort') }}</span>
             <NDropdown trigger="click" :options="quotaSortOptions" @select="handleQuotaSortSelect">
@@ -2658,18 +2415,52 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div v-if="isTableView" class="account-sections">
-        <div v-if="showTableLoadingState" class="empty-state">{{ t('账号加载中...', 'Loading accounts...') }}</div>
-        <div v-else-if="showEmptyTableState" class="empty-state">{{ t('当前筛选下暂无账号', 'No accounts match the current filter') }}</div>
-        <section v-if="showDisabledSection" class="account-section">
+      <div class="account-sections">
+        <section class="account-section">
           <div class="account-section-header">
             <div class="account-section-title-group">
-              <h3 class="account-section-title">{{ t('已禁用账号', 'Disabled Accounts') }}</h3>
+              <h3 class="account-section-title">{{ t('全部账号', 'All Accounts') }}</h3>
               <p class="account-section-subtitle">
-                {{ disabledSectionDisplayText }}
+                {{ accountSectionDisplayText }}
               </p>
             </div>
             <div v-if="canManageAccounts" class="account-section-actions">
+              <NButton
+                secondary
+                type="primary"
+                :disabled="!canBulkEnable"
+                :loading="bulkToggleAction === 'enable'"
+                @click="confirmToggleSelectedAccounts('enable')"
+              >
+                <template #icon>
+                  <NIcon :component="ShieldCheck" />
+                </template>
+                {{ t('批量启用', 'Bulk Enable') }}
+              </NButton>
+              <NButton
+                secondary
+                type="warning"
+                :disabled="!canBulkDisable"
+                :loading="bulkToggleAction === 'disable'"
+                @click="confirmToggleSelectedAccounts('disable')"
+              >
+                <template #icon>
+                  <NIcon :component="PauseCircle" />
+                </template>
+                {{ t('批量禁用', 'Bulk Disable') }}
+              </NButton>
+              <NButton
+                secondary
+                type="primary"
+                :disabled="!canRefreshSelected"
+                :loading="isBulkRefreshing"
+                @click="refreshSelectedAccounts"
+              >
+                <template #icon>
+                  <NIcon :component="RefreshCw" />
+                </template>
+                {{ t('批量刷新', 'Bulk Refresh') }}
+              </NButton>
               <NButton
                 secondary
                 type="error"
@@ -2680,7 +2471,7 @@ onBeforeUnmount(() => {
                 <template #icon>
                   <NIcon :component="Trash2" />
                 </template>
-                {{ t(`批量删除（${selectedDisabledCount}）`, `Bulk Delete (${selectedDisabledCount})`) }}
+                {{ t('批量删除', 'Bulk Delete') }}
               </NButton>
             </div>
           </div>
@@ -2688,257 +2479,28 @@ onBeforeUnmount(() => {
             class="account-table"
             size="small"
             :loading="tableLoading"
-            :columns="disabledColumns"
-            :data="visibleDisabledAccounts"
+            :columns="accountColumns"
+            :data="visibleListAccounts"
             :row-key="accountRowKey"
-            :row-props="accountTableRowProps"
-            :checked-row-keys="selectedDisabledAccountKeys"
+            :checked-row-keys="selectedAccountKeys"
             :pagination="false"
-            v-bind="disabledTableDisplayProps"
+            v-bind="accountTableDisplayOptions"
             table-layout="fixed"
-            :scroll-x="disabledTableScrollX"
-            @update:checked-row-keys="handleDisabledSelectionUpdate"
+            :scroll-x="accountTableScrollX"
+            @update:checked-row-keys="handleAccountSelectionUpdate"
           >
             <template #empty>
-              <div class="empty-state">{{ t('当前筛选下暂无已禁用账号', 'No disabled accounts match the current filter') }}</div>
+              <div class="empty-state">
+                {{ showListLoadingState ? t('账号加载中...', 'Loading accounts...') : t('当前筛选下暂无账号', 'No accounts match the current filter') }}
+              </div>
             </template>
           </NDataTable>
-          <div v-if="showDisabledPagination" class="account-pagination-row">
+          <div v-if="showAccountPagination" class="account-pagination-row">
             <NPagination
-              v-model:page="disabledAccountPage"
+              v-model:page="accountListPage"
               size="small"
               :page-size="accountPaginationPageSize"
-              :item-count="filteredDisabledAccounts.length"
-            />
-          </div>
-        </section>
-
-        <section v-if="showNormalSection" class="account-section">
-          <div class="account-section-header">
-            <div class="account-section-title-group">
-              <h3 class="account-section-title">{{ t('正常账号', 'Normal Accounts') }}</h3>
-              <p class="account-section-subtitle">
-                {{ normalSectionDisplayText }}
-              </p>
-            </div>
-          </div>
-          <NDataTable
-            class="account-table"
-            size="small"
-            :loading="tableLoading"
-            :columns="normalColumns"
-            :data="visibleNormalAccounts"
-            :row-key="accountRowKey"
-            :row-props="accountTableRowProps"
-            :pagination="false"
-            v-bind="normalTableDisplayProps"
-            table-layout="fixed"
-            :scroll-x="normalTableScrollX"
-          >
-            <template #empty>
-              <div class="empty-state">{{ t('当前筛选下暂无正常账号', 'No normal accounts match the current filter') }}</div>
-            </template>
-          </NDataTable>
-          <div v-if="showNormalPagination" class="account-pagination-row">
-            <NPagination
-              v-model:page="normalAccountPage"
-              size="small"
-              :page-size="accountPaginationPageSize"
-              :item-count="filteredNormalAccounts.length"
-            />
-          </div>
-        </section>
-      </div>
-      <div v-else class="account-card-shell">
-        <section class="account-section account-card-section">
-          <div class="account-section-header">
-            <div class="account-section-title-group">
-              <h3 class="account-section-title">{{ accountListViewLabel }}</h3>
-              <p class="account-section-subtitle">
-                {{ cardSectionDisplayText }}
-              </p>
-            </div>
-            <div
-              v-if="canManageAccounts && filteredUnauthorizedDisabledAccounts.length > 0"
-              class="account-section-actions"
-            >
-              <NButton
-                secondary
-                type="error"
-                size="small"
-                :disabled="!canBulkDeleteFilteredUnauthorizedDisabledAccounts"
-                :loading="isBulkDeleting"
-                @click="openFilteredUnauthorizedDisabledBulkDeleteDialog"
-              >
-                <template #icon>
-                  <NIcon :component="Trash2" />
-                </template>
-                {{ t(`批量删除 401 已禁用（${filteredUnauthorizedDisabledAccounts.length}）`, `Bulk Delete 401 Disabled (${filteredUnauthorizedDisabledAccounts.length})`) }}
-              </NButton>
-            </div>
-          </div>
-          <div v-if="showCardLoadingState" class="empty-state">{{ t('账号加载中...', 'Loading accounts...') }}</div>
-          <div v-else-if="visibleCardAccounts.length === 0" class="empty-state">
-            {{ t('当前筛选下暂无账号', 'No accounts match the current filter') }}
-          </div>
-          <div
-            v-else
-            class="account-card-grid"
-            :class="{
-              'is-bar': isBarCardView,
-              'is-ring': !isBarCardView,
-            }"
-          >
-            <button
-              v-for="account in visibleCardAccounts"
-              :key="account.name"
-              type="button"
-              class="account-card"
-              :class="{
-                'is-disabled': account.disabled,
-                'is-enabled': !account.disabled,
-                'has-error': hasAccountError(account),
-                'is-quota-exhausted': isQuotaExhaustedAccount(account),
-                'is-select-mode': refreshSelectMode,
-                'is-selected': isRefreshAccountSelected(account),
-              }"
-              :aria-label="
-                refreshSelectMode
-                  ? t(`选择 ${account.email ?? account.name}`, `Select ${account.email ?? account.name}`)
-                  : t(`查看 ${account.email ?? account.name} 详情`, `View details for ${account.email ?? account.name}`)
-              "
-              :aria-pressed="refreshSelectMode ? isRefreshAccountSelected(account) : undefined"
-              @click="handleAccountCardClick(account)"
-            >
-              <div class="account-card-top">
-                <div class="account-card-identity">
-                  <span class="account-card-email">{{ account.email ?? account.name }}</span>
-                  <span class="account-card-name">{{ account.name }}</span>
-                </div>
-                <div class="account-card-status-group">
-                  <span
-                    class="account-status-pill"
-                    :class="
-                      account.disabled
-                        ? 'is-danger'
-                        : isQuotaExhaustedAccount(account)
-                          ? 'is-quota-exhausted'
-                          : 'is-success'
-                    "
-                  >
-                    {{ account.disabled ? t('已禁用', 'Disabled') : isQuotaExhaustedAccount(account) ? t('额度耗尽', 'Quota Exhausted') : t('启用中', 'Enabled') }}
-                  </span>
-                  <span
-                    v-if="disabledStatusCodeText(account)"
-                    class="account-status-code-badge"
-                    :title="disabledStatusCodeTitle(account) ?? undefined"
-                  >
-                    {{ disabledStatusCodeText(account) }}
-                  </span>
-                </div>
-              </div>
-              <div class="account-card-meta-grid">
-                <div class="account-card-meta-item">
-                  <span>{{ t('类型', 'Type') }}</span>
-                  <strong>{{ accountTypeLabel(account.account_type) }}</strong>
-                </div>
-                <div class="account-card-meta-item">
-                  <span>{{ t('优先级', 'Priority') }}</span>
-                  <strong>{{ formatInteger(accountPriority(account)) }}</strong>
-                </div>
-                <div class="account-card-meta-item">
-                  <span>{{ t('最近巡检', 'Last Inspection') }}</span>
-                  <strong :title="formatDateTime(account.last_checked_at)">
-                    {{ formatDateTime(account.last_checked_at, { includeSecond: false }) }}
-                  </strong>
-                </div>
-              </div>
-              <div
-                v-if="account.disabled"
-                class="account-card-error"
-                :title="disabledCardErrorText(account)"
-              >
-                <span>{{ t('报错信息', 'Error Details') }}</span>
-                <strong>{{ disabledCardErrorText(account) }}</strong>
-              </div>
-              <div v-else-if="shouldShowQuotaWindow(account)" class="account-card-quota">
-                <template v-if="quotaWindowItems(account).length > 0">
-                  <template v-if="isBarCardView">
-                    <div
-                      v-for="item in quotaWindowItems(account)"
-                      :key="item.label"
-                      class="card-quota-bar"
-                    >
-                      <div class="card-quota-head">
-                        <span>{{ item.label }}</span>
-                        <strong>{{ t(`剩余 ${item.remainingPercent}%`, `${item.remainingPercent}% remaining`) }}</strong>
-                      </div>
-                      <div class="card-quota-track">
-                        <div
-                          class="card-quota-fill"
-                          :class="quotaBarTone(item.remainingPercent)"
-                          :style="{ width: `${item.remainingPercent}%` }"
-                        />
-                      </div>
-                      <span class="card-quota-reset">
-                        {{ quotaWindowResetText(item) }}
-                      </span>
-                      <div class="card-quota-usage-tags" :title="quotaWindowUsageTitle(item)">
-                        <span
-                          v-for="tag in quotaWindowUsageTags(item)"
-                          :key="`${item.label}-${tag.label}`"
-                          class="card-quota-usage-tag"
-                          :class="tag.tone ? `is-${tag.tone}` : undefined"
-                        >
-                          <span>{{ tag.label }}</span>
-                          <strong>{{ tag.value }}</strong>
-                        </span>
-                      </div>
-                    </div>
-                  </template>
-                  <div v-else class="card-quota-rings">
-                    <div
-                      v-for="item in quotaWindowItems(account)"
-                      :key="item.label"
-                      class="card-quota-ring-item"
-                    >
-                      <div class="card-quota-ring-head">
-                        <div
-                          class="quota-ring"
-                          :class="quotaBarTone(item.remainingPercent)"
-                          :style="{ '--quota-deg': `${item.remainingPercent * 3.6}deg` }"
-                        >
-                          <span>{{ item.remainingPercent }}%</span>
-                        </div>
-                        <div class="quota-ring-caption">
-                          <strong>{{ item.label }}</strong>
-                          <span>{{ quotaWindowResetText(item) }}</span>
-                        </div>
-                      </div>
-                      <div class="card-quota-usage-tags" :title="quotaWindowUsageTitle(item)">
-                        <span
-                          v-for="tag in quotaWindowUsageTags(item)"
-                          :key="`${item.label}-${tag.label}`"
-                          class="card-quota-usage-tag"
-                          :class="tag.tone ? `is-${tag.tone}` : undefined"
-                        >
-                          <span>{{ tag.label }}</span>
-                          <strong>{{ tag.value }}</strong>
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </template>
-                <div v-else class="card-quota-empty">{{ t('暂无额度窗口', 'No quota windows') }}</div>
-              </div>
-            </button>
-          </div>
-          <div v-if="showCardPagination" class="account-pagination-row">
-            <NPagination
-              v-model:page="cardAccountPage"
-              size="small"
-              :page-size="accountPaginationPageSize"
-              :item-count="sortedCardAccounts.length"
+              :item-count="sortedListAccounts.length"
             />
           </div>
         </section>
@@ -3021,7 +2583,7 @@ onBeforeUnmount(() => {
               size="small"
               type="primary"
               secondary
-              :disabled="isRowActing(selectedAccount) || isBulkDeleting || isBulkRefreshing"
+              :disabled="isRowActing(selectedAccount) || isBulkOperationRunning"
               :loading="isActionLoading(selectedAccount, 'refresh')"
               @click="refreshAccount(selectedAccount, { closeDetail: true })"
             >
@@ -3032,7 +2594,7 @@ onBeforeUnmount(() => {
               size="small"
               type="primary"
               secondary
-              :disabled="isRowActing(selectedAccount) || isBulkDeleting || isBulkRefreshing"
+              :disabled="isRowActing(selectedAccount) || isBulkOperationRunning"
               :loading="isActionLoading(selectedAccount, 'toggle')"
               @click="confirmEnableAccount(selectedAccount)"
             >
@@ -3043,7 +2605,7 @@ onBeforeUnmount(() => {
               size="small"
               type="warning"
               secondary
-              :disabled="isRowActing(selectedAccount) || isBulkDeleting || isBulkRefreshing"
+              :disabled="isRowActing(selectedAccount) || isBulkOperationRunning"
               :loading="isActionLoading(selectedAccount, 'toggle')"
               @click="confirmDisableAccount(selectedAccount)"
             >
@@ -3052,18 +2614,17 @@ onBeforeUnmount(() => {
             <NButton
               size="small"
               secondary
-              :disabled="isRowActing(selectedAccount) || isBulkDeleting || isBulkRefreshing"
+              :disabled="isRowActing(selectedAccount) || isBulkOperationRunning"
               :loading="isActionLoading(selectedAccount, 'priority')"
               @click="openPriorityDialog(selectedAccount)"
             >
               {{ t('修改优先级', 'Change Priority') }}
             </NButton>
             <NButton
-              v-if="selectedAccount.disabled"
               size="small"
               type="error"
               secondary
-              :disabled="isRowActing(selectedAccount) || isBulkDeleting || isBulkRefreshing"
+              :disabled="isRowActing(selectedAccount) || isBulkOperationRunning"
               :loading="isActionLoading(selectedAccount, 'delete')"
               @click="confirmDeleteAccount(selectedAccount)"
             >
@@ -3227,7 +2788,7 @@ onBeforeUnmount(() => {
           <NButton :disabled="isBulkDeleting" @click="bulkDeleteDialog.show = false">{{ t('取消', 'Cancel') }}</NButton>
           <NButton
             type="error"
-            :disabled="selectedDisabledCount === 0"
+            :disabled="selectedAccountCount === 0"
             :loading="isBulkDeleting"
             @click="submitBulkDelete"
           >
@@ -3283,7 +2844,6 @@ onBeforeUnmount(() => {
 .account-status-page,
 .account-list-panel,
 .account-section,
-.account-card-shell,
 .account-table {
   min-width: 0;
 }
@@ -3436,14 +2996,6 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 
-.list-main-controls {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
 .sort-control-row {
   display: flex;
   flex-wrap: wrap;
@@ -3463,10 +3015,6 @@ onBeforeUnmount(() => {
 .account-sections {
   display: grid;
   gap: 14px;
-  padding: 14px;
-}
-
-.account-card-shell {
   padding: 14px;
 }
 
@@ -3545,9 +3093,11 @@ onBeforeUnmount(() => {
 
 .account-section-actions {
   display: flex;
+  flex-wrap: wrap;
   flex-shrink: 0;
   align-items: center;
   justify-content: flex-end;
+  gap: 8px;
 }
 
 .account-pagination-row {
@@ -3561,538 +3111,6 @@ onBeforeUnmount(() => {
   justify-content: flex-end;
 }
 
-.account-card-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 10px;
-}
-
-.account-card-grid.is-bar {
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
-}
-
-.account-card-grid.is-ring {
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
-}
-
-.account-card {
-  --account-card-bg: var(--cpa-surface-raised);
-  --account-card-border: var(--cpa-border);
-  --account-card-hover-border: color-mix(in srgb, var(--cpa-primary) 36%, var(--cpa-border));
-  --account-card-accent: var(--cpa-primary);
-  --account-card-inner-bg: color-mix(
-    in srgb,
-    var(--account-card-bg) 72%,
-    var(--cpa-surface-raised)
-  );
-  --account-card-inner-border: color-mix(
-    in srgb,
-    var(--account-card-border) 70%,
-    var(--cpa-border)
-  );
-  display: grid;
-  align-content: start;
-  gap: 12px;
-  width: 100%;
-  min-width: 0;
-  min-height: 176px;
-  padding: 12px;
-  color: var(--cpa-text);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  appearance: none;
-  content-visibility: auto;
-  contain-intrinsic-size: 220px;
-  background: var(--account-card-bg);
-  border: 1px solid var(--account-card-border);
-  border-radius: var(--cpa-radius);
-  box-shadow: var(--cpa-shadow-card), var(--cpa-shadow-hairline);
-}
-
-.account-card.is-enabled {
-  --account-card-accent: var(--cpa-success);
-  --account-card-bg: color-mix(in srgb, var(--cpa-success-weak) 24%, var(--cpa-surface-raised));
-  --account-card-border: color-mix(in srgb, var(--cpa-success) 14%, var(--cpa-border));
-  --account-card-hover-border: color-mix(in srgb, var(--cpa-success) 26%, var(--cpa-border));
-}
-
-.account-card.is-disabled {
-  --account-card-accent: var(--cpa-danger);
-  --account-card-bg: color-mix(in srgb, var(--cpa-danger-weak) 30%, var(--cpa-surface-raised));
-  --account-card-border: color-mix(in srgb, var(--cpa-danger) 18%, var(--cpa-border));
-  --account-card-hover-border: color-mix(in srgb, var(--cpa-danger) 32%, var(--cpa-border));
-}
-
-.account-card.is-quota-exhausted {
-  --account-card-accent: var(--cpa-warning);
-  --account-card-bg: color-mix(in srgb, var(--cpa-warning-weak) 34%, var(--cpa-surface-raised));
-  --account-card-border: color-mix(in srgb, var(--cpa-warning) 20%, var(--cpa-border));
-  --account-card-hover-border: color-mix(in srgb, var(--cpa-warning) 34%, var(--cpa-border));
-}
-
-.account-card:hover {
-  border-color: var(--account-card-hover-border);
-  transform: translateY(-1px);
-}
-
-.account-card.is-select-mode {
-  background: color-mix(in srgb, var(--cpa-primary) 5%, var(--account-card-bg));
-}
-
-.account-card.is-selected {
-  background: color-mix(in srgb, var(--cpa-primary) 12%, var(--account-card-bg));
-  border-color: color-mix(in srgb, var(--cpa-primary) 64%, var(--cpa-border));
-  box-shadow:
-    0 0 0 3px color-mix(in srgb, var(--cpa-primary) 14%, transparent),
-    var(--cpa-shadow-card),
-    var(--cpa-shadow-hairline);
-}
-
-.account-card:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--cpa-primary) 70%, transparent);
-  outline-offset: 2px;
-}
-
-.account-card-top {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-  min-width: 0;
-}
-
-.account-card-identity {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-}
-
-.account-card-email,
-.account-card-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.account-card-email {
-  color: var(--cpa-text-strong);
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.account-card-name {
-  color: var(--cpa-text-muted);
-  font-size: 12px;
-}
-
-.account-card-status-group {
-  display: inline-flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-  justify-content: flex-end;
-  flex-shrink: 0;
-  min-width: 0;
-}
-
-.account-status-pill {
-  flex-shrink: 0;
-  padding: 2px 8px;
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1.45;
-  border: 1px solid transparent;
-  border-radius: var(--cpa-radius-sm);
-}
-
-.account-status-pill.is-success {
-  color: var(--cpa-success);
-  background: var(--cpa-success-weak);
-  border-color: color-mix(in srgb, var(--cpa-success) 28%, transparent);
-}
-
-.account-status-pill.is-warning {
-  color: var(--cpa-warning);
-  background: var(--cpa-warning-weak);
-  border-color: color-mix(in srgb, var(--cpa-warning) 28%, transparent);
-}
-
-.account-status-pill.is-danger {
-  color: var(--cpa-danger);
-  background: var(--cpa-danger-weak);
-  border-color: color-mix(in srgb, var(--cpa-danger) 28%, transparent);
-}
-
-.account-status-pill.is-quota-exhausted {
-  --quota-exhausted-pill-color: color-mix(in srgb, var(--cpa-warning) 76%, var(--cpa-accent-blue));
-  color: var(--quota-exhausted-pill-color);
-  background: var(--cpa-warning-weak);
-  border-color: color-mix(in srgb, var(--quota-exhausted-pill-color) 30%, transparent);
-}
-
-.account-status-code-badge {
-  display: inline-flex;
-  align-items: center;
-  max-width: 100%;
-  padding: 1px 6px;
-  overflow: hidden;
-  color: var(--cpa-danger);
-  font-size: 11px;
-  font-weight: 800;
-  line-height: 1.45;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  background: var(--cpa-danger-weak);
-  border: 1px solid color-mix(in srgb, var(--cpa-danger) 28%, transparent);
-  border-radius: var(--cpa-radius-sm);
-  font-variant-numeric: tabular-nums;
-}
-
-.account-card-meta-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.account-card-meta-item {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-  padding: 7px 8px;
-  background: color-mix(in srgb, var(--account-card-accent) 7%, var(--account-card-inner-bg));
-  border: 1px solid color-mix(in srgb, var(--account-card-accent) 15%, var(--account-card-inner-border));
-  border-radius: var(--cpa-radius-sm);
-}
-
-.account-card-meta-item:nth-child(2) {
-  background: color-mix(in srgb, var(--account-card-accent) 9%, var(--account-card-inner-bg));
-  border-color: color-mix(in srgb, var(--account-card-accent) 17%, var(--account-card-inner-border));
-}
-
-.account-card-meta-item:nth-child(3) {
-  background: color-mix(in srgb, var(--account-card-accent) 11%, var(--account-card-inner-bg));
-  border-color: color-mix(in srgb, var(--account-card-accent) 19%, var(--account-card-inner-border));
-}
-
-.account-card-meta-item span {
-  overflow: hidden;
-  color: var(--cpa-text-muted);
-  font-size: 11px;
-  line-height: 1.1;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.account-card-meta-item strong {
-  min-width: 0;
-  overflow: hidden;
-  color: color-mix(in srgb, var(--cpa-text) 88%, var(--cpa-text-muted));
-  font-size: 12px;
-  font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.account-card-error {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-  padding: 8px 10px;
-  background: color-mix(in srgb, var(--cpa-danger) 7%, var(--cpa-surface-muted));
-  border: 1px solid color-mix(in srgb, var(--cpa-danger) 24%, var(--cpa-border));
-  border-radius: var(--cpa-radius-sm);
-}
-
-.account-card-error span {
-  overflow: hidden;
-  color: var(--cpa-danger);
-  font-size: 11px;
-  font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.account-card-error strong {
-  display: -webkit-box;
-  min-width: 0;
-  overflow: hidden;
-  color: var(--cpa-text);
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.45;
-  overflow-wrap: anywhere;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-}
-
-.account-card-quota {
-  display: grid;
-  gap: 10px;
-  min-width: 0;
-  padding-top: 2px;
-}
-
-.card-quota-bar {
-  display: grid;
-  gap: 7px;
-  min-width: 0;
-  padding-top: 9px;
-  border-top: 1px solid var(--account-card-inner-border);
-}
-
-.card-quota-bar:first-child {
-  padding-top: 0;
-  border-top: 0;
-}
-
-.card-quota-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  min-width: 0;
-  line-height: 1.2;
-}
-
-.card-quota-head span {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--cpa-text);
-  font-size: 12px;
-  font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.card-quota-reset {
-  overflow: hidden;
-  color: var(--cpa-text-muted);
-  font-size: 11px;
-  line-height: 1.35;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.card-quota-head strong {
-  flex-shrink: 0;
-  padding: 2px 7px;
-  color: var(--cpa-text-strong);
-  font-size: 11px;
-  font-weight: 800;
-  line-height: 1.35;
-  background: color-mix(in srgb, var(--account-card-accent) 8%, var(--account-card-inner-bg));
-  border: 1px solid color-mix(in srgb, var(--account-card-accent) 12%, transparent);
-  border-radius: 999px;
-  font-variant-numeric: tabular-nums;
-}
-
-.card-quota-usage-tags {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(68px, 1fr));
-  gap: 6px;
-  min-width: 0;
-}
-
-.card-quota-bar .card-quota-usage-tags {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.card-quota-usage-tag {
-  display: grid;
-  align-content: space-between;
-  gap: 4px;
-  min-width: 0;
-  min-height: 42px;
-  overflow: hidden;
-  padding: 7px 8px 6px;
-  background: color-mix(in srgb, var(--account-card-accent) 8%, var(--account-card-inner-bg));
-  border: 1px solid color-mix(in srgb, var(--account-card-accent) 16%, var(--account-card-inner-border));
-  border-radius: var(--cpa-radius-sm);
-}
-
-.card-quota-usage-tag:nth-child(2) {
-  background: color-mix(in srgb, var(--account-card-accent) 10%, var(--account-card-inner-bg));
-  border-color: color-mix(in srgb, var(--account-card-accent) 18%, var(--account-card-inner-border));
-}
-
-.card-quota-usage-tag:nth-child(3) {
-  background: color-mix(in srgb, var(--account-card-accent) 12%, var(--account-card-inner-bg));
-  border-color: color-mix(in srgb, var(--account-card-accent) 20%, var(--account-card-inner-border));
-}
-
-.card-quota-usage-tag span,
-.card-quota-usage-tag strong {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.card-quota-usage-tag span {
-  color: var(--cpa-text-muted);
-  font-size: 10px;
-  line-height: 1.1;
-}
-
-.card-quota-usage-tag strong {
-  color: color-mix(in srgb, var(--cpa-text-strong) 88%, var(--cpa-text-muted));
-  font-size: 13px;
-  font-weight: 800;
-  line-height: 1.1;
-  font-variant-numeric: tabular-nums;
-}
-
-.card-quota-usage-tag.is-stale {
-  --usage-accent: var(--cpa-warning);
-  grid-column: 1 / -1;
-  background: color-mix(in srgb, var(--cpa-warning) 9%, var(--cpa-surface-raised));
-  border-color: color-mix(in srgb, var(--cpa-warning) 20%, var(--cpa-border));
-}
-
-.card-quota-usage-tag.is-stale strong {
-  color: var(--cpa-warning);
-}
-
-.card-quota-track {
-  height: 8px;
-  overflow: hidden;
-  background: color-mix(in srgb, var(--cpa-text-muted) 8%, var(--cpa-surface-muted));
-  border: 1px solid color-mix(in srgb, var(--cpa-border) 68%, transparent);
-  border-radius: 999px;
-}
-
-.card-quota-fill {
-  height: 100%;
-  min-width: 0;
-  border-radius: inherit;
-  box-shadow: inset 0 -1px 0 color-mix(in srgb, #000 14%, transparent);
-}
-
-.card-quota-fill.is-healthy,
-.quota-ring.is-healthy {
-  --quota-color: var(--cpa-success);
-}
-
-.card-quota-fill.is-warning,
-.quota-ring.is-warning {
-  --quota-color: var(--cpa-warning);
-}
-
-.card-quota-fill.is-danger,
-.quota-ring.is-danger {
-  --quota-color: var(--cpa-danger);
-}
-
-.card-quota-fill {
-  background: var(--quota-color, var(--cpa-success));
-}
-
-.card-quota-rings {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 10px;
-}
-
-.card-quota-ring-item {
-  --quota-ring-item-bg: color-mix(
-    in srgb,
-    var(--account-card-accent) 7%,
-    var(--account-card-inner-bg)
-  );
-  --quota-ring-item-border: color-mix(
-    in srgb,
-    var(--account-card-accent) 16%,
-    var(--account-card-inner-border)
-  );
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 8px;
-  min-width: 0;
-  padding: 8px;
-  background: var(--quota-ring-item-bg);
-  border: 1px solid var(--quota-ring-item-border);
-  border-radius: var(--cpa-radius-sm);
-}
-
-.card-quota-ring-head {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.card-quota-ring-item .card-quota-usage-tags {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.quota-ring {
-  --quota-color: var(--cpa-success);
-  display: grid;
-  position: relative;
-  width: 48px;
-  height: 48px;
-  flex-shrink: 0;
-  place-items: center;
-  overflow: hidden;
-  background:
-    conic-gradient(
-      var(--quota-color) var(--quota-deg),
-      color-mix(in srgb, var(--cpa-text-muted) 18%, transparent) 0
-    );
-  border-radius: 50%;
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--cpa-border) 70%, transparent);
-}
-
-.quota-ring::before {
-  position: absolute;
-  inset: 5px;
-  content: "";
-  background: var(--quota-ring-item-bg, var(--account-card-inner-bg));
-  border-radius: inherit;
-}
-
-.quota-ring span {
-  position: relative;
-  color: var(--cpa-text-strong);
-  font-size: 11px;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-}
-
-.quota-ring-caption {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-}
-
-.quota-ring-caption strong,
-.quota-ring-caption span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.quota-ring-caption strong {
-  color: var(--cpa-text);
-  font-size: 12px;
-}
-
-.quota-ring-caption span,
-.card-quota-empty {
-  color: var(--cpa-text-muted);
-  font-size: 11px;
-}
-
-.card-quota-empty {
-  padding: 10px;
-  text-align: center;
-  background: var(--cpa-surface-muted);
-  border: 1px dashed var(--cpa-border);
-  border-radius: var(--cpa-radius-sm);
-}
 
 .detail-action-row {
   margin-top: 12px;
@@ -4587,7 +3605,6 @@ onBeforeUnmount(() => {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .list-main-controls,
   .list-control-row,
   .sort-control-row {
     justify-content: flex-start;
@@ -4636,10 +3653,6 @@ onBeforeUnmount(() => {
     width: 100%;
   }
 
-  .list-main-controls {
-    width: 100%;
-  }
-
   .filter-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -4648,21 +3661,5 @@ onBeforeUnmount(() => {
     grid-column: 1 / -1;
   }
 
-  .account-card-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .account-card-top {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .account-card-status-group {
-    justify-content: flex-start;
-  }
-
-  .account-card-meta-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 </style>
