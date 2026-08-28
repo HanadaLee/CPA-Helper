@@ -1931,7 +1931,7 @@ onBeforeUnmount(() => {
 .dashboard-columns {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   align-items: start;
-  --dashboard-card-height: 306px;
+  --dashboard-card-height: 336px;
 }
 
 .dashboard-column {
@@ -1985,7 +1985,7 @@ onBeforeUnmount(() => {
 
 .area-primary-ranking,
 .area-model-ranking {
-  height: calc(var(--dashboard-card-height) + 30px);
+  height: var(--dashboard-card-height);
 }
 
 .usage-trend-panel.chart-panel {
@@ -2049,7 +2049,7 @@ onBeforeUnmount(() => {
 }
 
 .ranking-panel {
-  min-height: calc(var(--dashboard-card-height) + 30px);
+  min-height: var(--dashboard-card-height);
   overflow: hidden;
 }
 
