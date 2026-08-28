@@ -850,12 +850,17 @@ func (a *App) keeperLogFiles() ([]keeperLogFile, error) {
 }
 
 func (a *App) handleCodexKeeper(w http.ResponseWriter, r *http.Request) error {
-	if _, err := a.adminUser(r.Context(), r); err != nil {
+	user, err := a.readyUser(r.Context(), r)
+	if err != nil {
 		return err
 	}
 	parts := splitPath(r.URL.Path, "/api/codex-keeper/")
 	if len(parts) == 0 {
 		return notFoundError("Not Found")
+	}
+	readOnlyStatusRequest := r.Method == http.MethodGet && len(parts) == 1 && (parts[0] == "status" || parts[0] == "accounts")
+	if !user.IsAdmin && (!user.CanViewAccountStatus || !readOnlyStatusRequest) {
+		return forbiddenError("需要管理员权限")
 	}
 	switch {
 	case len(parts) == 1 && parts[0] == "settings":
@@ -903,7 +908,14 @@ func (a *App) handleCodexKeeper(w http.ResponseWriter, r *http.Request) error {
 		if err != nil {
 			return err
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"items": keeperAccountResponses(accounts, windowUsages)})
+		cfg, err := a.loadConfig(r.Context())
+		if err != nil {
+			return err
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"items":          keeperAccountResponses(accounts, windowUsages),
+			"priority_rules": sortedPriorityRules(cfg.CodexKeeperPriorityRule),
+		})
 		return nil
 	case len(parts) == 1 && parts[0] == "run-once":
 		if err := requireMethod(r, http.MethodPost); err != nil {

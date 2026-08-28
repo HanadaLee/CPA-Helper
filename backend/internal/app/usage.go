@@ -97,6 +97,14 @@ func (a *App) handleUsage(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	if filters.Scope == "shared" {
+		if !user.CanViewUsageHistory {
+			return forbiddenError("未开启历史用量查看权限")
+		}
+		if parts[0] == "records" {
+			return forbiddenError("历史用量共享不包含请求明细")
+		}
+	}
 	switch parts[0] {
 	case "summary":
 		if err := requireMethod(r, http.MethodGet); err != nil {
@@ -148,7 +156,7 @@ func (a *App) handleUsage(w http.ResponseWriter, r *http.Request) error {
 func parseUsageFilters(r *http.Request) (UsageFilters, error) {
 	query := r.URL.Query()
 	filters := UsageFilters{Scope: query.Get("scope")}
-	if filters.Scope != "" && filters.Scope != "admin" && filters.Scope != "account" {
+	if filters.Scope != "" && filters.Scope != "admin" && filters.Scope != "account" && filters.Scope != "shared" {
 		return filters, validationError("scope 参数无效")
 	}
 	if value := strings.TrimSpace(query.Get("start")); value != "" {
@@ -224,7 +232,8 @@ func normalizedUsageFilters(filters UsageFilters) UsageFilters {
 }
 
 func accessScope(user *AuthUser, requested string) usageAccessScope {
-	accountScoped := requested == "account" || !user.IsAdmin
+	sharedScope := requested == "shared" && user.CanViewUsageHistory
+	accountScoped := requested == "account" || (!user.IsAdmin && !sharedScope)
 	return usageAccessScope{
 		UserID:   user.ID,
 		Username: user.Username,

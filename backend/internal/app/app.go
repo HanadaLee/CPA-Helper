@@ -496,6 +496,8 @@ type AppConfig struct {
 	LiteLLMProxy            LiteLLMProxyConfig `json:"litellm_proxy"`
 	ModelRequestURL         string             `json:"model_request_url"`
 	CPAMCURL                string             `json:"cpamc_url"`
+	AllowUserAccountStatus  bool               `json:"allow_user_account_status"`
+	AllowUserUsageHistory   bool               `json:"allow_user_usage_history"`
 	SessionSecret           string             `json:"session_secret"`
 }
 
@@ -553,14 +555,15 @@ func (a *App) loadConfig(ctx context.Context) (AppConfig, error) {
 		SELECT collector_enabled, cliaproxy_url, management_key, queue_name, batch_size,
 		       poll_interval_seconds, retry_interval_seconds, codex_keeper_settings,
 		       codex_keeper_priority_rules, litellm_proxy_enabled, litellm_proxy_url,
-		       model_request_url, cpamc_url, session_secret
+		       model_request_url, cpamc_url, allow_user_account_status,
+		       allow_user_usage_history, session_secret
 		FROM app_settings WHERE id = 1
 	`)
-	var collectorEnabled, litellmProxyEnabled bool
+	var collectorEnabled, litellmProxyEnabled, allowUserAccountStatus, allowUserUsageHistory bool
 	var cliaproxyURL, managementKey, queueName, keeperJSON, rulesJSON, litellmProxyURL, modelRequestURL, cpamcURL, sessionSecret string
 	var batchSize int
 	var pollInterval, retryInterval float64
-	if err := row.Scan(&collectorEnabled, &cliaproxyURL, &managementKey, &queueName, &batchSize, &pollInterval, &retryInterval, &keeperJSON, &rulesJSON, &litellmProxyEnabled, &litellmProxyURL, &modelRequestURL, &cpamcURL, &sessionSecret); err != nil {
+	if err := row.Scan(&collectorEnabled, &cliaproxyURL, &managementKey, &queueName, &batchSize, &pollInterval, &retryInterval, &keeperJSON, &rulesJSON, &litellmProxyEnabled, &litellmProxyURL, &modelRequestURL, &cpamcURL, &allowUserAccountStatus, &allowUserUsageHistory, &sessionSecret); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return AppConfig{}, fmt.Errorf("%w: app_settings id=1 is missing; run `cpa-helper migrate`", ErrAppSettingsMissing)
 		}
@@ -598,6 +601,8 @@ func (a *App) loadConfig(ctx context.Context) (AppConfig, error) {
 	}
 	cfg.ModelRequestURL = nonBlank(strings.TrimRight(strings.TrimSpace(modelRequestURL), "/"), cfg.Collector.CLIProxyURL)
 	cfg.CPAMCURL = nonBlank(strings.TrimSpace(cpamcURL), defaultCPAMCURL)
+	cfg.AllowUserAccountStatus = allowUserAccountStatus
+	cfg.AllowUserUsageHistory = allowUserUsageHistory
 	return cfg, nil
 }
 
@@ -652,9 +657,10 @@ func (a *App) saveConfig(ctx context.Context, cfg AppConfig) error {
 		    batch_size = ?, poll_interval_seconds = ?, retry_interval_seconds = ?,
 		    codex_keeper_settings = ?, codex_keeper_priority_rules = ?,
 		    litellm_proxy_enabled = ?, litellm_proxy_url = ?,
-		    model_request_url = ?, cpamc_url = ?, session_secret = ?, updated_at = ?
+		    model_request_url = ?, cpamc_url = ?, allow_user_account_status = ?,
+		    allow_user_usage_history = ?, session_secret = ?, updated_at = ?
 		WHERE id = 1
-	`, cfg.Collector.Enabled, strings.TrimRight(strings.TrimSpace(cfg.Collector.CLIProxyURL), "/"), strings.TrimSpace(cfg.Collector.ManagementKey), strings.TrimSpace(cfg.Collector.QueueName), cfg.Collector.BatchSize, cfg.Collector.PollIntervalSeconds, cfg.Collector.RetryIntervalSeconds, string(keeperBytes), string(rulesBytes), cfg.LiteLLMProxy.Enabled, strings.TrimSpace(cfg.LiteLLMProxy.ProxyURL), strings.TrimRight(strings.TrimSpace(cfg.ModelRequestURL), "/"), strings.TrimSpace(cfg.CPAMCURL), cfg.SessionSecret, dbTime(time.Now()))
+	`, cfg.Collector.Enabled, strings.TrimRight(strings.TrimSpace(cfg.Collector.CLIProxyURL), "/"), strings.TrimSpace(cfg.Collector.ManagementKey), strings.TrimSpace(cfg.Collector.QueueName), cfg.Collector.BatchSize, cfg.Collector.PollIntervalSeconds, cfg.Collector.RetryIntervalSeconds, string(keeperBytes), string(rulesBytes), cfg.LiteLLMProxy.Enabled, strings.TrimSpace(cfg.LiteLLMProxy.ProxyURL), strings.TrimRight(strings.TrimSpace(cfg.ModelRequestURL), "/"), strings.TrimSpace(cfg.CPAMCURL), cfg.AllowUserAccountStatus, cfg.AllowUserUsageHistory, cfg.SessionSecret, dbTime(time.Now()))
 	return err
 }
 
@@ -940,10 +946,12 @@ func readSessionToken(token, secret string) (*security.Identity, bool) {
 }
 
 type AuthUser struct {
-	ID                 int    `json:"id"`
-	Username           string `json:"username"`
-	IsAdmin            bool   `json:"is_admin"`
-	MustChangePassword bool   `json:"must_change_password"`
+	ID                   int    `json:"id"`
+	Username             string `json:"username"`
+	IsAdmin              bool   `json:"is_admin"`
+	MustChangePassword   bool   `json:"must_change_password"`
+	CanViewAccountStatus bool   `json:"can_view_account_status"`
+	CanViewUsageHistory  bool   `json:"can_view_usage_history"`
 }
 
 func (a *App) currentUser(ctx context.Context, r *http.Request) (*AuthUser, error) {
@@ -974,6 +982,8 @@ func (a *App) currentUser(ctx context.Context, r *http.Request) (*AuthUser, erro
 		}
 		return nil, err
 	}
+	user.CanViewAccountStatus = user.IsAdmin || cfg.AllowUserAccountStatus
+	user.CanViewUsageHistory = user.IsAdmin || cfg.AllowUserUsageHistory
 	return &user, nil
 }
 

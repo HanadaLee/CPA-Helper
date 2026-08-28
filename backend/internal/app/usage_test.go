@@ -72,6 +72,16 @@ type usageOverviewOptionsResponse struct {
 	Options usageOptionsTestResponse `json:"options"`
 }
 
+type usageHistoryAccessUserResponse struct {
+	CanViewUsageHistory bool `json:"can_view_usage_history"`
+}
+
+type usageHistoryOverviewResponse struct {
+	Summary struct {
+		TotalRecords int `json:"total_records"`
+	} `json:"summary"`
+}
+
 type usageDistributionItem struct {
 	Key         string `json:"key"`
 	Label       string `json:"label"`
@@ -342,6 +352,78 @@ func TestUsageOptionsRespectDateRange(t *testing.T) {
 		t.Fatalf("overview source options = %#v, want only code10001", overview.Options.Sources)
 	}
 	assertStringSlice(t, overview.Options.Endpoints, []string{"/v1/chat/completions"})
+}
+
+func TestSharedUsageHistoryRequiresSettingAndExcludesRecords(t *testing.T) {
+	dataDir := t.TempDir()
+	t.Setenv("CPA_HELPER_DATA_DIR", dataDir)
+
+	app, err := backendApp.New()
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	defer app.Close()
+
+	handler := app.Routes()
+	adminCookies := requestJSON(t, handler, http.MethodPost, "/api/auth/setup", map[string]any{
+		"username": "admin",
+		"password": "test-password",
+		"nickname": "Admin",
+	}, nil, nil)
+	requestJSON(t, handler, http.MethodPost, "/api/users", map[string]any{
+		"username": "member",
+		"password": "member-password",
+		"nickname": "Member",
+		"is_admin": false,
+	}, adminCookies, nil)
+	member := usageHistoryAccessUserResponse{}
+	memberCookies := requestJSON(t, handler, http.MethodPost, "/api/auth/login", map[string]any{
+		"username": "member",
+		"password": "member-password",
+	}, nil, &member)
+	if member.CanViewUsageHistory {
+		t.Fatal("can_view_usage_history = true, want false before access is enabled")
+	}
+
+	seedUsageRecordWithValues(t, dataDir, usageRecordSeed{
+		Timestamp:   "2026-05-16T10:00:00+08:00",
+		Username:    "admin",
+		Provider:    "openai",
+		Model:       "gpt-5.5",
+		DedupeKey:   "shared-history-admin",
+		RawJSON:     `{"request_id":"shared-history-admin"}`,
+		InputTokens: 10,
+		TotalTokens: 10,
+	})
+	seedUsageRecordWithValues(t, dataDir, usageRecordSeed{
+		Timestamp:   "2026-05-16T11:00:00+08:00",
+		Username:    "member",
+		Provider:    "openai",
+		Model:       "gpt-5.5",
+		DedupeKey:   "shared-history-member",
+		RawJSON:     `{"request_id":"shared-history-member"}`,
+		InputTokens: 20,
+		TotalTokens: 20,
+	})
+
+	const overviewPath = "/api/usage/overview?scope=shared&start=2026-05-16T00:00:00&end=2026-05-17T00:00:00"
+	requestJSONExpectStatus(t, handler, http.MethodGet, overviewPath, nil, memberCookies, http.StatusForbidden)
+
+	requestJSON(t, handler, http.MethodPut, "/api/settings", map[string]any{
+		"allow_user_usage_history": true,
+	}, adminCookies, nil)
+	member = usageHistoryAccessUserResponse{}
+	requestJSON(t, handler, http.MethodGet, "/api/auth/me", nil, memberCookies, &member)
+	if !member.CanViewUsageHistory {
+		t.Fatal("can_view_usage_history = false, want true after access is enabled")
+	}
+
+	overview := usageHistoryOverviewResponse{}
+	requestJSON(t, handler, http.MethodGet, overviewPath, nil, memberCookies, &overview)
+	if overview.Summary.TotalRecords != 2 {
+		t.Fatalf("shared total_records = %d, want 2 across all users", overview.Summary.TotalRecords)
+	}
+	requestJSONExpectStatus(t, handler, http.MethodGet, "/api/usage/records?scope=shared", nil, memberCookies, http.StatusForbidden)
 }
 
 func TestUsageRecordsFilterBySourceForAdmin(t *testing.T) {

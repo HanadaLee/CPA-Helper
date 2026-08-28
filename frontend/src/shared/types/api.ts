@@ -5,6 +5,8 @@ export interface AuthUser {
   username: string
   is_admin: boolean
   must_change_password: boolean
+  can_view_account_status: boolean
+  can_view_usage_history: boolean
 }
 
 export interface LoginPayload {
@@ -38,6 +40,8 @@ export interface SettingsResponse {
   batch_size: number
   poll_interval_seconds: number
   retry_interval_seconds: number
+  allow_user_account_status: boolean
+  allow_user_usage_history: boolean
 }
 
 export interface SettingsUpdatePayload {
@@ -50,6 +54,8 @@ export interface SettingsUpdatePayload {
   batch_size?: number
   poll_interval_seconds?: number
   retry_interval_seconds?: number
+  allow_user_account_status?: boolean
+  allow_user_usage_history?: boolean
 }
 
 export interface ModelRequestGuide {
@@ -253,6 +259,7 @@ export interface CodexKeeperAccount {
 
 export interface CodexKeeperAccountsResponse {
   items: CodexKeeperAccount[]
+  priority_rules: CodexKeeperPriorityRule[]
 }
 
 export interface CodexKeeperBulkDeletePayload {
@@ -275,7 +282,7 @@ export interface CodexKeeperBulkDeleteResponse {
 }
 
 export interface UsageFilters {
-  scope?: 'admin' | 'account' | undefined
+  scope?: 'admin' | 'account' | 'shared' | undefined
   start?: string | undefined
   end?: string | undefined
   user_id?: number | undefined

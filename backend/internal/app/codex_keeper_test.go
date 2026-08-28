@@ -44,6 +44,18 @@ type keeperAccountsResponse struct {
 		LastCheckedAt  *string `json:"last_checked_at"`
 		LastHealthyAt  *string `json:"last_healthy_at"`
 	} `json:"items"`
+	PriorityRules []struct {
+		AccountType string `json:"account_type"`
+		Priority    int    `json:"priority"`
+	} `json:"priority_rules"`
+}
+
+type accountStatusAccessSettingsResponse struct {
+	AllowUserAccountStatus bool `json:"allow_user_account_status"`
+}
+
+type accountStatusAccessUserResponse struct {
+	CanViewAccountStatus bool `json:"can_view_account_status"`
 }
 
 type collectorStatusTimeResponse struct {
@@ -181,6 +193,73 @@ func TestKeeperSettingsExposeConditionalRefreshConfig(t *testing.T) {
 	requestJSONExpectStatus(t, handler, http.MethodPut, "/api/codex-keeper/settings", map[string]any{
 		"account_refresh_cache_minutes": 0,
 	}, cookies, http.StatusUnprocessableEntity)
+}
+
+func TestKeeperAccountStatusCanBeSharedReadOnly(t *testing.T) {
+	t.Setenv("CPA_HELPER_DATA_DIR", t.TempDir())
+
+	app, err := backendApp.New()
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	defer app.Close()
+
+	handler := app.Routes()
+	adminCookies := requestJSON(t, handler, http.MethodPost, "/api/auth/setup", map[string]any{
+		"username": "admin",
+		"password": "test-password",
+		"nickname": "Admin",
+	}, nil, nil)
+	requestJSON(t, handler, http.MethodPost, "/api/users", map[string]any{
+		"username": "member",
+		"password": "member-password",
+		"nickname": "Member",
+		"is_admin": false,
+	}, adminCookies, nil)
+
+	member := accountStatusAccessUserResponse{}
+	memberCookies := requestJSON(t, handler, http.MethodPost, "/api/auth/login", map[string]any{
+		"username": "member",
+		"password": "member-password",
+	}, nil, &member)
+	if member.CanViewAccountStatus {
+		t.Fatal("can_view_account_status = true, want false before access is enabled")
+	}
+
+	requestJSONExpectStatus(t, handler, http.MethodGet, "/api/codex-keeper/status", nil, memberCookies, http.StatusForbidden)
+	requestJSONExpectStatus(t, handler, http.MethodGet, "/api/codex-keeper/accounts", nil, memberCookies, http.StatusForbidden)
+
+	settings := accountStatusAccessSettingsResponse{}
+	requestJSON(t, handler, http.MethodPut, "/api/settings", map[string]any{
+		"allow_user_account_status": true,
+	}, adminCookies, &settings)
+	if !settings.AllowUserAccountStatus {
+		t.Fatal("allow_user_account_status = false, want true after update")
+	}
+
+	member = accountStatusAccessUserResponse{}
+	requestJSON(t, handler, http.MethodGet, "/api/auth/me", nil, memberCookies, &member)
+	if !member.CanViewAccountStatus {
+		t.Fatal("can_view_account_status = false, want true after access is enabled")
+	}
+
+	status := keeperStatusResponse{}
+	requestJSON(t, handler, http.MethodGet, "/api/codex-keeper/status", nil, memberCookies, &status)
+	accounts := keeperAccountsResponse{}
+	requestJSON(t, handler, http.MethodGet, "/api/codex-keeper/accounts", nil, memberCookies, &accounts)
+	if len(accounts.PriorityRules) == 0 {
+		t.Fatal("priority_rules is empty, want read-only priority rules in account response")
+	}
+
+	requestJSONExpectStatus(t, handler, http.MethodGet, "/api/codex-keeper/settings", nil, memberCookies, http.StatusForbidden)
+	requestJSONExpectStatus(t, handler, http.MethodPost, "/api/codex-keeper/accounts/refresh", map[string]any{
+		"auth_names": []string{"member.json"},
+	}, memberCookies, http.StatusForbidden)
+	requestJSONExpectStatus(t, handler, http.MethodPost, "/api/codex-keeper/accounts/member.json/disable", nil, memberCookies, http.StatusForbidden)
+	requestJSONExpectStatus(t, handler, http.MethodPatch, "/api/codex-keeper/accounts/member.json/priority", map[string]any{
+		"priority": 10,
+	}, memberCookies, http.StatusForbidden)
+	requestJSONExpectStatus(t, handler, http.MethodDelete, "/api/codex-keeper/accounts/member.json", nil, memberCookies, http.StatusForbidden)
 }
 
 func TestKeeperLogsUseStandardFileFormatAndCanBeCleared(t *testing.T) {

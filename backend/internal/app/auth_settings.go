@@ -112,6 +112,8 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	user.CanViewAccountStatus = user.IsAdmin || cfg.AllowUserAccountStatus
+	user.CanViewUsageHistory = user.IsAdmin || cfg.AllowUserUsageHistory
 	if err := setSessionCookie(w, user.ID, cfg.SessionSecret); err != nil {
 		return err
 	}
@@ -168,7 +170,13 @@ func (a *App) handleSetupFirstAdmin(w http.ResponseWriter, r *http.Request) erro
 	if err := setSessionCookie(w, int(id), cfg.SessionSecret); err != nil {
 		return err
 	}
-	writeJSON(w, http.StatusOK, AuthUser{ID: int(id), Username: username, IsAdmin: true})
+	writeJSON(w, http.StatusOK, AuthUser{
+		ID:                   int(id),
+		Username:             username,
+		IsAdmin:              true,
+		CanViewAccountStatus: true,
+		CanViewUsageHistory:  true,
+	})
 	return nil
 }
 
@@ -257,15 +265,17 @@ func (a *App) userCredentialsByUsername(ctx context.Context, username string) (A
 }
 
 type settingsUpdateRequest struct {
-	CLIProxyURL          *string  `json:"cliaproxy_url"`
-	ModelRequestURL      *string  `json:"model_request_url"`
-	CPAMCURL             *string  `json:"cpamc_url"`
-	ManagementKey        *string  `json:"management_key"`
-	CollectorEnabled     *bool    `json:"collector_enabled"`
-	QueueName            *string  `json:"queue_name"`
-	BatchSize            *int     `json:"batch_size"`
-	PollIntervalSeconds  *float64 `json:"poll_interval_seconds"`
-	RetryIntervalSeconds *float64 `json:"retry_interval_seconds"`
+	CLIProxyURL            *string  `json:"cliaproxy_url"`
+	ModelRequestURL        *string  `json:"model_request_url"`
+	CPAMCURL               *string  `json:"cpamc_url"`
+	ManagementKey          *string  `json:"management_key"`
+	CollectorEnabled       *bool    `json:"collector_enabled"`
+	QueueName              *string  `json:"queue_name"`
+	BatchSize              *int     `json:"batch_size"`
+	PollIntervalSeconds    *float64 `json:"poll_interval_seconds"`
+	RetryIntervalSeconds   *float64 `json:"retry_interval_seconds"`
+	AllowUserAccountStatus *bool    `json:"allow_user_account_status"`
+	AllowUserUsageHistory  *bool    `json:"allow_user_usage_history"`
 }
 
 type modelRequestTestPayload struct {
@@ -357,6 +367,12 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) error {
 			}
 			cfg.Collector.RetryIntervalSeconds = *payload.RetryIntervalSeconds
 		}
+		if payload.AllowUserAccountStatus != nil {
+			cfg.AllowUserAccountStatus = *payload.AllowUserAccountStatus
+		}
+		if payload.AllowUserUsageHistory != nil {
+			cfg.AllowUserUsageHistory = *payload.AllowUserUsageHistory
+		}
 		if err := a.saveConfig(r.Context(), cfg); err != nil {
 			return err
 		}
@@ -370,16 +386,18 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) error {
 func settingsResponse(cfg AppConfig) map[string]any {
 	collector := cfg.Collector
 	return map[string]any{
-		"cliaproxy_url":          collector.CLIProxyURL,
-		"model_request_url":      cfg.ModelRequestURL,
-		"cpamc_url":              cfg.CPAMCURL,
-		"management_key":         collector.ManagementKey,
-		"management_key_set":     strings.TrimSpace(collector.ManagementKey) != "",
-		"collector_enabled":      collector.Enabled,
-		"queue_name":             collector.QueueName,
-		"batch_size":             collector.BatchSize,
-		"poll_interval_seconds":  collector.PollIntervalSeconds,
-		"retry_interval_seconds": collector.RetryIntervalSeconds,
+		"cliaproxy_url":             collector.CLIProxyURL,
+		"model_request_url":         cfg.ModelRequestURL,
+		"cpamc_url":                 cfg.CPAMCURL,
+		"management_key":            collector.ManagementKey,
+		"management_key_set":        strings.TrimSpace(collector.ManagementKey) != "",
+		"collector_enabled":         collector.Enabled,
+		"queue_name":                collector.QueueName,
+		"batch_size":                collector.BatchSize,
+		"poll_interval_seconds":     collector.PollIntervalSeconds,
+		"retry_interval_seconds":    collector.RetryIntervalSeconds,
+		"allow_user_account_status": cfg.AllowUserAccountStatus,
+		"allow_user_usage_history":  cfg.AllowUserUsageHistory,
 	}
 }
 

@@ -39,7 +39,7 @@ import { useI18n } from '@/shared/i18n'
 
 type FailedFilter = 'all' | 'success' | 'failed'
 type QuickRangeKey = 'today' | 'last24h' | 'last3d' | 'last7d' | 'last30d'
-type UsageScope = 'admin' | 'account'
+type UsageScope = 'admin' | 'account' | 'shared'
 
 interface RefreshOptions {
   silent?: boolean
@@ -314,6 +314,7 @@ const selectOptions = computed(() => ({
 }))
 
 const isAccountScope = computed(() => props.scope === 'account')
+const canOpenRecords = computed(() => props.scope !== 'shared')
 const pageTitle = computed(() =>
   isAccountScope.value ? t('我的用量', 'My usage') : t('历史用量', 'Usage history'),
 )
@@ -620,6 +621,9 @@ async function refresh({ silent = false }: RefreshOptions = {}) {
 }
 
 function goRecords(extra: UsageFilters = {}) {
+  if (!canOpenRecords.value) {
+    return
+  }
   const filters = { ...buildFilters(), ...extra }
   void router.push({
     name: isAccountScope.value ? 'account-records' : 'admin-records',
@@ -1225,7 +1229,7 @@ onBeforeUnmount(() => {
         <span class="refresh-status" :class="{ 'is-error': autoRefreshError }">
           {{ refreshStatusText }}
         </span>
-        <NButton secondary @click="goRecords()">{{ t('明细', 'Records') }}</NButton>
+        <NButton v-if="canOpenRecords" secondary @click="goRecords()">{{ t('明细', 'Records') }}</NButton>
       </div>
     </div>
 
@@ -1468,7 +1472,7 @@ onBeforeUnmount(() => {
               <div class="panel-inner compact-panel-inner">
                 <div class="panel-heading-row">
                   <h2 class="section-title">{{ t('异常概览', 'Anomaly overview') }}</h2>
-                  <NButton size="small" quaternary @click="goRecords({ failed: true })">{{ t('更多', 'More') }}</NButton>
+                  <NButton v-if="canOpenRecords" size="small" quaternary @click="goRecords({ failed: true })">{{ t('更多', 'More') }}</NButton>
                 </div>
                 <div class="anomaly-stat-grid">
                   <div
@@ -1491,18 +1495,20 @@ onBeforeUnmount(() => {
                   <div v-if="recentFailedRows.length === 0" class="empty-inline">
                     {{ t('当前范围暂无失败请求', 'No failed requests in the current range') }}
                   </div>
-                  <button
+                  <component
+                    :is="canOpenRecords ? 'button' : 'div'"
                     v-for="item in recentFailedRows"
                     v-else
                     :key="item.bucket"
                     class="recent-failed-row"
-                    type="button"
-                    @click="goRecords({ failed: true })"
+                    :class="{ 'is-static': !canOpenRecords }"
+                    :type="canOpenRecords ? 'button' : undefined"
+                    @click="canOpenRecords ? goRecords({ failed: true }) : undefined"
                   >
                     <span>{{ formatTrendBucket(item.bucket) }}</span>
                     <strong>{{ t(`${formatInteger(item.records)} 次`, `${formatInteger(item.records)} requests`) }}</strong>
                     <em>{{ formatCompact(item.total_tokens) }} Token</em>
-                  </button>
+                  </component>
                 </div>
               </div>
             </section>
@@ -1566,7 +1572,7 @@ onBeforeUnmount(() => {
                       <strong>{{ formatCompact(row.total_tokens) }}</strong>
                       <span>{{ t(`${formatInteger(row.records)} 次`, `${formatInteger(row.records)} requests`) }}</span>
                     </div>
-                    <NButton size="tiny" quaternary @click="goRecords(rankingFilters(row))">
+                    <NButton v-if="canOpenRecords" size="tiny" quaternary @click="goRecords(rankingFilters(row))">
                       {{ t('明细', 'Records') }}
                     </NButton>
                   </div>
@@ -1601,7 +1607,7 @@ onBeforeUnmount(() => {
                       <strong>{{ formatCompact(row.total_tokens) }}</strong>
                       <span>{{ t(`${formatInteger(row.records)} 次`, `${formatInteger(row.records)} requests`) }}</span>
                     </div>
-                    <NButton size="tiny" quaternary @click="goRecords(modelFilters(row))">
+                    <NButton v-if="canOpenRecords" size="tiny" quaternary @click="goRecords(modelFilters(row))">
                       {{ t('明细', 'Records') }}
                     </NButton>
                   </div>
@@ -2128,6 +2134,15 @@ onBeforeUnmount(() => {
 .recent-failed-row:hover {
   border-color: color-mix(in srgb, var(--cpa-danger) 22%, var(--cpa-border));
   background: color-mix(in srgb, var(--cpa-danger-weak) 42%, var(--cpa-surface));
+}
+
+.recent-failed-row.is-static {
+  cursor: default;
+}
+
+.recent-failed-row.is-static:hover {
+  border-color: var(--cpa-border);
+  background: var(--cpa-surface-raised);
 }
 
 .recent-failed-row span,

@@ -40,6 +40,8 @@ const settingsForm = reactive({
   batch_size: 100,
   poll_interval_seconds: 2,
   retry_interval_seconds: 10,
+  allow_user_account_status: false,
+  allow_user_usage_history: false,
 })
 
 const remoteStatusType = computed(() => {
@@ -80,6 +82,8 @@ async function refresh() {
     settingsForm.batch_size = settings.batch_size
     settingsForm.poll_interval_seconds = settings.poll_interval_seconds
     settingsForm.retry_interval_seconds = settings.retry_interval_seconds
+    settingsForm.allow_user_account_status = settings.allow_user_account_status
+    settingsForm.allow_user_usage_history = settings.allow_user_usage_history
     collectorStatus.value = status
   } catch (error) {
     message.error(errorText(error, '加载设置失败', 'Failed to load settings'))
@@ -100,6 +104,8 @@ async function saveSettings() {
       batch_size: settingsForm.batch_size,
       poll_interval_seconds: settingsForm.poll_interval_seconds,
       retry_interval_seconds: settingsForm.retry_interval_seconds,
+      allow_user_account_status: settingsForm.allow_user_account_status,
+      allow_user_usage_history: settingsForm.allow_user_usage_history,
     }
     const saved = await updateSettings(payload)
     settingsForm.management_key = saved.management_key
@@ -200,6 +206,12 @@ onMounted(refresh)
               </NFormItem>
               <NFormItem :label="t('开启本地采集', 'Enable local collection')">
                 <NSwitch v-model:value="settingsForm.collector_enabled" />
+              </NFormItem>
+              <NFormItem :label="t('允许普通用户查看账号状态', 'Allow standard users to view account status')">
+                <NSwitch v-model:value="settingsForm.allow_user_account_status" />
+              </NFormItem>
+              <NFormItem :label="t('允许用户查看历史用量', 'Allow users to view usage history')">
+                <NSwitch v-model:value="settingsForm.allow_user_usage_history" />
               </NFormItem>
               <NFormItem :label="t('批量读取数', 'Batch size')">
                 <NInputNumber v-model:value="settingsForm.batch_size" :min="1" :max="1000" />

@@ -135,11 +135,24 @@ const accountInspectionMenuItems = computed<MenuOption[]>(() => [
   { label: t('账号状态', 'Account Status'), key: '/admin/account-status', icon: renderIcon(ListChecks) },
 ])
 
+const showAccountStatusForUser = computed(
+  () => currentUser.value?.is_admin === false && currentUser.value.can_view_account_status,
+)
+const showUsageHistoryForUser = computed(
+  () => currentUser.value?.is_admin === false && currentUser.value.can_view_usage_history,
+)
+
 const accountMenuItems = computed<MenuOption[]>(() => [
+  ...(showUsageHistoryForUser.value
+    ? [{ label: t('历史用量', 'Usage History'), key: '/account/history', icon: renderIcon(BarChart3) }]
+    : []),
   { label: t('我的用量', 'My Usage'), key: '/account/usage', icon: renderIcon(BarChart3) },
   { label: t('我的明细', 'My Records'), key: '/account/records', icon: renderIcon(List) },
   { label: t('API 密钥', 'API Keys'), key: '/account/keys', icon: renderIcon(KeyRound) },
   { label: t('可用模型', 'Available Models'), key: '/account/models', icon: renderIcon(Cpu) },
+  ...(showAccountStatusForUser.value
+    ? [{ label: t('账号状态', 'Account Status'), key: '/account/status', icon: renderIcon(ListChecks) }]
+    : []),
   { label: t('账户设置', 'Account Settings'), key: '/account/settings', icon: renderIcon(UserRound) },
 ])
 

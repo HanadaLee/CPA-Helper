@@ -66,12 +66,32 @@ func TestRunMigrationsCreatesGooseVersionAndFinalSchema(t *testing.T) {
 	if !testColumnExists(t, app.db, "app_settings", "cpamc_url") {
 		t.Fatal("app_settings.cpamc_url was not created")
 	}
+	if !testColumnExists(t, app.db, "app_settings", "allow_user_account_status") {
+		t.Fatal("app_settings.allow_user_account_status was not created")
+	}
+	if !testColumnExists(t, app.db, "app_settings", "allow_user_usage_history") {
+		t.Fatal("app_settings.allow_user_usage_history was not created")
+	}
 	var cpamcURL string
 	if err := app.db.QueryRow(`SELECT cpamc_url FROM app_settings WHERE id = 1`).Scan(&cpamcURL); err != nil {
 		t.Fatalf("query app_settings.cpamc_url: %v", err)
 	}
 	if cpamcURL != "/management.html" {
 		t.Fatalf("app_settings.cpamc_url = %q, want /management.html", cpamcURL)
+	}
+	var allowUserAccountStatus, allowUserUsageHistory bool
+	if err := app.db.QueryRow(`
+		SELECT allow_user_account_status, allow_user_usage_history
+		FROM app_settings WHERE id = 1
+	`).Scan(&allowUserAccountStatus, &allowUserUsageHistory); err != nil {
+		t.Fatalf("query app_settings user view permissions: %v", err)
+	}
+	if allowUserAccountStatus || allowUserUsageHistory {
+		t.Fatalf(
+			"default user view permissions = account status %v, usage history %v; want both false",
+			allowUserAccountStatus,
+			allowUserUsageHistory,
+		)
 	}
 	if !testColumnExists(t, app.db, "users", "quota_lifetime_usd") {
 		t.Fatal("users.quota_lifetime_usd was not created")
@@ -268,6 +288,12 @@ func TestRunMigrationsRepairsOldPythonSchemaWithoutOldCode(t *testing.T) {
 	}
 	if !testColumnExists(t, app.db, "codex_keeper_auth_states", "auth_index") {
 		t.Fatal("old schema migration did not create codex_keeper_auth_states.auth_index")
+	}
+	if !testColumnExists(t, app.db, "app_settings", "allow_user_account_status") {
+		t.Fatal("old schema migration did not create app_settings.allow_user_account_status")
+	}
+	if !testColumnExists(t, app.db, "app_settings", "allow_user_usage_history") {
+		t.Fatal("old schema migration did not create app_settings.allow_user_usage_history")
 	}
 
 	var username, storedAPIKey, usageUsername string

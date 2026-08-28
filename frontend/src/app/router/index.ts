@@ -92,6 +92,13 @@ export const router = createRouter({
           props: { scope: 'account' },
         },
         {
+          path: 'account/history',
+          name: 'account-usage-history',
+          component: () => import('@/features/usage/views/UsageHistoryView.vue'),
+          props: { scope: 'shared' },
+          meta: { requiresUsageHistory: true },
+        },
+        {
           path: 'account/records',
           name: 'account-records',
           component: () => import('@/features/usage/views/UsageRecordsView.vue'),
@@ -106,6 +113,12 @@ export const router = createRouter({
           path: 'account/models',
           name: 'account-models',
           component: () => import('@/features/models/views/AvailableModelsView.vue'),
+        },
+        {
+          path: 'account/status',
+          name: 'account-status',
+          component: () => import('@/features/codex-keeper/views/CodexKeeperStatusView.vue'),
+          meta: { requiresAccountStatus: true },
         },
         {
           path: 'account/settings',
@@ -171,6 +184,12 @@ router.beforeEach(async (to) => {
       return { path: target, query: to.query }
     }
     if (to.meta.requiresAdmin && !user.is_admin) {
+      return { path: '/account/usage' }
+    }
+    if (to.meta.requiresAccountStatus && !user.can_view_account_status) {
+      return { path: '/account/usage' }
+    }
+    if (to.meta.requiresUsageHistory && !user.can_view_usage_history) {
       return { path: '/account/usage' }
     }
     return true

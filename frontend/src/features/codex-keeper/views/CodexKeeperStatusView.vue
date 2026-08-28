@@ -42,11 +42,11 @@ import {
   disableCodexKeeperAccount,
   enableCodexKeeperAccount,
   getCodexKeeperStatus,
-  getCodexKeeperSettings,
   listCodexKeeperAccounts,
   refreshCodexKeeperAccounts,
   updateCodexKeeperPriority,
 } from '@/features/codex-keeper/api/codexKeeperApi'
+import { useCurrentUser } from '@/features/auth/state/currentUser'
 import type {
   CodexKeeperAccount,
   CodexKeeperPriorityRule,
@@ -97,12 +97,22 @@ const ACCOUNT_TABLE_VIRTUAL_THRESHOLD = 200
 const CODEX_FIVE_HOUR_WINDOW_SECONDS = 5 * 60 * 60
 const CODEX_WEEK_WINDOW_SECONDS = 7 * 24 * 60 * 60
 const CODEX_MONTH_WINDOW_SECONDS = 30 * 24 * 60 * 60
-const disabledTableScrollX = 1302
-const normalTableScrollX = 1926
+const disabledManageTableScrollX = 1302
+const disabledReadOnlyTableScrollX = 1106
+const normalManageTableScrollX = 1926
+const normalReadOnlyTableScrollX = 1766
 const KEEPER_STATUS_POLL_INTERVAL_MS = 3000
 const REFRESH_STATUS_POLL_INTERVAL_MS = 1500
 const message = useMessage()
 const { currentLanguage, errorText, keeperStatusText, serverText, t } = useI18n()
+const { currentUser } = useCurrentUser()
+const canManageAccounts = computed(() => currentUser.value?.is_admin === true)
+const disabledTableScrollX = computed(() =>
+  canManageAccounts.value ? disabledManageTableScrollX : disabledReadOnlyTableScrollX,
+)
+const normalTableScrollX = computed(() =>
+  canManageAccounts.value ? normalManageTableScrollX : normalReadOnlyTableScrollX,
+)
 const isLoading = ref(false)
 const isBulkDeleting = ref(false)
 const isBulkRefreshing = ref(false)
@@ -1292,13 +1302,12 @@ function renderLatestActionCell(account: CodexKeeperAccount) {
 async function loadAccounts() {
   isLoading.value = true
   try {
-    const [accountsResponse, settings, nextStatus] = await Promise.all([
+    const [accountsResponse, nextStatus] = await Promise.all([
       listCodexKeeperAccounts(),
-      getCodexKeeperSettings(),
       getCodexKeeperStatus(),
     ])
     accounts.value = accountsResponse.items
-    priorityRules.value = settings.priority_rules
+    priorityRules.value = accountsResponse.priority_rules
     keeperStatus.value = nextStatus
   } catch (error) {
     message.error(errorText(error, '加载账号状态失败', 'Failed to load account status'))
@@ -1888,19 +1897,36 @@ const normalActionColumn = computed<DataTableColumns<CodexKeeperAccount>[number]
   },
 }))
 
-const disabledColumns = computed<DataTableColumns<CodexKeeperAccount>>(() => [
-  {
-    type: 'selection',
-    width: 44,
-    disabled: (row: CodexKeeperAccount) => isRowActing(row) || isBulkDeleting.value,
-  },
-  ...disabledBaseColumns.value,
-  disabledActionColumn.value,
-])
+const readOnlyActionColumn = computed<DataTableColumns<CodexKeeperAccount>[number]>(() => ({
+  title: '',
+  key: 'actions',
+  width: 72,
+  fixed: 'right',
+  render: (row: CodexKeeperAccount) =>
+    h(
+      NButton,
+      { size: 'small', quaternary: true, onClick: () => openDetail(row) },
+      { default: () => t('详情', 'Details') },
+    ),
+}))
+
+const disabledColumns = computed<DataTableColumns<CodexKeeperAccount>>(() =>
+  canManageAccounts.value
+    ? [
+        {
+          type: 'selection',
+          width: 44,
+          disabled: (row: CodexKeeperAccount) => isRowActing(row) || isBulkDeleting.value,
+        },
+        ...disabledBaseColumns.value,
+        disabledActionColumn.value,
+      ]
+    : [...disabledBaseColumns.value, readOnlyActionColumn.value],
+)
 
 const normalColumns = computed<DataTableColumns<CodexKeeperAccount>>(() => [
   ...baseColumns.value,
-  normalActionColumn.value,
+  canManageAccounts.value ? normalActionColumn.value : readOnlyActionColumn.value,
 ])
 
 restoreAccountStatusPreferences()
@@ -2087,6 +2113,7 @@ onBeforeUnmount(() => {
               </NButton>
             </NDropdown>
             <NButton
+              v-if="canManageAccounts"
               secondary
               size="small"
               :type="refreshSelectMode ? 'primary' : 'default'"
@@ -2094,7 +2121,7 @@ onBeforeUnmount(() => {
             >
               {{ t('多选刷新', 'Multi-select Refresh') }}
             </NButton>
-            <template v-if="refreshSelectMode">
+            <template v-if="canManageAccounts && refreshSelectMode">
               <NTag size="small" type="info" :bordered="false">
                 {{ t(`${selectedRefreshCount} 已选`, `${selectedRefreshCount} selected`) }}
               </NTag>
@@ -2179,7 +2206,7 @@ onBeforeUnmount(() => {
                 {{ disabledSectionDisplayText }}
               </p>
             </div>
-            <div class="account-section-actions">
+            <div v-if="canManageAccounts" class="account-section-actions">
               <NButton
                 secondary
                 type="error"
@@ -2268,7 +2295,10 @@ onBeforeUnmount(() => {
                 {{ cardSectionDisplayText }}
               </p>
             </div>
-            <div v-if="filteredUnauthorizedDisabledAccounts.length > 0" class="account-section-actions">
+            <div
+              v-if="canManageAccounts && filteredUnauthorizedDisabledAccounts.length > 0"
+              class="account-section-actions"
+            >
               <NButton
                 secondary
                 type="error"
@@ -2509,7 +2539,7 @@ onBeforeUnmount(() => {
             {{ latestActionText(selectedAccount) }}
           </NDescriptionsItem>
         </NDescriptions>
-        <div v-if="selectedAccount" class="detail-action-row">
+        <div v-if="selectedAccount && canManageAccounts" class="detail-action-row">
           <NSpace :size="8" wrap>
             <NButton
               size="small"
@@ -2569,6 +2599,7 @@ onBeforeUnmount(() => {
     </NDrawer>
 
     <NModal
+      v-if="canManageAccounts"
       v-model:show="accountConfirmDialog.show"
       preset="dialog"
       :title="accountConfirmDialog.title"
@@ -2592,6 +2623,7 @@ onBeforeUnmount(() => {
     </NModal>
 
     <NModal
+      v-if="canManageAccounts"
       v-model:show="bulkDeleteDialog.show"
       preset="dialog"
       :title="bulkDeleteDialogTitle"
@@ -2622,6 +2654,7 @@ onBeforeUnmount(() => {
     </NModal>
 
     <NModal
+      v-if="canManageAccounts"
       v-model:show="priorityDialog.show"
       preset="dialog"
       :title="priorityDialogTitle"
