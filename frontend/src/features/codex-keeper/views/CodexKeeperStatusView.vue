@@ -127,7 +127,7 @@ const CODEX_WEEK_WINDOW_SECONDS = 7 * 24 * 60 * 60
 const CODEX_MONTH_WINDOW_SECONDS = 30 * 24 * 60 * 60
 const disabledManageTableScrollX = 1302
 const disabledReadOnlyTableScrollX = 1106
-const normalManageTableScrollX = 1926
+const normalManageTableScrollX = 1870
 const normalReadOnlyTableScrollX = 1766
 const KEEPER_STATUS_POLL_INTERVAL_MS = 3000
 const REFRESH_STATUS_POLL_INTERVAL_MS = 1500
@@ -163,6 +163,9 @@ const accounts = ref<CodexKeeperAccount[]>([])
 const priorityRules = ref<CodexKeeperPriorityRule[]>([])
 const keeperStatus = ref<CodexKeeperStatus | null>(null)
 const selectedAccount = ref<CodexKeeperAccount | null>(null)
+const selectedAccountNote = ref<string | null>(null)
+const isSelectedAccountNoteLoading = ref(false)
+let selectedAccountNoteRequestID = 0
 const selectedDisabledAccountKeys = ref<DataTableRowKey[]>([])
 const refreshSelectMode = ref(false)
 const selectedRefreshAccountNames = ref<string[]>([])
@@ -1748,6 +1751,12 @@ async function saveAuthFileEditor() {
   try {
     await updateCodexKeeperAuthFile(editor.fileName, fields)
     message.success(t(`已更新认证文件“${editor.fileName}”`, `Auth file “${editor.fileName}” updated`))
+    if (selectedAccount.value?.name === editor.fileName) {
+      selectedAccountNoteRequestID += 1
+      isSelectedAccountNoteLoading.value = false
+      const note = editor.note.trim()
+      selectedAccountNote.value = note || null
+    }
     await loadAccounts()
     closeAuthFileEditor()
   } catch (error) {
@@ -1869,8 +1878,34 @@ async function submitBulkDelete() {
   }
 }
 
+async function loadSelectedAccountNote(accountName: string, requestID: number) {
+  try {
+    const detail = await getCodexKeeperAuthFile(accountName)
+    if (requestID !== selectedAccountNoteRequestID || selectedAccount.value?.name !== accountName) {
+      return
+    }
+    const note = authFileStringField(detail.json?.note).trim()
+    selectedAccountNote.value = note || null
+  } catch {
+    if (requestID === selectedAccountNoteRequestID && selectedAccount.value?.name === accountName) {
+      selectedAccountNote.value = null
+    }
+  } finally {
+    if (requestID === selectedAccountNoteRequestID && selectedAccount.value?.name === accountName) {
+      isSelectedAccountNoteLoading.value = false
+    }
+  }
+}
+
 function openDetail(account: CodexKeeperAccount) {
   selectedAccount.value = account
+  selectedAccountNote.value = null
+  isSelectedAccountNoteLoading.value = false
+  selectedAccountNoteRequestID += 1
+  if (canManageAccounts.value) {
+    isSelectedAccountNoteLoading.value = true
+    void loadSelectedAccountNote(account.name, selectedAccountNoteRequestID)
+  }
   detailOpen.value = true
 }
 
@@ -2258,7 +2293,7 @@ const disabledActionColumn = computed<DataTableColumns<CodexKeeperAccount>[numbe
 const normalActionColumn = computed<DataTableColumns<CodexKeeperAccount>[number]>(() => ({
   title: '',
   key: 'actions',
-  width: 232,
+  width: 176,
   fixed: 'right',
   render: (row: CodexKeeperAccount) => {
     return h(
@@ -2282,16 +2317,6 @@ const normalActionColumn = computed<DataTableColumns<CodexKeeperAccount>[number]
               onClick: () => confirmDisableAccount(row),
             },
             { default: () => t('禁用', 'Disable') },
-          ),
-          h(
-            NButton,
-            {
-              size: 'small',
-              quaternary: true,
-              disabled: isRowActing(row) || isBulkDeleting.value || isBulkRefreshing.value,
-              onClick: () => openPriorityDialog(row),
-            },
-            { default: () => t('优先级', 'Priority') },
           ),
           h(
             NButton,
@@ -2945,6 +2970,9 @@ onBeforeUnmount(() => {
         <NDescriptions v-if="selectedAccount" label-placement="left" :column="1" size="small" bordered>
           <NDescriptionsItem :label="t('账号', 'Account')">{{ selectedAccount.name }}</NDescriptionsItem>
           <NDescriptionsItem :label="t('邮箱', 'Email')">{{ selectedAccount.email ?? '-' }}</NDescriptionsItem>
+          <NDescriptionsItem v-if="canManageAccounts" :label="t('备注', 'Note')">
+            {{ isSelectedAccountNoteLoading ? t('加载中...', 'Loading...') : (selectedAccountNote ?? '-') }}
+          </NDescriptionsItem>
           <NDescriptionsItem :label="t('账号类型', 'Account Type')">
             {{ accountTypeLabel(selectedAccount.account_type) }}
           </NDescriptionsItem>
