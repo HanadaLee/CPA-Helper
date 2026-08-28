@@ -925,7 +925,7 @@ const trendOption = computed<ChartOption>(() => {
     legend: {
       show: false,
     },
-    grid: { left: 42, right: 58, top: 20, bottom: 34 },
+    grid: { left: 42, right: 58, top: 44, bottom: 34 },
     xAxis: {
       type: 'category',
       data: trends.value.map((item) => item.bucket),
@@ -1997,13 +1997,13 @@ onBeforeUnmount(() => {
 }
 
 .usage-trend-panel.chart-panel {
-  min-height: 296px;
+  min-height: 320px;
 }
 
 .usage-trend-panel.chart-panel :deep(.chart-body),
 .usage-trend-panel.chart-panel :deep(.chart-surface),
 .usage-trend-panel.chart-panel :deep(.chart-empty) {
-  height: 238px;
+  height: 262px;
 }
 
 .token-panel.chart-panel,
@@ -2742,7 +2742,7 @@ onBeforeUnmount(() => {
   }
 
   .usage-trend-panel.chart-panel {
-    min-height: 280px;
+    min-height: 304px;
   }
 
   .token-panel.chart-panel,
@@ -2760,7 +2760,7 @@ onBeforeUnmount(() => {
   .usage-trend-panel.chart-panel :deep(.chart-body),
   .usage-trend-panel.chart-panel :deep(.chart-surface),
   .usage-trend-panel.chart-panel :deep(.chart-empty) {
-    height: 224px;
+    height: 248px;
   }
 
   .token-panel.chart-panel.has-chart-footer :deep(.chart-body),

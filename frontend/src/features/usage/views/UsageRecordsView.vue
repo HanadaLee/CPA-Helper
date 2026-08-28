@@ -692,6 +692,13 @@ function formatCacheTokens(row: UsageRecordListItem): string {
   return formatInteger(row.cached_tokens)
 }
 
+function uncachedInputTokens(row: UsageRecordListItem): number {
+  if (isClaudeProvider(row.provider)) {
+    return Math.max(0, row.input_tokens)
+  }
+  return Math.max(0, row.input_tokens - row.cached_tokens)
+}
+
 function recordRowKey(row: UsageRecordListItem): number {
   return row.id
 }
@@ -716,7 +723,7 @@ const detailRows = computed(() => {
     { label: t('结果', 'Result'), value: record.failed ? t('失败', 'Failed') : t('成功', 'Success') },
     { label: t('首字耗时', 'TTFT'), value: formatPositiveLatency(record.ttft_ms) },
     { label: t('总耗时', 'Latency'), value: formatLatency(record.latency_ms) },
-    { label: t('输入 Token', 'Input tokens'), value: formatInteger(record.input_tokens) },
+    { label: t('输入 Token', 'Input tokens'), value: formatInteger(uncachedInputTokens(record)) },
     { label: t('缓存 Token', 'Cached tokens'), value: formatInteger(record.cached_tokens) },
     { label: t('缓存读 Token', 'Cache read tokens'), value: formatInteger(record.cache_read_tokens) },
     { label: t('缓存写 Token', 'Cache write tokens'), value: formatInteger(record.cache_creation_tokens) },
@@ -805,7 +812,7 @@ const columns = computed<DataTableColumns<UsageRecordListItem>>(() => [
     title: t('输入', 'Input'),
     key: 'input_tokens',
     width: RECORDS_TABLE_COLUMN_WIDTHS.inputTokens,
-    render: (row) => formatInteger(row.input_tokens),
+    render: (row) => formatInteger(uncachedInputTokens(row)),
   },
   {
     title: t('输出', 'Output'),
