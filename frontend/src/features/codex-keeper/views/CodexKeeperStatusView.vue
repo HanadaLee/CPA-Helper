@@ -66,6 +66,7 @@ import {
   formatCompact,
   formatDateTime,
   formatInteger,
+  formatRelativeTime,
   formatUsd,
 } from '@/shared/utils/format'
 
@@ -178,6 +179,7 @@ const disabledAccountPage = ref(1)
 const normalAccountPage = ref(1)
 const cardAccountPage = ref(1)
 const accountListViewMode = ref<AccountListViewMode>('table')
+const relativeTimeNow = ref(Date.now())
 const filters = reactive({
   keyword: '',
   accountType: null as string | null,
@@ -1324,12 +1326,13 @@ function renderAccountPriorityCell(account: CodexKeeperAccount) {
 }
 
 function renderLastCheckedCell(account: CodexKeeperAccount) {
-  const text = formatDateTime(account.last_checked_at)
+  const text = formatRelativeTime(account.last_checked_at, relativeTimeNow.value)
+  const fullText = formatDateTime(account.last_checked_at)
   return h(
     'span',
     {
       class: ['account-table-value-pill', 'is-time', text === '-' ? 'is-empty' : ''],
-      title: text,
+      title: fullText,
     },
     text,
   )
@@ -2177,7 +2180,7 @@ const baseColumns = computed<DataTableColumns<CodexKeeperAccount>>(() => [
   {
     title: t('账号', 'Account'),
     key: 'identity',
-    width: 240,
+    width: 270,
     render: (row) => renderAccountIdentityCell(row),
   },
   {
@@ -2201,19 +2204,19 @@ const baseColumns = computed<DataTableColumns<CodexKeeperAccount>>(() => [
   {
     title: t('窗口用量', 'Window Usage'),
     key: 'quota_usage',
-    width: 240,
+    width: 250,
     render: (row) => renderQuotaUsageCell(row),
   },
   {
     title: t('窗口预测', 'Window Projection'),
     key: 'quota_prediction',
-    width: 100,
+    width: 90,
     render: (row) => renderQuotaPredictionCell(row),
   },
   {
     title: t('最近巡检', 'Last Inspection'),
     key: 'last_checked_at',
-    width: 150,
+    width: 120,
     render: (row) => renderLastCheckedCell(row),
   },
   {
@@ -2397,6 +2400,7 @@ watch(filteredAccounts, pruneSelectedRefreshAccountNames)
 onMounted(() => {
   void loadAccounts()
   keeperStatusTimer = window.setInterval(() => {
+    relativeTimeNow.value = Date.now()
     void loadKeeperStatus()
   }, KEEPER_STATUS_POLL_INTERVAL_MS)
 })
