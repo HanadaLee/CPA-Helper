@@ -445,23 +445,20 @@ const logoutAriaLabel = computed(() => t('退出登录', 'Sign out'))
       <NDrawerContent :title="`CPA-Helper · ${appVersion}`" body-content-style="padding: 0;">
         <NMenu :value="selectedKey" :options="menuOptions" @update:value="handleMenuUpdate" />
         <div class="drawer-actions">
-          <NButton secondary @click="toggleLanguage">
+          <NButton secondary circle :aria-label="languageAriaLabel" @click="toggleLanguage">
             <template #icon>
               <NIcon :component="Languages" />
             </template>
-            {{ language === 'zh' ? 'English' : '中文' }}
           </NButton>
-          <NButton secondary @click="cycleTheme">
+          <NButton secondary circle :aria-label="themeAriaLabel" @click="cycleTheme">
             <template #icon>
               <NIcon :component="themeIcon" />
             </template>
-            {{ t('主题', 'Theme') }}
           </NButton>
-          <NButton secondary @click="handleLogout">
+          <NButton secondary circle :aria-label="logoutAriaLabel" @click="handleLogout">
             <template #icon>
               <NIcon :component="LogOut" />
             </template>
-            {{ t('退出', 'Sign out') }}
           </NButton>
         </div>
       </NDrawerContent>
@@ -989,9 +986,9 @@ const logoutAriaLabel = computed(() => t('退出登录', 'Sign out'))
 }
 
 .drawer-actions {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  display: flex;
+  gap: 12px;
+  justify-content: center;
   padding: 14px;
 }
 

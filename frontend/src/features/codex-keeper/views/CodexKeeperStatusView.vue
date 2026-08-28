@@ -2195,19 +2195,19 @@ const baseColumns = computed<DataTableColumns<CodexKeeperAccount>>(() => [
   {
     title: t('额度窗口', 'Quota Window'),
     key: 'quota',
-    width: 200,
+    width: 250,
     render: (row) => renderQuotaCell(row),
   },
   {
     title: t('窗口用量', 'Window Usage'),
     key: 'quota_usage',
-    width: 280,
+    width: 240,
     render: (row) => renderQuotaUsageCell(row),
   },
   {
     title: t('窗口预测', 'Window Projection'),
     key: 'quota_prediction',
-    width: 110,
+    width: 100,
     render: (row) => renderQuotaPredictionCell(row),
   },
   {
