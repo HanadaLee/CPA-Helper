@@ -53,7 +53,6 @@ const props = defineProps<{
 
 const chartEl = ref<HTMLDivElement | null>(null)
 const chart = ref<ECharts | null>(null)
-const legendSelection = ref<Record<string, boolean>>({})
 const { isDark } = useThemePreference()
 const { t } = useI18n()
 
@@ -100,22 +99,8 @@ function buildCurrentOption(): ChartOption {
       ...configuredLegend?.textStyle,
       color: getChartMutedColor(),
     },
-    selected: {
-      ...configuredLegend?.selected,
-      ...legendSelection.value,
-    },
   }
   return option
-}
-
-function handleLegendSelectionChanged(event: unknown) {
-  if (!event || typeof event !== 'object' || !('selected' in event)) {
-    return
-  }
-  const selected = (event as { selected?: Record<string, boolean> }).selected
-  if (selected) {
-    legendSelection.value = { ...selected }
-  }
 }
 
 function initializeChart() {
@@ -123,7 +108,6 @@ function initializeChart() {
     return
   }
   chart.value = echarts.init(chartEl.value, isDark.value ? 'dark' : undefined)
-  chart.value.on('legendselectchanged', handleLegendSelectionChanged)
   chart.value.setOption(buildCurrentOption())
 }
 
@@ -175,6 +159,9 @@ onBeforeUnmount(() => {
   >
     <div class="chart-heading">
       <h2>{{ title }}</h2>
+      <div v-if="$slots.actions" class="chart-actions">
+        <slot name="actions" />
+      </div>
     </div>
     <NSpin :show="loading ?? false">
       <div class="chart-body">
@@ -205,9 +192,15 @@ onBeforeUnmount(() => {
 
 .chart-heading {
   display: flex;
+  gap: 12px;
   align-items: center;
+  justify-content: space-between;
   padding: 18px 18px 12px;
   border-bottom: 1px solid var(--cpa-border);
+}
+
+.chart-actions {
+  min-width: 0;
 }
 
 h2 {

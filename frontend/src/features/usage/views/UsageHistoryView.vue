@@ -41,6 +41,7 @@ type FailedFilter = 'all' | 'success' | 'failed'
 type QuickRangeKey = 'today' | 'last24h' | 'last3d' | 'last7d' | 'last30d'
 type UsageScope = 'admin' | 'account' | 'shared'
 type RankingSort = 'tokens' | 'cost'
+type TrendSeriesKey = 'requests' | 'tokens' | 'failed'
 
 interface RefreshOptions {
   silent?: boolean
@@ -119,8 +120,13 @@ const failedTrends = ref<TrendPoint[]>([])
 const trends = ref<TrendPoint[]>([])
 const userRanking = ref<RankingItem[]>([])
 const modelRanking = ref<RankingItem[]>([])
-const primaryRankingSort = ref<RankingSort>('tokens')
-const modelRankingSort = ref<RankingSort>('tokens')
+const primaryRankingSort = ref<RankingSort>('cost')
+const modelRankingSort = ref<RankingSort>('cost')
+const trendSeriesVisibility = reactive<Record<TrendSeriesKey, boolean>>({
+  requests: true,
+  tokens: true,
+  failed: true,
+})
 const distributions = ref<UsageDistributionsResponse>({ providers: [], models: [], endpoints: [] })
 const failedEndpointDistribution = ref<DistributionItem[]>([])
 const options = ref<UsageOptionsResponse>({
@@ -894,25 +900,32 @@ function formatTrendBucket(value: string): string {
   return formatted === '-' ? value : formatted
 }
 
+const trendLegendItems = computed<Array<{ key: TrendSeriesKey; label: string }>>(() => [
+  { key: 'requests', label: t('请求数', 'Requests') },
+  { key: 'tokens', label: 'Token' },
+  { key: 'failed', label: t('失败请求', 'Failed requests') },
+])
+
+function toggleTrendSeries(key: TrendSeriesKey) {
+  trendSeriesVisibility[key] = !trendSeriesVisibility[key]
+}
+
 const trendOption = computed<ChartOption>(() => {
   const mutedColor = cssVar('--cpa-text-muted', '#6a7d87')
   const gridColor = cssVar('--cpa-chart-grid', 'rgba(120, 146, 151, 0.18)')
   const requestColor = cssVar('--cpa-accent-blue', '#1d8dff')
   const tokenColor = cssVar('--cpa-primary', '#009aa8')
   const dangerColor = cssVar('--cpa-danger', '#d34b4b')
+  const requestLabel = t('请求数', 'Requests')
+  const failedLabel = t('失败请求', 'Failed requests')
 
   return {
+    animation: false,
     tooltip: { trigger: 'axis' },
     legend: {
-      top: 2,
-      left: 54,
-      right: 96,
-      itemGap: 14,
-      itemWidth: 10,
-      itemHeight: 10,
-      data: [t('请求数', 'Requests'), 'Token', t('失败请求', 'Failed requests')],
+      show: false,
     },
-    grid: { left: 42, right: 58, top: 44, bottom: 34 },
+    grid: { left: 42, right: 58, top: 20, bottom: 34 },
     xAxis: {
       type: 'category',
       data: trends.value.map((item) => item.bucket),
@@ -942,9 +955,9 @@ const trendOption = computed<ChartOption>(() => {
     ],
     series: [
       {
-        name: t('请求数', 'Requests'),
+        name: requestLabel,
         type: 'bar',
-        data: trends.value.map((item) => item.records),
+        data: trends.value.map((item) => (trendSeriesVisibility.requests ? item.records : null)),
         barMaxWidth: 18,
         itemStyle: { color: requestColor, borderRadius: [4, 4, 0, 0] },
       },
@@ -954,14 +967,14 @@ const trendOption = computed<ChartOption>(() => {
         yAxisIndex: 1,
         smooth: true,
         showSymbol: false,
-        data: trends.value.map((item) => item.total_tokens),
+        data: trends.value.map((item) => (trendSeriesVisibility.tokens ? item.total_tokens : null)),
         lineStyle: { color: tokenColor, width: 3 },
         itemStyle: { color: tokenColor },
       },
       {
-        name: t('失败请求', 'Failed requests'),
+        name: failedLabel,
         type: 'line',
-        data: trends.value.map((item) => item.failed_records),
+        data: trends.value.map((item) => (trendSeriesVisibility.failed ? item.failed_records : null)),
         showSymbol: true,
         symbolSize: 6,
         lineStyle: { color: dangerColor, width: 1, type: 'dashed' },
@@ -973,10 +986,12 @@ const trendOption = computed<ChartOption>(() => {
 
 const tokenBreakdownItems = computed<TokenBreakdownItem[]>(() => {
   const currentSummary = summary.value
+  const cacheHitTokens = currentSummary?.cache_hit_tokens ?? 0
+  const uncachedInputTokens = Math.max(0, (currentSummary?.input_tokens ?? 0) - cacheHitTokens)
   const values = [
-    { key: 'input', label: t('输入 Token', 'Input tokens'), value: currentSummary?.input_tokens ?? 0 },
+    { key: 'input', label: t('输入 Token', 'Input tokens'), value: uncachedInputTokens },
     { key: 'output', label: t('输出 Token', 'Output tokens'), value: currentSummary?.output_tokens ?? 0 },
-    { key: 'cached', label: t('缓存 Token', 'Cached tokens'), value: currentSummary?.cached_tokens ?? 0 },
+    { key: 'cached', label: t('缓存 Token', 'Cached tokens'), value: cacheHitTokens },
     { key: 'reasoning', label: t('推理 Token', 'Reasoning tokens'), value: currentSummary?.reasoning_tokens ?? 0 },
   ]
   const total = values.reduce((sum, item) => sum + item.value, 0)
@@ -1412,7 +1427,24 @@ onBeforeUnmount(() => {
             :option="trendOption"
             :empty="trends.length === 0"
             :loading="isLoading"
-          />
+          >
+            <template #actions>
+              <div class="trend-legend" :aria-label="t('用量趋势图例', 'Usage trend legend')">
+                <button
+                  v-for="item in trendLegendItems"
+                  :key="item.key"
+                  type="button"
+                  class="trend-legend-button"
+                  :class="[`is-${item.key}`, { 'is-hidden': !trendSeriesVisibility[item.key] }]"
+                  :aria-pressed="trendSeriesVisibility[item.key]"
+                  @click="toggleTrendSeries(item.key)"
+                >
+                  <span class="trend-legend-marker" aria-hidden="true" />
+                  <span>{{ item.label }}</span>
+                </button>
+              </div>
+            </template>
+          </ChartPanel>
 
           <ChartPanel
             class="token-panel area-token"
@@ -2489,6 +2521,70 @@ onBeforeUnmount(() => {
   color: var(--cpa-text-muted);
   font-size: 11px;
   white-space: nowrap;
+}
+
+.trend-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 12px;
+  justify-content: flex-end;
+}
+
+.trend-legend-button {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  margin: 0;
+  padding: 2px 0;
+  border: 0;
+  color: var(--cpa-text-muted);
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+  background: transparent;
+  cursor: pointer;
+  transition: color 0.15s ease, opacity 0.15s ease;
+}
+
+.trend-legend-button:hover,
+.trend-legend-button:focus-visible {
+  color: var(--cpa-text-strong);
+}
+
+.trend-legend-button:focus-visible {
+  border-radius: 3px;
+  outline: 2px solid color-mix(in srgb, var(--trend-color) 52%, transparent);
+  outline-offset: 2px;
+}
+
+.trend-legend-button.is-requests {
+  --trend-color: var(--cpa-accent-blue);
+}
+
+.trend-legend-button.is-tokens {
+  --trend-color: var(--cpa-primary);
+}
+
+.trend-legend-button.is-failed {
+  --trend-color: var(--cpa-danger);
+}
+
+.trend-legend-marker {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  border: 2px solid var(--trend-color);
+  border-radius: 3px;
+  background: var(--trend-color);
+}
+
+.trend-legend-button.is-hidden {
+  opacity: 0.48;
+}
+
+.trend-legend-button.is-hidden .trend-legend-marker {
+  background: transparent;
 }
 
 .distribution-legend {
