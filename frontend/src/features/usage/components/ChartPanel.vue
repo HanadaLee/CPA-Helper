@@ -53,6 +53,7 @@ const props = defineProps<{
 
 const chartEl = ref<HTMLDivElement | null>(null)
 const chart = ref<ECharts | null>(null)
+const legendSelection = ref<Record<string, boolean>>({})
 const { isDark } = useThemePreference()
 const { t } = useI18n()
 
@@ -73,7 +74,7 @@ function getChartMutedColor(): string {
 }
 
 function buildCurrentOption(): ChartOption {
-  return {
+  const option: ChartOption = {
     backgroundColor: 'transparent',
     textStyle: {
       fontFamily: 'Aptos, Segoe UI, Microsoft YaHei UI, sans-serif',
@@ -87,13 +88,43 @@ function buildCurrentOption(): ChartOption {
       },
       extraCssText: 'box-shadow: 0 16px 32px rgba(26, 50, 57, 0.12); border-radius: 8px;',
     },
-    legend: {
-      textStyle: {
-        color: getChartMutedColor(),
-      },
-    },
     ...props.option,
   }
+  const configuredLegend = props.option.legend
+  if (Array.isArray(configuredLegend)) {
+    return option
+  }
+  option.legend = {
+    ...configuredLegend,
+    textStyle: {
+      ...configuredLegend?.textStyle,
+      color: getChartMutedColor(),
+    },
+    selected: {
+      ...configuredLegend?.selected,
+      ...legendSelection.value,
+    },
+  }
+  return option
+}
+
+function handleLegendSelectionChanged(event: unknown) {
+  if (!event || typeof event !== 'object' || !('selected' in event)) {
+    return
+  }
+  const selected = (event as { selected?: Record<string, boolean> }).selected
+  if (selected) {
+    legendSelection.value = { ...selected }
+  }
+}
+
+function initializeChart() {
+  if (!chartEl.value) {
+    return
+  }
+  chart.value = echarts.init(chartEl.value, isDark.value ? 'dark' : undefined)
+  chart.value.on('legendselectchanged', handleLegendSelectionChanged)
+  chart.value.setOption(buildCurrentOption())
 }
 
 function resize() {
@@ -101,11 +132,7 @@ function resize() {
 }
 
 onMounted(() => {
-  if (!chartEl.value) {
-    return
-  }
-  chart.value = echarts.init(chartEl.value, isDark.value ? 'dark' : undefined)
-  chart.value.setOption(buildCurrentOption())
+  initializeChart()
   window.addEventListener('resize', resize)
 })
 
@@ -127,8 +154,7 @@ watch(isDark, () => {
       return
     }
     chart.value?.dispose()
-    chart.value = echarts.init(chartEl.value, isDark.value ? 'dark' : undefined)
-    chart.value.setOption(buildCurrentOption())
+    initializeChart()
     chartThemeFrame = undefined
   })
 })
@@ -149,7 +175,6 @@ onBeforeUnmount(() => {
   >
     <div class="chart-heading">
       <h2>{{ title }}</h2>
-      <span class="chart-more" aria-hidden="true">...</span>
     </div>
     <NSpin :show="loading ?? false">
       <div class="chart-body">
@@ -181,7 +206,6 @@ onBeforeUnmount(() => {
 .chart-heading {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   padding: 18px 18px 12px;
   border-bottom: 1px solid var(--cpa-border);
 }
@@ -191,14 +215,6 @@ h2 {
   color: var(--cpa-text-strong);
   font-size: 15px;
   font-weight: 750;
-}
-
-.chart-more {
-  color: var(--cpa-text-muted);
-  font-size: 18px;
-  font-weight: 750;
-  line-height: 1;
-  letter-spacing: 0;
 }
 
 .chart-body,

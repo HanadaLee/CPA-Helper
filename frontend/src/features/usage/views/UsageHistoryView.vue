@@ -40,6 +40,7 @@ import { useI18n } from '@/shared/i18n'
 type FailedFilter = 'all' | 'success' | 'failed'
 type QuickRangeKey = 'today' | 'last24h' | 'last3d' | 'last7d' | 'last30d'
 type UsageScope = 'admin' | 'account' | 'shared'
+type RankingSort = 'tokens' | 'cost'
 
 interface RefreshOptions {
   silent?: boolean
@@ -118,6 +119,8 @@ const failedTrends = ref<TrendPoint[]>([])
 const trends = ref<TrendPoint[]>([])
 const userRanking = ref<RankingItem[]>([])
 const modelRanking = ref<RankingItem[]>([])
+const primaryRankingSort = ref<RankingSort>('tokens')
+const modelRankingSort = ref<RankingSort>('tokens')
 const distributions = ref<UsageDistributionsResponse>({ providers: [], models: [], endpoints: [] })
 const failedEndpointDistribution = ref<DistributionItem[]>([])
 const options = ref<UsageOptionsResponse>({
@@ -329,6 +332,10 @@ const pageSubtitle = computed(() =>
 const rankingTitle = computed(() =>
   isAccountScope.value ? t('KEY 排行', 'Key ranking') : t('用户排行', 'User ranking'),
 )
+const rankingSortOptions = computed(() => [
+  { label: t('按 Token', 'By tokens'), value: 'tokens' },
+  { label: t('按费用', 'By cost'), value: 'cost' },
+])
 
 const refreshStatusText = computed(() => {
   const lastRefreshTime = lastRefreshedAt.value
@@ -1132,14 +1139,71 @@ const todayTokenTotal = computed(() =>
   hourActivityItems.value.reduce((sum, item) => sum + item.tokens, 0),
 )
 
-const primaryRankingRows = computed(() => userRanking.value.slice(0, 5))
-const modelRankingRows = computed(() => modelRanking.value.slice(0, 5))
-const maxPrimaryRankingTokens = computed(() =>
-  Math.max(0, ...primaryRankingRows.value.map((item) => item.total_tokens)),
+function rankingMetricValue(item: RankingItem, sort: RankingSort): number {
+  return sort === 'cost' ? item.estimated_cost_usd : item.total_tokens
+}
+
+function sortedRankingRows(items: RankingItem[], sort: RankingSort): RankingItem[] {
+  const secondarySort: RankingSort = sort === 'tokens' ? 'cost' : 'tokens'
+  return [...items]
+    .sort((left, right) => {
+      const metricDifference = rankingMetricValue(right, sort) - rankingMetricValue(left, sort)
+      if (metricDifference !== 0) {
+        return metricDifference
+      }
+      const secondaryDifference =
+        rankingMetricValue(right, secondarySort) - rankingMetricValue(left, secondarySort)
+      if (secondaryDifference !== 0) {
+        return secondaryDifference
+      }
+      if (left.records !== right.records) {
+        return right.records - left.records
+      }
+      return left.label.localeCompare(right.label)
+    })
+    .slice(0, 5)
+}
+
+const primaryRankingRows = computed(() =>
+  sortedRankingRows(userRanking.value, primaryRankingSort.value),
 )
-const maxModelRankingTokens = computed(() =>
-  Math.max(0, ...modelRankingRows.value.map((item) => item.total_tokens)),
+const modelRankingRows = computed(() =>
+  sortedRankingRows(modelRanking.value, modelRankingSort.value),
 )
+const maxPrimaryRankingValue = computed(() =>
+  Math.max(
+    0,
+    ...primaryRankingRows.value.map((item) =>
+      rankingMetricValue(item, primaryRankingSort.value),
+    ),
+  ),
+)
+const maxModelRankingValue = computed(() =>
+  Math.max(
+    0,
+    ...modelRankingRows.value.map((item) => rankingMetricValue(item, modelRankingSort.value)),
+  ),
+)
+
+function rankingPrimaryText(item: RankingItem, sort: RankingSort): string {
+  return sort === 'cost' ? formatUsd(item.estimated_cost_usd) : formatCompact(item.total_tokens)
+}
+
+function rankingSecondaryText(item: RankingItem, sort: RankingSort): string {
+  return sort === 'cost' ? `${formatCompact(item.total_tokens)} Token` : formatUsd(item.estimated_cost_usd)
+}
+
+function normalizeRankingSort(value: unknown): RankingSort {
+  return value === 'cost' ? 'cost' : 'tokens'
+}
+
+function handlePrimaryRankingSortChange(value: unknown) {
+  primaryRankingSort.value = normalizeRankingSort(value)
+}
+
+function handleModelRankingSortChange(value: unknown) {
+  modelRankingSort.value = normalizeRankingSort(value)
+}
 
 function rankingBarStyle(value: number, maxValue: number): Record<string, string> {
   const percent = maxValue > 0 ? Math.max(4, Math.round((value / maxValue) * 100)) : 0
@@ -1549,7 +1613,14 @@ onBeforeUnmount(() => {
               <div class="panel-inner compact-panel-inner">
                 <div class="panel-heading-row">
                   <h2 class="section-title">{{ rankingTitle }}</h2>
-                  <span class="panel-subtle-text">{{ t('按 Token 排序', 'Sorted by tokens') }}</span>
+                  <NSelect
+                    class="ranking-sort-select"
+                    size="tiny"
+                    :value="primaryRankingSort"
+                    :options="rankingSortOptions"
+                    :consistent-menu-width="false"
+                    @update:value="handlePrimaryRankingSortChange"
+                  />
                 </div>
                 <div class="ranking-list">
                   <div v-if="primaryRankingRows.length === 0" class="empty-inline">{{ t('暂无排行数据', 'No ranking data') }}</div>
@@ -1558,18 +1629,18 @@ onBeforeUnmount(() => {
                     v-else
                     :key="row.key"
                     class="ranking-row"
-                    :style="rankingBarStyle(row.total_tokens, maxPrimaryRankingTokens)"
+                    :style="rankingBarStyle(rankingMetricValue(row, primaryRankingSort), maxPrimaryRankingValue)"
                   >
                     <span class="ranking-index">{{ index + 1 }}</span>
                     <div class="ranking-main">
                       <div class="ranking-label-line">
                         <strong :title="row.label">{{ row.label }}</strong>
-                        <span>{{ formatUsd(row.estimated_cost_usd) }}</span>
+                        <span>{{ rankingSecondaryText(row, primaryRankingSort) }}</span>
                       </div>
                       <div class="ranking-track" aria-hidden="true"><span /></div>
                     </div>
                     <div class="ranking-values">
-                      <strong>{{ formatCompact(row.total_tokens) }}</strong>
+                      <strong>{{ rankingPrimaryText(row, primaryRankingSort) }}</strong>
                       <span>{{ t(`${formatInteger(row.records)} 次`, `${formatInteger(row.records)} requests`) }}</span>
                     </div>
                     <NButton v-if="canOpenRecords" size="tiny" quaternary @click="goRecords(rankingFilters(row))">
@@ -1584,7 +1655,14 @@ onBeforeUnmount(() => {
               <div class="panel-inner compact-panel-inner">
                 <div class="panel-heading-row">
                   <h2 class="section-title">{{ t('模型排行', 'Model ranking') }}</h2>
-                  <span class="panel-subtle-text">{{ t('按 Token 排序', 'Sorted by tokens') }}</span>
+                  <NSelect
+                    class="ranking-sort-select"
+                    size="tiny"
+                    :value="modelRankingSort"
+                    :options="rankingSortOptions"
+                    :consistent-menu-width="false"
+                    @update:value="handleModelRankingSortChange"
+                  />
                 </div>
                 <div class="ranking-list">
                   <div v-if="modelRankingRows.length === 0" class="empty-inline">{{ t('暂无模型数据', 'No model data') }}</div>
@@ -1593,18 +1671,18 @@ onBeforeUnmount(() => {
                     v-else
                     :key="row.key"
                     class="ranking-row"
-                    :style="rankingBarStyle(row.total_tokens, maxModelRankingTokens)"
+                    :style="rankingBarStyle(rankingMetricValue(row, modelRankingSort), maxModelRankingValue)"
                   >
                     <span class="ranking-index">{{ index + 1 }}</span>
                     <div class="ranking-main">
                       <div class="ranking-label-line">
                         <strong :title="row.label">{{ row.label }}</strong>
-                        <span>{{ formatUsd(row.estimated_cost_usd) }}</span>
+                        <span>{{ rankingSecondaryText(row, modelRankingSort) }}</span>
                       </div>
                       <div class="ranking-track" aria-hidden="true"><span /></div>
                     </div>
                     <div class="ranking-values">
-                      <strong>{{ formatCompact(row.total_tokens) }}</strong>
+                      <strong>{{ rankingPrimaryText(row, modelRankingSort) }}</strong>
                       <span>{{ t(`${formatInteger(row.records)} 次`, `${formatInteger(row.records)} requests`) }}</span>
                     </div>
                     <NButton v-if="canOpenRecords" size="tiny" quaternary @click="goRecords(modelFilters(row))">
@@ -1994,6 +2072,11 @@ onBeforeUnmount(() => {
   color: var(--cpa-text-muted);
   font-size: 12px;
   white-space: nowrap;
+}
+
+.ranking-sort-select {
+  flex: 0 0 104px;
+  width: 104px;
 }
 
 .anomaly-stat-grid {
