@@ -341,17 +341,17 @@ const columns = computed<DataTableColumns<UserSummary>>(() => [
     render: (row) => {
       const detail = quotaDetail(row)
       return h('div', { class: ['metric-stack', 'quota-balance-stack'] }, [
-        h('div', { class: ['quota-balance-row', 'is-monthly', quotaBalanceClass(row)] }, [
-          h('span', { class: 'quota-balance-label' }, t('每月：', 'Monthly: ')),
-          h('strong', { class: 'quota-balance-value' }, quotaBalanceValue(row, 'monthly')),
+        h('div', { class: ['quota-balance-row', 'is-daily', quotaBalanceClass(row)] }, [
+          h('span', { class: 'quota-balance-label' }, t('每日：', 'Daily: ')),
+          h('strong', { class: 'quota-balance-value' }, quotaBalanceValue(row, 'daily')),
         ]),
         h('div', { class: ['quota-balance-row', 'is-weekly', quotaBalanceClass(row)] }, [
           h('span', { class: 'quota-balance-label' }, t('每周：', 'Weekly: ')),
           h('strong', { class: 'quota-balance-value' }, quotaBalanceValue(row, 'weekly')),
         ]),
-        h('div', { class: ['quota-balance-row', 'is-daily', quotaBalanceClass(row)] }, [
-          h('span', { class: 'quota-balance-label' }, t('每日：', 'Daily: ')),
-          h('strong', { class: 'quota-balance-value' }, quotaBalanceValue(row, 'daily')),
+        h('div', { class: ['quota-balance-row', 'is-monthly', quotaBalanceClass(row)] }, [
+          h('span', { class: 'quota-balance-label' }, t('每月：', 'Monthly: ')),
+          h('strong', { class: 'quota-balance-value' }, quotaBalanceValue(row, 'monthly')),
         ]),
         h('div', { class: ['quota-balance-row', 'is-lifetime', quotaBalanceClass(row)] }, [
           h('span', { class: 'quota-balance-label' }, t('不限时：', 'Lifetime: ')),

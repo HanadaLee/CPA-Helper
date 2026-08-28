@@ -781,11 +781,11 @@ function quotaValueText(quota: UserQuotaStatus | null): string {
     return t('加载中', 'Loading')
   }
   if (quota.unlimited) {
-    return t('每月余额 无限制', 'Monthly balance unlimited')
+    return t('每日余额 无限制', 'Daily balance unlimited')
   }
   return t(
-    `每月余额 ${formatUsd(quota.monthly_remaining_usd ?? 0)}`,
-    `Monthly balance ${formatUsd(quota.monthly_remaining_usd ?? 0)}`,
+    `每日余额 ${formatUsd(quota.daily_remaining_usd ?? 0)}`,
+    `Daily balance ${formatUsd(quota.daily_remaining_usd ?? 0)}`,
   )
 }
 
@@ -794,11 +794,14 @@ function quotaFootnote(quota: UserQuotaStatus | null): string {
     return t('额度加载中', 'Quota loading')
   }
   if (quota.unlimited) {
-    return t('不限时余额 无限制', 'Lifetime balance unlimited')
+    return t(
+      '每周余额 无限制 / 每月余额 无限制 / 不限时余额 无限制',
+      'Weekly balance unlimited / Monthly balance unlimited / Lifetime balance unlimited',
+    )
   }
-  const lifetimeText = t(
-    `不限时余额 ${formatUsd(quota.lifetime_remaining_usd ?? 0)}`,
-    `Lifetime balance ${formatUsd(quota.lifetime_remaining_usd ?? 0)}`,
+  const balancesText = t(
+    `每周余额 ${formatUsd(quota.weekly_remaining_usd ?? 0)} / 每月余额 ${formatUsd(quota.monthly_remaining_usd ?? 0)} / 不限时余额 ${formatUsd(quota.lifetime_remaining_usd ?? 0)}`,
+    `Weekly balance ${formatUsd(quota.weekly_remaining_usd ?? 0)} / Monthly balance ${formatUsd(quota.monthly_remaining_usd ?? 0)} / Lifetime balance ${formatUsd(quota.lifetime_remaining_usd ?? 0)}`,
   )
   const notes: string[] = []
   if (quota.sync_error) {
@@ -810,7 +813,7 @@ function quotaFootnote(quota: UserQuotaStatus | null): string {
   if (quota.paused) {
     notes.push(t('Key 已因余额暂停', 'Key paused due to balance'))
   }
-  return notes.length > 0 ? `${lifetimeText} · ${notes.join(' · ')}` : lifetimeText
+  return notes.length > 0 ? `${balancesText} · ${notes.join(' · ')}` : balancesText
 }
 
 const metricCards = computed<MetricCardConfig[]>(() => {
