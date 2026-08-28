@@ -125,10 +125,10 @@ const ACCOUNT_TABLE_VIRTUAL_THRESHOLD = 200
 const CODEX_FIVE_HOUR_WINDOW_SECONDS = 5 * 60 * 60
 const CODEX_WEEK_WINDOW_SECONDS = 7 * 24 * 60 * 60
 const CODEX_MONTH_WINDOW_SECONDS = 30 * 24 * 60 * 60
-const disabledManageTableScrollX = 1302
-const disabledReadOnlyTableScrollX = 1106
-const normalManageTableScrollX = 1870
-const normalReadOnlyTableScrollX = 1766
+const disabledManageTableScrollX = 1082
+const disabledReadOnlyTableScrollX = 886
+const normalManageTableScrollX = 1590
+const normalReadOnlyTableScrollX = 1486
 const KEEPER_STATUS_POLL_INTERVAL_MS = 3000
 const REFRESH_STATUS_POLL_INTERVAL_MS = 1500
 const message = useMessage()
@@ -2177,7 +2177,7 @@ const baseColumns = computed<DataTableColumns<CodexKeeperAccount>>(() => [
   {
     title: t('账号', 'Account'),
     key: 'identity',
-    width: 360,
+    width: 240,
     render: (row) => renderAccountIdentityCell(row),
   },
   {
@@ -2195,7 +2195,7 @@ const baseColumns = computed<DataTableColumns<CodexKeeperAccount>>(() => [
   {
     title: t('额度窗口', 'Quota Window'),
     key: 'quota',
-    width: 260,
+    width: 200,
     render: (row) => renderQuotaCell(row),
   },
   {
@@ -2219,7 +2219,7 @@ const baseColumns = computed<DataTableColumns<CodexKeeperAccount>>(() => [
   {
     title: t('最近操作', 'Latest Action'),
     key: 'latest_action',
-    width: 340,
+    width: 240,
     render: (row) => renderLatestActionCell(row),
   },
 ])
