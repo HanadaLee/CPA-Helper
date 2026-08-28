@@ -71,6 +71,74 @@ func TestQuotaChargesMonthlyBeforeLifetimeBalanceAndDedupesUsage(t *testing.T) {
 	}
 }
 
+func TestQuotaChargesDailyThenWeeklyThenMonthlyThenLifetime(t *testing.T) {
+	t.Setenv("CPA_HELPER_DATA_DIR", t.TempDir())
+	app, err := New()
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	defer app.Close()
+
+	ctx := context.Background()
+	userID := seedQuotaTestUser(t, app, "member")
+	apiKey := "sk-quota-all-buckets"
+	seedQuotaTestAPIKey(t, app, userID, apiKey)
+	seedQuotaTestPrice(t, app, "openai", "gpt-quota-all", 1)
+	lifetime := 1.0
+	monthly := 0.75
+	weekly := 0.5
+	daily := 0.25
+	if _, err := app.updateUserQuota(ctx, userID, userQuotaPayload{
+		LifetimeQuotaUSD: &lifetime,
+		MonthlyQuotaUSD:  &monthly,
+		WeeklyQuotaUSD:   &weekly,
+		DailyQuotaUSD:    &daily,
+	}); err != nil {
+		t.Fatalf("update quota: %v", err)
+	}
+
+	raw := `{"api_key":"` + apiKey + `","provider":"openai","model":"gpt-quota-all","input_tokens":1750000,"request_id":"quota-all"}`
+	if _, created, err := app.saveUsageMessage(ctx, []byte(raw)); err != nil || !created {
+		t.Fatalf("usage created=%v err=%v", created, err)
+	}
+	user, err := app.getUser(ctx, userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if user.QuotaDayUsedUSD != daily || user.QuotaWeekUsedUSD != weekly || user.QuotaMonthUsedUSD != monthly ||
+		user.QuotaLifetimeUSD == nil || *user.QuotaLifetimeUSD != 0.75 {
+		t.Fatalf(
+			"quota after charge daily=%v weekly=%v monthly=%v lifetime=%v",
+			user.QuotaDayUsedUSD,
+			user.QuotaWeekUsedUSD,
+			user.QuotaMonthUsedUSD,
+			user.QuotaLifetimeUSD,
+		)
+	}
+	var amount, dailyDeducted, weeklyDeducted, monthlyDeducted, lifetimeDeducted float64
+	var chargeDay, chargeWeek, chargeMonth string
+	if err := app.db.QueryRow(`
+		SELECT amount_usd, daily_deducted_usd, weekly_deducted_usd,
+		       monthly_deducted_usd, lifetime_deducted_usd, quota_day, quota_week, quota_month
+		FROM user_quota_charges WHERE usage_username = 'member'
+	`).Scan(&amount, &dailyDeducted, &weeklyDeducted, &monthlyDeducted, &lifetimeDeducted, &chargeDay, &chargeWeek, &chargeMonth); err != nil {
+		t.Fatal(err)
+	}
+	if amount != 1.75 || dailyDeducted != 0.25 || weeklyDeducted != 0.5 || monthlyDeducted != 0.75 || lifetimeDeducted != 0.25 {
+		t.Fatalf(
+			"deductions amount=%v daily=%v weekly=%v monthly=%v lifetime=%v",
+			amount,
+			dailyDeducted,
+			weeklyDeducted,
+			monthlyDeducted,
+			lifetimeDeducted,
+		)
+	}
+	if chargeDay != user.QuotaDay || chargeWeek != user.QuotaWeek || chargeMonth != user.QuotaMonth {
+		t.Fatalf("charge periods day=%q week=%q month=%q, want %q/%q/%q", chargeDay, chargeWeek, chargeMonth, user.QuotaDay, user.QuotaWeek, user.QuotaMonth)
+	}
+}
+
 func TestQuotaChargesImageUsageByRequestPrice(t *testing.T) {
 	t.Setenv("CPA_HELPER_DATA_DIR", t.TempDir())
 	app, err := New()
@@ -209,6 +277,87 @@ func TestQuotaMonthlyResetRestoresPausedKeys(t *testing.T) {
 	}
 	if len(remoteKeys) != 1 || remoteKeys[0] != apiKey {
 		t.Fatalf("remote keys = %#v, want restored key", remoteKeys)
+	}
+}
+
+func TestQuotaDailyAndWeeklyPeriodsResetIndependently(t *testing.T) {
+	t.Setenv("CPA_HELPER_DATA_DIR", t.TempDir())
+	app, err := New()
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	defer app.Close()
+
+	ctx := context.Background()
+	userID := seedQuotaTestUser(t, app, "member")
+	daily, weekly, monthly := 1.0, 2.0, 3.0
+	if _, err := app.updateUserQuota(ctx, userID, userQuotaPayload{
+		DailyQuotaUSD:   &daily,
+		WeeklyQuotaUSD:  &weekly,
+		MonthlyQuotaUSD: &monthly,
+	}); err != nil {
+		t.Fatalf("update quota: %v", err)
+	}
+	if _, err := app.db.Exec(`
+		UPDATE users
+		SET quota_day = '2000-01-01', quota_day_used_usd = 1,
+		    quota_week = '2000-W01', quota_week_used_usd = 2,
+		    quota_month_used_usd = 1
+		WHERE id = ?
+	`, userID); err != nil {
+		t.Fatal(err)
+	}
+
+	status, err := app.userQuotaStatus(ctx, userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.QuotaDay != quotaDay(time.Now()) || status.DailyUsedUSD != 0 || status.DailyRemainingUSD == nil || *status.DailyRemainingUSD != daily {
+		t.Fatalf("daily status after reset = %#v", status)
+	}
+	if status.QuotaWeek != quotaWeek(time.Now()) || status.WeeklyUsedUSD != 0 || status.WeeklyRemainingUSD == nil || *status.WeeklyRemainingUSD != weekly {
+		t.Fatalf("weekly status after reset = %#v", status)
+	}
+	if status.MonthlyUsedUSD != 1 || status.MonthlyRemainingUSD == nil || *status.MonthlyRemainingUSD != 2 {
+		t.Fatalf("monthly status should be preserved = %#v", status)
+	}
+}
+
+func TestQuotaWeekUsesISOWeekAcrossYearBoundary(t *testing.T) {
+	if got := quotaWeek(time.Date(2025, 12, 29, 0, 0, 0, 0, appTimeLocation)); got != "2026-W01" {
+		t.Fatalf("quotaWeek(2025-12-29) = %q, want 2026-W01", got)
+	}
+	if got := quotaWeek(time.Date(2026, 1, 4, 23, 59, 59, 0, appTimeLocation)); got != "2026-W01" {
+		t.Fatalf("quotaWeek(2026-01-04) = %q, want 2026-W01", got)
+	}
+	if got := quotaWeek(time.Date(2026, 1, 5, 0, 0, 0, 0, appTimeLocation)); got != "2026-W02" {
+		t.Fatalf("quotaWeek(2026-01-05) = %q, want 2026-W02", got)
+	}
+}
+
+func TestQuotaUnlimitedUsageSkipsCharges(t *testing.T) {
+	t.Setenv("CPA_HELPER_DATA_DIR", t.TempDir())
+	app, err := New()
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	defer app.Close()
+
+	ctx := context.Background()
+	userID := seedQuotaTestUser(t, app, "member")
+	apiKey := "sk-quota-unlimited"
+	seedQuotaTestAPIKey(t, app, userID, apiKey)
+	seedQuotaTestPrice(t, app, "openai", "gpt-unlimited", 1)
+	raw := `{"api_key":"` + apiKey + `","provider":"openai","model":"gpt-unlimited","input_tokens":1000000,"request_id":"quota-unlimited"}`
+	if _, created, err := app.saveUsageMessage(ctx, []byte(raw)); err != nil || !created {
+		t.Fatalf("usage created=%v err=%v", created, err)
+	}
+	var charges int
+	if err := app.db.QueryRow(`SELECT COUNT(*) FROM user_quota_charges`).Scan(&charges); err != nil {
+		t.Fatal(err)
+	}
+	if charges != 0 {
+		t.Fatalf("charge count = %d, want 0 for unlimited quota", charges)
 	}
 }
 

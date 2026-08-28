@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"math"
 	"net/http"
 	"strings"
@@ -15,6 +16,8 @@ const quotaPauseReasonExhausted = "quota_exhausted"
 type userQuotaPayload struct {
 	LifetimeQuotaUSD *float64 `json:"lifetime_quota_usd"`
 	MonthlyQuotaUSD  *float64 `json:"monthly_quota_usd"`
+	WeeklyQuotaUSD   *float64 `json:"weekly_quota_usd"`
+	DailyQuotaUSD    *float64 `json:"daily_quota_usd"`
 }
 
 type UserQuotaStatusResponse struct {
@@ -25,6 +28,14 @@ type UserQuotaStatusResponse struct {
 	MonthlyUsedUSD       float64    `json:"monthly_used_usd"`
 	MonthlyRemainingUSD  *float64   `json:"monthly_remaining_usd"`
 	QuotaMonth           string     `json:"quota_month"`
+	WeeklyQuotaUSD       *float64   `json:"weekly_quota_usd"`
+	WeeklyUsedUSD        float64    `json:"weekly_used_usd"`
+	WeeklyRemainingUSD   *float64   `json:"weekly_remaining_usd"`
+	QuotaWeek            string     `json:"quota_week"`
+	DailyQuotaUSD        *float64   `json:"daily_quota_usd"`
+	DailyUsedUSD         float64    `json:"daily_used_usd"`
+	DailyRemainingUSD    *float64   `json:"daily_remaining_usd"`
+	QuotaDay             string     `json:"quota_day"`
 	Paused               bool       `json:"paused"`
 	PausedAt             *time.Time `json:"paused_at"`
 	PauseReason          *string    `json:"pause_reason"`
@@ -63,11 +74,22 @@ func (a *App) updateUserQuota(ctx context.Context, userID int, payload userQuota
 	if err != nil {
 		return UserQuotaStatusResponse{}, err
 	}
+	weekly, err := normalizedQuotaAmount(payload.WeeklyQuotaUSD)
+	if err != nil {
+		return UserQuotaStatusResponse{}, err
+	}
+	daily, err := normalizedQuotaAmount(payload.DailyQuotaUSD)
+	if err != nil {
+		return UserQuotaStatusResponse{}, err
+	}
 
-	now := dbTime(time.Now())
-	currentMonth := quotaMonth(time.Now())
+	currentTime := time.Now()
+	now := dbTime(currentTime)
+	currentMonth := quotaMonth(currentTime)
+	currentWeek := quotaWeek(currentTime)
+	currentDay := quotaDay(currentTime)
 	var startedAt any
-	if lifetime != nil || monthly != nil {
+	if lifetime != nil || monthly != nil || weekly != nil || daily != nil {
 		if user.QuotaStartedAt != nil {
 			startedAt = dbTime(*user.QuotaStartedAt)
 		} else {
@@ -82,13 +104,32 @@ func (a *App) updateUserQuota(ctx context.Context, userID int, payload userQuota
 			monthUsed = mathRound(user.QuotaMonthUsedUSD, 8)
 		}
 	}
+	weekUsed := 0.0
+	weekValue := ""
+	if weekly != nil {
+		weekValue = currentWeek
+		if user.QuotaWeeklyUSD != nil && user.QuotaWeek == currentWeek {
+			weekUsed = mathRound(user.QuotaWeekUsedUSD, 8)
+		}
+	}
+	dayUsed := 0.0
+	dayValue := ""
+	if daily != nil {
+		dayValue = currentDay
+		if user.QuotaDailyUSD != nil && user.QuotaDay == currentDay {
+			dayUsed = mathRound(user.QuotaDayUsedUSD, 8)
+		}
+	}
 	_, err = a.db.ExecContext(ctx, `
 		UPDATE users
-		SET quota_lifetime_usd = ?, quota_monthly_usd = ?, quota_started_at = ?,
-		    quota_month = ?, quota_month_used_usd = ?, quota_sync_error = NULL,
+		SET quota_lifetime_usd = ?, quota_monthly_usd = ?, quota_weekly_usd = ?, quota_daily_usd = ?,
+		    quota_started_at = ?, quota_month = ?, quota_month_used_usd = ?,
+		    quota_week = ?, quota_week_used_usd = ?, quota_day = ?, quota_day_used_usd = ?,
+		    quota_sync_error = NULL,
 		    updated_at = ?
 		WHERE id = ?
-	`, quotaAmountArg(lifetime), quotaAmountArg(monthly), startedAt, monthValue, monthUsed, now, userID)
+	`, quotaAmountArg(lifetime), quotaAmountArg(monthly), quotaAmountArg(weekly), quotaAmountArg(daily),
+		startedAt, monthValue, monthUsed, weekValue, weekUsed, dayValue, dayUsed, now, userID)
 	if err != nil {
 		return UserQuotaStatusResponse{}, err
 	}
@@ -109,7 +150,7 @@ func (a *App) userQuotaStatus(ctx context.Context, userID int) (UserQuotaStatusR
 	if err != nil {
 		return UserQuotaStatusResponse{}, err
 	}
-	user, err = a.ensureQuotaMonth(ctx, user)
+	user, err = a.ensureQuotaPeriods(ctx, user)
 	if err != nil {
 		return UserQuotaStatusResponse{}, err
 	}
@@ -151,7 +192,7 @@ func (a *App) applyQuotaCharge(ctx context.Context, record UsageRecord) error {
 	if err != nil {
 		return err
 	}
-	user, err = a.ensureQuotaMonth(ctx, user)
+	user, err = a.ensureQuotaPeriods(ctx, user)
 	if err != nil {
 		return err
 	}
@@ -177,13 +218,27 @@ func (a *App) applyQuotaCharge(ctx context.Context, record UsageRecord) error {
 	}
 	amount, unpriced := recordCost(record, prices)
 	amount = mathRound(amount, 8)
-	monthlyDeducted, lifetimeDeducted := 0.0, 0.0
+	dailyDeducted, weeklyDeducted, monthlyDeducted, lifetimeDeducted := 0.0, 0.0, 0.0, 0.0
 	remaining := amount
 	if !unpriced && remaining > 0 {
-		if monthlyRemaining := quotaMonthlyRemaining(user); monthlyRemaining != nil && *monthlyRemaining > 0 {
-			monthlyDeducted = minQuotaAmount(remaining, *monthlyRemaining)
-			user.QuotaMonthUsedUSD = mathRound(user.QuotaMonthUsedUSD+monthlyDeducted, 8)
-			remaining = mathRound(remaining-monthlyDeducted, 8)
+		if dailyRemaining := quotaDailyRemaining(user); dailyRemaining != nil && *dailyRemaining > 0 {
+			dailyDeducted = minQuotaAmount(remaining, *dailyRemaining)
+			user.QuotaDayUsedUSD = mathRound(user.QuotaDayUsedUSD+dailyDeducted, 8)
+			remaining = mathRound(remaining-dailyDeducted, 8)
+		}
+		if remaining > 0 {
+			if weeklyRemaining := quotaWeeklyRemaining(user); weeklyRemaining != nil && *weeklyRemaining > 0 {
+				weeklyDeducted = minQuotaAmount(remaining, *weeklyRemaining)
+				user.QuotaWeekUsedUSD = mathRound(user.QuotaWeekUsedUSD+weeklyDeducted, 8)
+				remaining = mathRound(remaining-weeklyDeducted, 8)
+			}
+		}
+		if remaining > 0 {
+			if monthlyRemaining := quotaMonthlyRemaining(user); monthlyRemaining != nil && *monthlyRemaining > 0 {
+				monthlyDeducted = minQuotaAmount(remaining, *monthlyRemaining)
+				user.QuotaMonthUsedUSD = mathRound(user.QuotaMonthUsedUSD+monthlyDeducted, 8)
+				remaining = mathRound(remaining-monthlyDeducted, 8)
+			}
 		}
 		if remaining > 0 && user.QuotaLifetimeUSD != nil && *user.QuotaLifetimeUSD > 0 {
 			lifetimeDeducted = minQuotaAmount(remaining, *user.QuotaLifetimeUSD)
@@ -210,10 +265,12 @@ func (a *App) applyQuotaCharge(ctx context.Context, record UsageRecord) error {
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO user_quota_charges (
 			usage_record_id, user_id, usage_username, amount_usd,
-			monthly_deducted_usd, lifetime_deducted_usd, unpriced,
-			quota_month, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, record.ID, user.ID, user.Username, amount, monthlyDeducted, lifetimeDeducted, unpriced, nonBlank(user.QuotaMonth, quotaMonth(record.Timestamp)), now)
+			daily_deducted_usd, weekly_deducted_usd, monthly_deducted_usd, lifetime_deducted_usd, unpriced,
+			quota_day, quota_week, quota_month, created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, record.ID, user.ID, user.Username, amount, dailyDeducted, weeklyDeducted, monthlyDeducted,
+		lifetimeDeducted, unpriced, nonBlank(user.QuotaDay, quotaDay(record.Timestamp)),
+		nonBlank(user.QuotaWeek, quotaWeek(record.Timestamp)), nonBlank(user.QuotaMonth, quotaMonth(record.Timestamp)), now)
 	if err != nil {
 		if isUniqueConstraintError(err) {
 			return nil
@@ -222,10 +279,11 @@ func (a *App) applyQuotaCharge(ctx context.Context, record UsageRecord) error {
 	}
 	_, err = tx.ExecContext(ctx, `
 		UPDATE users
-		SET quota_month_used_usd = ?, quota_lifetime_usd = ?,
+		SET quota_day_used_usd = ?, quota_week_used_usd = ?, quota_month_used_usd = ?, quota_lifetime_usd = ?,
 		    quota_unpriced_records = ?, updated_at = ?
 		WHERE id = ?
-	`, mathRound(user.QuotaMonthUsedUSD, 8), quotaAmountArg(user.QuotaLifetimeUSD), user.QuotaUnpricedRecords, now, user.ID)
+	`, mathRound(user.QuotaDayUsedUSD, 8), mathRound(user.QuotaWeekUsedUSD, 8),
+		mathRound(user.QuotaMonthUsedUSD, 8), quotaAmountArg(user.QuotaLifetimeUSD), user.QuotaUnpricedRecords, now, user.ID)
 	if err != nil {
 		return err
 	}
@@ -240,19 +298,34 @@ func (a *App) applyQuotaCharge(ctx context.Context, record UsageRecord) error {
 	return nil
 }
 
-func (a *App) ensureQuotaMonth(ctx context.Context, user UserRecord) (UserRecord, error) {
-	if user.QuotaMonthlyUSD == nil {
-		return user, nil
+func (a *App) ensureQuotaPeriods(ctx context.Context, user UserRecord) (UserRecord, error) {
+	currentTime := time.Now()
+	changed := false
+	if user.QuotaDailyUSD != nil && user.QuotaDay != quotaDay(currentTime) {
+		user.QuotaDay = quotaDay(currentTime)
+		user.QuotaDayUsedUSD = 0
+		changed = true
 	}
-	current := quotaMonth(time.Now())
-	if user.QuotaMonth == current {
+	if user.QuotaWeeklyUSD != nil && user.QuotaWeek != quotaWeek(currentTime) {
+		user.QuotaWeek = quotaWeek(currentTime)
+		user.QuotaWeekUsedUSD = 0
+		changed = true
+	}
+	if user.QuotaMonthlyUSD != nil && user.QuotaMonth != quotaMonth(currentTime) {
+		user.QuotaMonth = quotaMonth(currentTime)
+		user.QuotaMonthUsedUSD = 0
+		changed = true
+	}
+	if !changed {
 		return user, nil
 	}
 	_, err := a.db.ExecContext(ctx, `
 		UPDATE users
-		SET quota_month = ?, quota_month_used_usd = 0, quota_sync_error = NULL, updated_at = ?
+		SET quota_day = ?, quota_day_used_usd = ?, quota_week = ?, quota_week_used_usd = ?,
+		    quota_month = ?, quota_month_used_usd = ?, quota_sync_error = NULL, updated_at = ?
 		WHERE id = ?
-	`, current, dbTime(time.Now()), user.ID)
+	`, user.QuotaDay, user.QuotaDayUsedUSD, user.QuotaWeek, user.QuotaWeekUsedUSD,
+		user.QuotaMonth, user.QuotaMonthUsedUSD, dbTime(currentTime), user.ID)
 	if err != nil {
 		return UserRecord{}, err
 	}
@@ -295,7 +368,7 @@ func (a *App) restoreQuotaPausedUserIfAvailable(ctx context.Context, userID int)
 	if err != nil {
 		return err
 	}
-	user, err = a.ensureQuotaMonth(ctx, user)
+	user, err = a.ensureQuotaPeriods(ctx, user)
 	if err != nil {
 		return err
 	}
@@ -348,6 +421,8 @@ func (a *App) setQuotaSyncMessage(ctx context.Context, userID int, message strin
 
 func quotaStatusFromUser(user UserRecord) UserQuotaStatusResponse {
 	monthlyRemaining := quotaMonthlyRemaining(user)
+	weeklyRemaining := quotaWeeklyRemaining(user)
+	dailyRemaining := quotaDailyRemaining(user)
 	var lifetimeRemaining *float64
 	if user.QuotaLifetimeUSD != nil {
 		value := mathRound(maxQuotaAmount(*user.QuotaLifetimeUSD, 0), 8)
@@ -361,6 +436,14 @@ func quotaStatusFromUser(user UserRecord) UserQuotaStatusResponse {
 		MonthlyUsedUSD:       mathRound(user.QuotaMonthUsedUSD, 8),
 		MonthlyRemainingUSD:  monthlyRemaining,
 		QuotaMonth:           user.QuotaMonth,
+		WeeklyQuotaUSD:       user.QuotaWeeklyUSD,
+		WeeklyUsedUSD:        mathRound(user.QuotaWeekUsedUSD, 8),
+		WeeklyRemainingUSD:   weeklyRemaining,
+		QuotaWeek:            user.QuotaWeek,
+		DailyQuotaUSD:        user.QuotaDailyUSD,
+		DailyUsedUSD:         mathRound(user.QuotaDayUsedUSD, 8),
+		DailyRemainingUSD:    dailyRemaining,
+		QuotaDay:             user.QuotaDay,
 		Paused:               user.QuotaPausedAt != nil,
 		PausedAt:             user.QuotaPausedAt,
 		PauseReason:          user.QuotaPauseReason,
@@ -372,17 +455,42 @@ func quotaStatusFromUser(user UserRecord) UserQuotaStatusResponse {
 }
 
 func quotaIsUnlimited(user UserRecord) bool {
-	return user.QuotaLifetimeUSD == nil && user.QuotaMonthlyUSD == nil
+	return user.QuotaLifetimeUSD == nil && user.QuotaMonthlyUSD == nil &&
+		user.QuotaWeeklyUSD == nil && user.QuotaDailyUSD == nil
 }
 
 func quotaHasAvailable(user UserRecord) bool {
 	if quotaIsUnlimited(user) {
 		return true
 	}
+	if dailyRemaining := quotaDailyRemaining(user); dailyRemaining != nil && *dailyRemaining > 0 {
+		return true
+	}
+	if weeklyRemaining := quotaWeeklyRemaining(user); weeklyRemaining != nil && *weeklyRemaining > 0 {
+		return true
+	}
 	if monthlyRemaining := quotaMonthlyRemaining(user); monthlyRemaining != nil && *monthlyRemaining > 0 {
 		return true
 	}
 	return user.QuotaLifetimeUSD != nil && *user.QuotaLifetimeUSD > 0
+}
+
+func quotaDailyRemaining(user UserRecord) *float64 {
+	if user.QuotaDailyUSD == nil {
+		return nil
+	}
+	remaining := mathRound(*user.QuotaDailyUSD-user.QuotaDayUsedUSD, 8)
+	remaining = maxQuotaAmount(remaining, 0)
+	return &remaining
+}
+
+func quotaWeeklyRemaining(user UserRecord) *float64 {
+	if user.QuotaWeeklyUSD == nil {
+		return nil
+	}
+	remaining := mathRound(*user.QuotaWeeklyUSD-user.QuotaWeekUsedUSD, 8)
+	remaining = maxQuotaAmount(remaining, 0)
+	return &remaining
 }
 
 func quotaMonthlyRemaining(user UserRecord) *float64 {
@@ -414,6 +522,15 @@ func quotaAmountArg(value *float64) any {
 
 func quotaMonth(value time.Time) string {
 	return value.In(appTimeLocation).Format("2006-01")
+}
+
+func quotaWeek(value time.Time) string {
+	year, week := value.In(appTimeLocation).ISOWeek()
+	return fmt.Sprintf("%04d-W%02d", year, week)
+}
+
+func quotaDay(value time.Time) string {
+	return value.In(appTimeLocation).Format("2006-01-02")
 }
 
 func minQuotaAmount(left, right float64) float64 {

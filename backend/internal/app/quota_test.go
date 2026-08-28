@@ -21,6 +21,8 @@ type quotaAPIStatusResponse struct {
 	Unlimited        bool     `json:"unlimited"`
 	LifetimeQuotaUSD *float64 `json:"lifetime_quota_usd"`
 	MonthlyQuotaUSD  *float64 `json:"monthly_quota_usd"`
+	WeeklyQuotaUSD   *float64 `json:"weekly_quota_usd"`
+	DailyQuotaUSD    *float64 `json:"daily_quota_usd"`
 	CanCreateKeys    bool     `json:"can_create_keys"`
 }
 
@@ -53,13 +55,20 @@ func TestQuotaAPIPermissionsAndAccountStatus(t *testing.T) {
 
 	lifetime := 1.25
 	monthly := 0.5
+	weekly := 0.3
+	daily := 0.1
 	updated := quotaAPIStatusResponse{}
 	requestJSON(t, handler, http.MethodPut, "/api/users/"+strconv.Itoa(member.ID)+"/quota", map[string]any{
 		"lifetime_quota_usd": lifetime,
 		"monthly_quota_usd":  monthly,
+		"weekly_quota_usd":   weekly,
+		"daily_quota_usd":    daily,
 	}, adminCookies, &updated)
-	if updated.Unlimited || updated.LifetimeQuotaUSD == nil || *updated.LifetimeQuotaUSD != lifetime || updated.MonthlyQuotaUSD == nil || *updated.MonthlyQuotaUSD != monthly {
-		t.Fatalf("updated quota = %#v, want configured lifetime and monthly quota", updated)
+	if updated.Unlimited || updated.LifetimeQuotaUSD == nil || *updated.LifetimeQuotaUSD != lifetime ||
+		updated.MonthlyQuotaUSD == nil || *updated.MonthlyQuotaUSD != monthly ||
+		updated.WeeklyQuotaUSD == nil || *updated.WeeklyQuotaUSD != weekly ||
+		updated.DailyQuotaUSD == nil || *updated.DailyQuotaUSD != daily {
+		t.Fatalf("updated quota = %#v, want all four configured quotas", updated)
 	}
 
 	memberCookies := requestJSON(t, handler, http.MethodPost, "/api/auth/login", map[string]any{
@@ -69,8 +78,11 @@ func TestQuotaAPIPermissionsAndAccountStatus(t *testing.T) {
 
 	accountQuota := quotaAPIStatusResponse{}
 	requestJSON(t, handler, http.MethodGet, "/api/account/quota", nil, memberCookies, &accountQuota)
-	if accountQuota.LifetimeQuotaUSD == nil || *accountQuota.LifetimeQuotaUSD != lifetime || accountQuota.MonthlyQuotaUSD == nil || *accountQuota.MonthlyQuotaUSD != monthly {
-		t.Fatalf("account quota = %#v, want member quota", accountQuota)
+	if accountQuota.LifetimeQuotaUSD == nil || *accountQuota.LifetimeQuotaUSD != lifetime ||
+		accountQuota.MonthlyQuotaUSD == nil || *accountQuota.MonthlyQuotaUSD != monthly ||
+		accountQuota.WeeklyQuotaUSD == nil || *accountQuota.WeeklyQuotaUSD != weekly ||
+		accountQuota.DailyQuotaUSD == nil || *accountQuota.DailyQuotaUSD != daily {
+		t.Fatalf("account quota = %#v, want all four member quotas", accountQuota)
 	}
 
 	requestJSONExpectStatus(t, handler, http.MethodPut, "/api/users/"+strconv.Itoa(member.ID)+"/quota", map[string]any{

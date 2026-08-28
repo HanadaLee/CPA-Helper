@@ -102,6 +102,12 @@ func TestRunMigrationsCreatesGooseVersionAndFinalSchema(t *testing.T) {
 	if !testColumnExists(t, app.db, "users", "quota_monthly_usd") {
 		t.Fatal("users.quota_monthly_usd was not created")
 	}
+	if !testColumnExists(t, app.db, "users", "quota_weekly_usd") {
+		t.Fatal("users.quota_weekly_usd was not created")
+	}
+	if !testColumnExists(t, app.db, "users", "quota_daily_usd") {
+		t.Fatal("users.quota_daily_usd was not created")
+	}
 	if !testTableExists(t, app.db, "user_quota_charges") {
 		t.Fatal("user_quota_charges was not created")
 	}
@@ -113,6 +119,12 @@ func TestRunMigrationsCreatesGooseVersionAndFinalSchema(t *testing.T) {
 	}
 	if !testColumnExists(t, app.db, "user_quota_charges", "lifetime_deducted_usd") {
 		t.Fatal("user_quota_charges.lifetime_deducted_usd was not created")
+	}
+	if !testColumnExists(t, app.db, "user_quota_charges", "weekly_deducted_usd") {
+		t.Fatal("user_quota_charges.weekly_deducted_usd was not created")
+	}
+	if !testColumnExists(t, app.db, "user_quota_charges", "daily_deducted_usd") {
+		t.Fatal("user_quota_charges.daily_deducted_usd was not created")
 	}
 	if !testColumnExists(t, app.db, "user_card_shop_favorites", "shop_key") {
 		t.Fatal("user_card_shop_favorites.shop_key was not created")

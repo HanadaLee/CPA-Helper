@@ -524,6 +524,14 @@ export interface UserQuotaStatus {
   monthly_used_usd: number
   monthly_remaining_usd: number | null
   quota_month: string
+  weekly_quota_usd: number | null
+  weekly_used_usd: number
+  weekly_remaining_usd: number | null
+  quota_week: string
+  daily_quota_usd: number | null
+  daily_used_usd: number
+  daily_remaining_usd: number | null
+  quota_day: string
   paused: boolean
   paused_at: string | null
   pause_reason: string | null
@@ -622,6 +630,8 @@ export interface UserPayload {
 export interface UserQuotaPayload {
   lifetime_quota_usd: number | null
   monthly_quota_usd: number | null
+  weekly_quota_usd: number | null
+  daily_quota_usd: number | null
 }
 
 export interface UserApiKeyBindPayload {

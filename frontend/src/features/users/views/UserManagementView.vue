@@ -45,6 +45,8 @@ const userNickname = ref('')
 const quotaUnlimited = ref(true)
 const quotaLifetimeUsd = ref(0)
 const quotaMonthlyUsd = ref(0)
+const quotaWeeklyUsd = ref(0)
+const quotaDailyUsd = ref(0)
 const isEditingFirstUser = computed(() => editingUserId.value === 1)
 
 interface UserMetricCard {
@@ -101,12 +103,18 @@ function userLabel(row: UserSummary): string {
   return row.nickname.trim() || row.username.trim() || t('未知用户', 'Unknown user')
 }
 
-function quotaBalanceValue(row: UserSummary, bucket: 'monthly' | 'lifetime'): string {
+function quotaBalanceValue(row: UserSummary, bucket: 'monthly' | 'weekly' | 'daily' | 'lifetime'): string {
   if (row.quota.unlimited) {
     return t('无限制', 'Unlimited')
   }
 
-  const value = bucket === 'monthly' ? row.quota.monthly_remaining_usd : row.quota.lifetime_remaining_usd
+  const values = {
+    monthly: row.quota.monthly_remaining_usd,
+    weekly: row.quota.weekly_remaining_usd,
+    daily: row.quota.daily_remaining_usd,
+    lifetime: row.quota.lifetime_remaining_usd,
+  }
+  const value = values[bucket]
   return formatUsd(value)
 }
 
@@ -170,6 +178,14 @@ function setQuotaMonthlyUsd(value: number | null) {
   quotaMonthlyUsd.value = value ?? 0
 }
 
+function setQuotaWeeklyUsd(value: number | null) {
+  quotaWeeklyUsd.value = value ?? 0
+}
+
+function setQuotaDailyUsd(value: number | null) {
+  quotaDailyUsd.value = value ?? 0
+}
+
 function resetEditor() {
   editingUserId.value = null
   userAccount.value = ''
@@ -179,6 +195,8 @@ function resetEditor() {
   quotaUnlimited.value = true
   quotaLifetimeUsd.value = 0
   quotaMonthlyUsd.value = 0
+  quotaWeeklyUsd.value = 0
+  quotaDailyUsd.value = 0
 }
 
 function openCreateUser() {
@@ -196,6 +214,8 @@ function editUser(row: UserSummary) {
   quotaUnlimited.value = row.quota.unlimited
   quotaLifetimeUsd.value = row.quota.lifetime_quota_usd ?? 0
   quotaMonthlyUsd.value = row.quota.monthly_quota_usd ?? 0
+  quotaWeeklyUsd.value = row.quota.weekly_quota_usd ?? 0
+  quotaDailyUsd.value = row.quota.daily_quota_usd ?? 0
   editorVisible.value = true
 }
 
@@ -266,6 +286,8 @@ async function saveUser() {
     await updateUserQuota(saved.id, {
       lifetime_quota_usd: quotaUnlimited.value ? null : quotaLifetimeUsd.value,
       monthly_quota_usd: quotaUnlimited.value ? null : quotaMonthlyUsd.value,
+      weekly_quota_usd: quotaUnlimited.value ? null : quotaWeeklyUsd.value,
+      daily_quota_usd: quotaUnlimited.value ? null : quotaDailyUsd.value,
     })
     message.success(isEditing ? t('用户已保存', 'User saved') : t('用户已创建', 'User created'))
     editorVisible.value = false
@@ -320,11 +342,19 @@ const columns = computed<DataTableColumns<UserSummary>>(() => [
       const detail = quotaDetail(row)
       return h('div', { class: ['metric-stack', 'quota-balance-stack'] }, [
         h('div', { class: ['quota-balance-row', 'is-monthly', quotaBalanceClass(row)] }, [
-          h('span', { class: 'quota-balance-label' }, t('每月余额：', 'Monthly: ')),
+          h('span', { class: 'quota-balance-label' }, t('每月：', 'Monthly: ')),
           h('strong', { class: 'quota-balance-value' }, quotaBalanceValue(row, 'monthly')),
         ]),
+        h('div', { class: ['quota-balance-row', 'is-weekly', quotaBalanceClass(row)] }, [
+          h('span', { class: 'quota-balance-label' }, t('每周：', 'Weekly: ')),
+          h('strong', { class: 'quota-balance-value' }, quotaBalanceValue(row, 'weekly')),
+        ]),
+        h('div', { class: ['quota-balance-row', 'is-daily', quotaBalanceClass(row)] }, [
+          h('span', { class: 'quota-balance-label' }, t('每日：', 'Daily: ')),
+          h('strong', { class: 'quota-balance-value' }, quotaBalanceValue(row, 'daily')),
+        ]),
         h('div', { class: ['quota-balance-row', 'is-lifetime', quotaBalanceClass(row)] }, [
-          h('span', { class: 'quota-balance-label' }, t('不限时余额：', 'Lifetime: ')),
+          h('span', { class: 'quota-balance-label' }, t('不限时：', 'Lifetime: ')),
           h('strong', { class: 'quota-balance-value' }, quotaBalanceValue(row, 'lifetime')),
         ]),
         ...(detail
@@ -551,14 +581,24 @@ onMounted(refresh)
           </div>
         </NFormItem>
         <div class="form-grid quota-editor-grid">
-          <NFormItem :label="t('不限时余额 USD', 'Lifetime balance USD')">
+          <NFormItem :label="t('每日余额 USD', 'Daily balance USD')">
             <NInputNumber
-              :value="quotaLifetimeUsd"
+              :value="quotaDailyUsd"
               :disabled="quotaUnlimited"
               :min="0"
               :precision="8"
               placeholder="0"
-              @update:value="setQuotaLifetimeUsd"
+              @update:value="setQuotaDailyUsd"
+            />
+          </NFormItem>
+          <NFormItem :label="t('每周余额 USD', 'Weekly balance USD')">
+            <NInputNumber
+              :value="quotaWeeklyUsd"
+              :disabled="quotaUnlimited"
+              :min="0"
+              :precision="8"
+              placeholder="0"
+              @update:value="setQuotaWeeklyUsd"
             />
           </NFormItem>
           <NFormItem :label="t('每月余额 USD', 'Monthly balance USD')">
@@ -571,9 +611,19 @@ onMounted(refresh)
               @update:value="setQuotaMonthlyUsd"
             />
           </NFormItem>
+          <NFormItem :label="t('不限时余额 USD', 'Lifetime balance USD')">
+            <NInputNumber
+              :value="quotaLifetimeUsd"
+              :disabled="quotaUnlimited"
+              :min="0"
+              :precision="8"
+              placeholder="0"
+              @update:value="setQuotaLifetimeUsd"
+            />
+          </NFormItem>
         </div>
         <NAlert type="info" :bordered="false" class="quota-editor-hint">
-          {{ t('关闭不限制后，扣费顺序：先扣每月余额，不足部分再扣不限时余额；两者都无剩余时暂停该用户的 API Key。', 'After unlimited balance is disabled, charges are deducted from monthly balance first, then lifetime balance. If neither has remaining balance, the user API keys are paused.') }}
+          {{ t('关闭不限制后，扣费顺序：每日、每周、每月、不限时；全部余额都无剩余时暂停该用户的 API Key。', 'After unlimited balance is disabled, charges are deducted from daily, weekly, monthly, then lifetime balance. If all balances are exhausted, the user API keys are paused.') }}
         </NAlert>
         <div class="user-editor-actions">
           <NButton secondary @click="editorVisible = false">{{ t('取消', 'Cancel') }}</NButton>
@@ -667,9 +717,19 @@ onMounted(refresh)
   color: var(--cpa-success);
 }
 
+:global(.quota-balance-row.is-weekly.is-normal) {
+  background: var(--cpa-accent-blue-weak);
+  color: var(--cpa-accent-blue);
+}
+
+:global(.quota-balance-row.is-daily.is-normal) {
+  background: var(--cpa-accent-orange-weak);
+  color: var(--cpa-accent-orange);
+}
+
 :global(.quota-balance-row.is-lifetime.is-normal) {
-  background: var(--cpa-primary-weak);
-  color: var(--cpa-primary);
+  background: var(--cpa-accent-purple-weak);
+  color: var(--cpa-accent-purple);
 }
 
 :global(.quota-balance-row.is-unlimited) {

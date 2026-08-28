@@ -45,9 +45,15 @@ type UserRecord struct {
 	UpdatedAt            time.Time
 	QuotaLifetimeUSD     *float64
 	QuotaMonthlyUSD      *float64
+	QuotaWeeklyUSD       *float64
+	QuotaDailyUSD        *float64
 	QuotaStartedAt       *time.Time
 	QuotaMonth           string
 	QuotaMonthUsedUSD    float64
+	QuotaWeek            string
+	QuotaWeekUsedUSD     float64
+	QuotaDay             string
+	QuotaDayUsedUSD      float64
 	QuotaPausedAt        *time.Time
 	QuotaPauseReason     *string
 	QuotaSyncError       *string
@@ -470,7 +476,7 @@ func (a *App) enableUser(ctx context.Context, id int) error {
 	if user.DisabledAt == nil {
 		return nil
 	}
-	user, err = a.ensureQuotaMonth(ctx, user)
+	user, err = a.ensureQuotaPeriods(ctx, user)
 	if err != nil {
 		return err
 	}
@@ -689,7 +695,9 @@ func (a *App) generateUniqueAPIKey(ctx context.Context) (string, error) {
 
 const userSelectColumns = `id, username, is_admin, nickname, CAST(disabled_at AS TEXT), password_hash, password_salt,
 	CAST(created_at AS TEXT), CAST(updated_at AS TEXT), quota_lifetime_usd, quota_monthly_usd,
-	CAST(quota_started_at AS TEXT), quota_month, quota_month_used_usd, CAST(quota_paused_at AS TEXT),
+	quota_weekly_usd, quota_daily_usd, CAST(quota_started_at AS TEXT),
+	quota_month, quota_month_used_usd, quota_week, quota_week_used_usd, quota_day, quota_day_used_usd,
+	CAST(quota_paused_at AS TEXT),
 	quota_pause_reason, quota_sync_error, quota_unpriced_records`
 
 func (a *App) allUsers(ctx context.Context) ([]UserRecord, error) {
@@ -716,12 +724,15 @@ type userScanner interface {
 func scanUser(scanner userScanner) (UserRecord, error) {
 	var user UserRecord
 	var disabledAt, passwordHash, passwordSalt, createdAt, updatedAt, quotaStartedAt, quotaPausedAt, quotaPauseReason, quotaSyncError sql.NullString
-	var quotaLifetime, quotaMonthly, quotaMonthUsed sql.NullFloat64
+	var quotaLifetime, quotaMonthly, quotaWeekly, quotaDaily sql.NullFloat64
+	var quotaMonthUsed, quotaWeekUsed, quotaDayUsed sql.NullFloat64
 	var quotaUnpriced sql.NullInt64
 	err := scanner.Scan(
 		&user.ID, &user.Username, &user.IsAdmin, &user.Nickname, &disabledAt,
 		&passwordHash, &passwordSalt, &createdAt, &updatedAt, &quotaLifetime,
-		&quotaMonthly, &quotaStartedAt, &user.QuotaMonth, &quotaMonthUsed,
+		&quotaMonthly, &quotaWeekly, &quotaDaily, &quotaStartedAt,
+		&user.QuotaMonth, &quotaMonthUsed, &user.QuotaWeek, &quotaWeekUsed,
+		&user.QuotaDay, &quotaDayUsed,
 		&quotaPausedAt, &quotaPauseReason, &quotaSyncError, &quotaUnpriced,
 	)
 	if err != nil {
@@ -732,9 +743,17 @@ func scanUser(scanner userScanner) (UserRecord, error) {
 	user.PasswordSalt = nullableString(passwordSalt)
 	user.QuotaLifetimeUSD = nullableFloat(quotaLifetime)
 	user.QuotaMonthlyUSD = nullableFloat(quotaMonthly)
+	user.QuotaWeeklyUSD = nullableFloat(quotaWeekly)
+	user.QuotaDailyUSD = nullableFloat(quotaDaily)
 	user.QuotaStartedAt = timePtr(quotaStartedAt)
 	if quotaMonthUsed.Valid {
 		user.QuotaMonthUsedUSD = quotaMonthUsed.Float64
+	}
+	if quotaWeekUsed.Valid {
+		user.QuotaWeekUsedUSD = quotaWeekUsed.Float64
+	}
+	if quotaDayUsed.Valid {
+		user.QuotaDayUsedUSD = quotaDayUsed.Float64
 	}
 	user.QuotaPausedAt = timePtr(quotaPausedAt)
 	user.QuotaPauseReason = nullableString(quotaPauseReason)

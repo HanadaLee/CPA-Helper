@@ -298,12 +298,14 @@ function quotaValueText(quota: UserQuotaStatus | null): string {
     return t('加载中', 'Loading')
   }
   if (quota.unlimited) {
-    return t('每月余额 无限制', 'Monthly balance unlimited')
+    return t('无限制', 'Unlimited')
   }
-  return t(
-    `每月余额 ${formatUsd(quota.monthly_remaining_usd ?? 0)}`,
-    `Monthly balance ${formatUsd(quota.monthly_remaining_usd ?? 0)}`,
-  )
+  const total =
+    (quota.daily_remaining_usd ?? 0) +
+    (quota.weekly_remaining_usd ?? 0) +
+    (quota.monthly_remaining_usd ?? 0) +
+    (quota.lifetime_remaining_usd ?? 0)
+  return formatUsd(total)
 }
 
 function quotaFootnote(quota: UserQuotaStatus | null): string {
@@ -311,11 +313,14 @@ function quotaFootnote(quota: UserQuotaStatus | null): string {
     return t('额度加载中', 'Quota loading')
   }
   if (quota.unlimited) {
-    return t('不限时余额 无限制', 'Lifetime balance unlimited')
+    return t(
+      '每月 无限制 / 每周 无限制 / 每日 无限制 / 不限时 无限制',
+      'Monthly unlimited / Weekly unlimited / Daily unlimited / Lifetime unlimited',
+    )
   }
-  const lifetimeText = t(
-    `不限时余额 ${formatUsd(quota.lifetime_remaining_usd ?? 0)}`,
-    `Lifetime balance ${formatUsd(quota.lifetime_remaining_usd ?? 0)}`,
+  const balancesText = t(
+    `每月 ${formatUsd(quota.monthly_remaining_usd ?? 0)} / 每周 ${formatUsd(quota.weekly_remaining_usd ?? 0)} / 每日 ${formatUsd(quota.daily_remaining_usd ?? 0)} / 不限时 ${formatUsd(quota.lifetime_remaining_usd ?? 0)}`,
+    `Monthly ${formatUsd(quota.monthly_remaining_usd ?? 0)} / Weekly ${formatUsd(quota.weekly_remaining_usd ?? 0)} / Daily ${formatUsd(quota.daily_remaining_usd ?? 0)} / Lifetime ${formatUsd(quota.lifetime_remaining_usd ?? 0)}`,
   )
   const notes: string[] = []
   if (quota.sync_error) {
@@ -327,7 +332,7 @@ function quotaFootnote(quota: UserQuotaStatus | null): string {
   if (quota.paused) {
     notes.push(t('Key 已因余额暂停', 'Key paused due to balance'))
   }
-  return notes.length > 0 ? `${lifetimeText} · ${notes.join(' · ')}` : lifetimeText
+  return notes.length > 0 ? `${balancesText} · ${notes.join(' · ')}` : balancesText
 }
 
 function modelOptionLabel(model: AvailableModel): string {
@@ -733,7 +738,7 @@ onMounted(refresh)
         </NAlert>
 
         <NAlert v-if="quotaStatus?.paused" type="error" :bordered="false" :title="t('额度已用尽', 'Quota exhausted')">
-          {{ t('当前账号 API KEY 已从 CPA 暂停。补充额度或进入新月份恢复月额度后，系统会自动恢复可用 Key。', 'API keys for this account are paused in CPA. After quota is added or monthly quota resets, available keys are restored automatically.') }}
+          {{ t('当前账号 API KEY 已从 CPA 暂停。补充额度或进入新的日、周、月周期后，系统会自动恢复可用 Key。', 'API keys for this account are paused in CPA. Available keys are restored automatically after quota is added or a new daily, weekly, or monthly period begins.') }}
         </NAlert>
         <NAlert v-else-if="quotaStatus?.unpriced_records" type="warning" :bordered="false">
           {{ t(`当前账号存在 ${formatInteger(quotaStatus.unpriced_records)} 条未定价用量，未计入额度扣减。`, `This account has ${formatInteger(quotaStatus.unpriced_records)} unpriced usage records that are not deducted from quota.`) }}
