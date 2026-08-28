@@ -781,28 +781,29 @@ function quotaValueText(quota: UserQuotaStatus | null): string {
     return t('加载中', 'Loading')
   }
   if (quota.unlimited) {
-    return t('每日余额 无限制', 'Daily balance unlimited')
+    return t('可用余额 无限制', 'Available balance unlimited')
   }
-  return t(
-    `每日余额 ${formatUsd(quota.daily_remaining_usd ?? 0)}`,
-    `Daily balance ${formatUsd(quota.daily_remaining_usd ?? 0)}`,
-  )
+  const total =
+    (quota.daily_remaining_usd ?? 0) +
+    (quota.weekly_remaining_usd ?? 0) +
+    (quota.monthly_remaining_usd ?? 0) +
+    (quota.lifetime_remaining_usd ?? 0)
+  return t(`可用余额 ${formatUsd(total)}`, `Available balance ${formatUsd(total)}`)
 }
 
-function quotaFootnote(quota: UserQuotaStatus | null): string {
+function quotaStatusTitle(quota: UserQuotaStatus | null): string {
   if (!quota) {
     return t('额度加载中', 'Quota loading')
   }
-  if (quota.unlimited) {
-    return t(
-      '每周余额 无限制 / 每月余额 无限制 / 不限时余额 无限制',
-      'Weekly balance unlimited / Monthly balance unlimited / Lifetime balance unlimited',
-    )
-  }
-  const balancesText = t(
-    `每周余额 ${formatUsd(quota.weekly_remaining_usd ?? 0)} / 每月余额 ${formatUsd(quota.monthly_remaining_usd ?? 0)} / 不限时余额 ${formatUsd(quota.lifetime_remaining_usd ?? 0)}`,
-    `Weekly balance ${formatUsd(quota.weekly_remaining_usd ?? 0)} / Monthly balance ${formatUsd(quota.monthly_remaining_usd ?? 0)} / Lifetime balance ${formatUsd(quota.lifetime_remaining_usd ?? 0)}`,
-  )
+  const balancesText = quota.unlimited
+    ? t(
+        '每日 无限制 / 每周 无限制 / 每月 无限制 / 不限时 无限制',
+        'Daily unlimited / Weekly unlimited / Monthly unlimited / Lifetime unlimited',
+      )
+    : t(
+        `每日 ${formatUsd(quota.daily_remaining_usd ?? 0)} / 每周 ${formatUsd(quota.weekly_remaining_usd ?? 0)} / 每月 ${formatUsd(quota.monthly_remaining_usd ?? 0)} / 不限时 ${formatUsd(quota.lifetime_remaining_usd ?? 0)}`,
+        `Daily ${formatUsd(quota.daily_remaining_usd ?? 0)} / Weekly ${formatUsd(quota.weekly_remaining_usd ?? 0)} / Monthly ${formatUsd(quota.monthly_remaining_usd ?? 0)} / Lifetime ${formatUsd(quota.lifetime_remaining_usd ?? 0)}`,
+      )
   const notes: string[] = []
   if (quota.sync_error) {
     notes.push(t('Key 同步异常', 'Key sync error'))
@@ -1302,11 +1303,10 @@ onBeforeUnmount(() => {
             'is-paused': quotaStatus?.paused,
             'is-warning': (quotaStatus?.unpriced_records ?? 0) > 0 || !!quotaStatus?.sync_error,
           }"
-          :title="quotaFootnote(quotaStatus)"
+          :title="quotaStatusTitle(quotaStatus)"
         >
           <CircleDollarSign :size="14" :stroke-width="2.2" aria-hidden="true" />
           <strong>{{ quotaValueText(quotaStatus) }}</strong>
-          <small>{{ quotaFootnote(quotaStatus) }}</small>
         </span>
         <span class="refresh-status" :class="{ 'is-error': autoRefreshError }">
           {{ refreshStatusText }}
@@ -1848,20 +1848,10 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
-.quota-status-pill strong,
-.quota-status-pill small {
+.quota-status-pill strong {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.quota-status-pill strong {
-  color: var(--cpa-text-strong);
-  font-size: 12px;
-  font-weight: 760;
-}
-
-.quota-status-pill small {
   color: var(--cpa-text-strong);
   font-size: 12px;
   font-weight: 760;
