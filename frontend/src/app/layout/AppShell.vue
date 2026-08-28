@@ -132,7 +132,7 @@ const accountInspectionMenuItems = computed<MenuOption[]>(() => [
     key: '/admin/account-inspection',
     icon: renderIcon(Activity),
   },
-  { label: t('账号状态', 'Account Status'), key: '/admin/account-status', icon: renderIcon(ListChecks) },
+  { label: t('账号管理', 'Account Management'), key: '/admin/account-status', icon: renderIcon(ListChecks) },
 ])
 
 const showAccountStatusForUser = computed(

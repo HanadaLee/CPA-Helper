@@ -15,6 +15,7 @@ import {
   NPagination,
   NSelect,
   NSpace,
+  NSwitch,
   NTag,
   useMessage,
   type DataTableColumns,
@@ -28,11 +29,13 @@ import {
   CircleDot,
   Gauge,
   PauseCircle,
+  Pencil,
   RefreshCw,
   ShieldAlert,
   ShieldCheck,
   Table2,
   Trash2,
+  Upload,
   Users,
 } from 'lucide-vue-next'
 
@@ -41,14 +44,18 @@ import {
   deleteCodexKeeperAccount,
   disableCodexKeeperAccount,
   enableCodexKeeperAccount,
+  getCodexKeeperAuthFile,
   getCodexKeeperStatus,
   listCodexKeeperAccounts,
   refreshCodexKeeperAccounts,
+  updateCodexKeeperAuthFile,
   updateCodexKeeperPriority,
+  uploadCodexKeeperAuthFiles,
 } from '@/features/codex-keeper/api/codexKeeperApi'
 import { useCurrentUser } from '@/features/auth/state/currentUser'
 import type {
   CodexKeeperAccount,
+  CodexKeeperAuthFileFields,
   CodexKeeperPriorityRule,
   CodexKeeperQuotaWindowUsage,
   CodexKeeperStatus,
@@ -89,8 +96,29 @@ type AccountStatusPreferences = {
     direction?: unknown
   }
 }
+type AuthFileEditorState = {
+  fileName: string
+  fileInfoText: string
+  loading: boolean
+  saving: boolean
+  error: string | null
+  rawText: string
+  invalidContentPreview: string
+  json: Record<string, unknown> | null
+  prefix: string
+  proxyUrl: string
+  priority: string
+  websockets: boolean
+  websocketsTouched: boolean
+  note: string
+  noteTouched: boolean
+  headersText: string
+  headersTouched: boolean
+  headersError: string | null
+}
 
 const ACCOUNT_STATUS_PREFERENCE_STORAGE_KEY = 'cpa-helper-codex-keeper-status-preferences'
+const AUTH_FILE_MAX_SIZE = 10 * 1024 * 1024
 const ACCOUNT_TABLE_MIN_ROW_HEIGHT = 52
 const ACCOUNT_TABLE_MAX_HEIGHT = 'min(620px, max(320px, calc(100dvh - 430px)))'
 const ACCOUNT_TABLE_VIRTUAL_THRESHOLD = 200
@@ -107,6 +135,20 @@ const message = useMessage()
 const { currentLanguage, errorText, keeperStatusText, serverText, t } = useI18n()
 const { currentUser } = useCurrentUser()
 const canManageAccounts = computed(() => currentUser.value?.is_admin === true)
+const accountPageTitle = computed(() =>
+  canManageAccounts.value ? t('账号管理', 'Account Management') : t('账号状态', 'Account Status'),
+)
+const accountPageSubtitle = computed(() =>
+  canManageAccounts.value
+    ? t(
+        '管理 Codex auth file 的健康、额度、优先级和认证文件',
+        'Manage Codex auth file health, quota, priority, and credential files',
+      )
+    : t(
+        '查看 Codex auth file 的健康、额度和优先级维护结果',
+        'View Codex auth file health, quota, and priority maintenance results',
+      ),
+)
 const disabledTableScrollX = computed(() =>
   canManageAccounts.value ? disabledManageTableScrollX : disabledReadOnlyTableScrollX,
 )
@@ -125,6 +167,9 @@ const selectedDisabledAccountKeys = ref<DataTableRowKey[]>([])
 const refreshSelectMode = ref(false)
 const selectedRefreshAccountNames = ref<string[]>([])
 const detailOpen = ref(false)
+const authFileInput = ref<HTMLInputElement | null>(null)
+const isUploadingAuthFiles = ref(false)
+const authFileEditor = ref<AuthFileEditorState | null>(null)
 const accountDisplaySize = ref<AccountDisplaySize>(50)
 const disabledAccountPage = ref(1)
 const normalAccountPage = ref(1)
@@ -1407,6 +1452,375 @@ function accountTableRowProps(account: CodexKeeperAccount) {
   }
 }
 
+function authFileStringField(value: unknown): string {
+  return typeof value === 'string' ? value : ''
+}
+
+function authFileBooleanField(value: unknown): boolean {
+  if (typeof value === 'boolean') {
+    return value
+  }
+  if (typeof value === 'number') {
+    return value !== 0
+  }
+  if (typeof value === 'string') {
+    return ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase())
+  }
+  return false
+}
+
+function authFilePriorityField(value: unknown): string {
+  if (typeof value === 'number' && Number.isFinite(value) && Number.isInteger(value)) {
+    return String(value)
+  }
+  if (typeof value === 'string' && /^[-+]?\d+$/.test(value.trim())) {
+    return value.trim()
+  }
+  return ''
+}
+
+function authFileHeadersField(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {}
+  }
+  return Object.fromEntries(
+    Object.entries(value).filter(([, headerValue]) => typeof headerValue === 'string'),
+  )
+}
+
+function parseAuthFileHeaders(value: string): Record<string, string> {
+  if (!value.trim()) {
+    return {}
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(value)
+  } catch {
+    throw new Error(t('自定义请求头必须是有效的 JSON。', 'Custom headers must be valid JSON.'))
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error(t('自定义请求头必须是 JSON 对象。', 'Custom headers must be a JSON object.'))
+  }
+  const entries = Object.entries(parsed)
+  if (entries.some(([, headerValue]) => typeof headerValue !== 'string')) {
+    throw new Error(t('每个自定义请求头的值都必须是字符串。', 'Every custom header value must be a string.'))
+  }
+  return Object.fromEntries(entries as Array<[string, string]>)
+}
+
+function buildAuthFileEditorFields(editor: AuthFileEditorState): CodexKeeperAuthFileFields {
+  if (!editor.json) {
+    return {}
+  }
+  const original = editor.json
+  const fields: CodexKeeperAuthFileFields = {}
+  if (editor.prefix.trim() !== authFileStringField(original.prefix).trim()) {
+    fields.prefix = editor.prefix.trim()
+  }
+  if (editor.proxyUrl.trim() !== authFileStringField(original.proxy_url).trim()) {
+    fields.proxy_url = editor.proxyUrl.trim()
+  }
+  const originalPriority = authFilePriorityField(original.priority)
+  const nextPriority = editor.priority.trim()
+  if (nextPriority !== originalPriority) {
+    if (nextPriority === '') {
+      fields.priority = 0
+    } else if (!/^[-+]?\d+$/.test(nextPriority)) {
+      throw new Error(t('认证文件优先级必须是整数。', 'Auth file priority must be an integer.'))
+    } else {
+      const priority = Number(nextPriority)
+      if (!Number.isSafeInteger(priority)) {
+        throw new Error(t('认证文件优先级必须是安全整数。', 'Auth file priority must be a safe integer.'))
+      }
+      fields.priority = priority
+    }
+  }
+  if (editor.websocketsTouched && editor.websockets !== authFileBooleanField(original.websockets ?? original.websocket)) {
+    fields.websockets = editor.websockets
+  }
+  if (editor.noteTouched && editor.note.trim() !== authFileStringField(original.note).trim()) {
+    fields.note = editor.note.trim()
+  }
+  if (editor.headersTouched) {
+    const nextHeaders = parseAuthFileHeaders(editor.headersText)
+    const originalHeaders = authFileHeadersField(original.headers)
+    const headerPatch: Record<string, string> = {}
+    Object.entries(nextHeaders).forEach(([name, value]) => {
+      if (originalHeaders[name] !== value) {
+        headerPatch[name] = value
+      }
+    })
+    Object.keys(originalHeaders).forEach((name) => {
+      if (!(name in nextHeaders)) {
+        headerPatch[name] = ''
+      }
+    })
+    if (Object.keys(headerPatch).length > 0) {
+      fields.headers = headerPatch
+    }
+  }
+  return fields
+}
+
+function buildAuthFileUpdatedText(editor: AuthFileEditorState): string {
+  if (!editor.json) {
+    return editor.rawText
+  }
+  const fields = buildAuthFileEditorFields(editor)
+  const updated: Record<string, unknown> = { ...editor.json }
+  if (fields.prefix !== undefined) {
+    if (fields.prefix) {
+      updated.prefix = fields.prefix
+    } else {
+      delete updated.prefix
+    }
+  }
+  if (fields.proxy_url !== undefined) {
+    if (fields.proxy_url) {
+      updated.proxy_url = fields.proxy_url
+    } else {
+      delete updated.proxy_url
+    }
+  }
+  if (fields.priority !== undefined) {
+    if (fields.priority === 0) {
+      delete updated.priority
+    } else {
+      updated.priority = fields.priority
+    }
+  }
+  if (fields.websockets !== undefined) {
+    delete updated.websocket
+    updated.websockets = fields.websockets
+  }
+  if (fields.note !== undefined) {
+    if (fields.note) {
+      updated.note = fields.note
+    } else {
+      delete updated.note
+    }
+  }
+  if (fields.headers !== undefined) {
+    const headers = authFileHeadersField(updated.headers)
+    Object.entries(fields.headers).forEach(([name, value]) => {
+      if (value) {
+        headers[name] = value
+      } else {
+        delete headers[name]
+      }
+    })
+    if (Object.keys(headers).length > 0) {
+      updated.headers = headers
+    } else {
+      delete updated.headers
+    }
+  }
+  return JSON.stringify(updated, null, 2)
+}
+
+const authFileEditorUpdatedText = computed(() => {
+  const editor = authFileEditor.value
+  if (!editor || editor.headersError) {
+    return ''
+  }
+  try {
+    return buildAuthFileUpdatedText(editor)
+  } catch {
+    return ''
+  }
+})
+
+const authFileEditorDirty = computed(() => {
+  const editor = authFileEditor.value
+  if (!editor?.json) {
+    return false
+  }
+  try {
+    return Object.keys(buildAuthFileEditorFields(editor)).length > 0
+  } catch {
+    return true
+  }
+})
+
+function handleAuthFileHeadersChange(value: string) {
+  const editor = authFileEditor.value
+  if (!editor) {
+    return
+  }
+  editor.headersText = value
+  editor.headersTouched = true
+  try {
+    parseAuthFileHeaders(value)
+    editor.headersError = null
+  } catch (error) {
+    editor.headersError = error instanceof Error ? error.message : String(error)
+  }
+}
+
+async function openAuthFileEditor(account: CodexKeeperAccount) {
+  if (!canManageAccounts.value) {
+    return
+  }
+  const fileName = account.name
+  authFileEditor.value = {
+    fileName,
+    fileInfoText: JSON.stringify(account, null, 2),
+    loading: true,
+    saving: false,
+    error: null,
+    rawText: '',
+    invalidContentPreview: '',
+    json: null,
+    prefix: '',
+    proxyUrl: '',
+    priority: '',
+    websockets: false,
+    websocketsTouched: false,
+    note: '',
+    noteTouched: false,
+    headersText: '',
+    headersTouched: false,
+    headersError: null,
+  }
+  try {
+    const detail = await getCodexKeeperAuthFile(fileName)
+    const current = authFileEditor.value
+    if (!current || current.fileName !== fileName) {
+      return
+    }
+    current.loading = false
+    current.json = detail.json
+    if (!detail.json) {
+      current.rawText = detail.raw_text ?? ''
+      const preview = current.rawText.trim()
+      current.invalidContentPreview = preview.length > 1000 ? `${preview.slice(0, 1000)}\n...` : preview
+      current.error = detail.invalid_reason === 'html_challenge'
+        ? t(
+            '下载到的是 HTML 验证页面，不是认证 JSON 对象。请重新认证或替换该认证文件后再编辑字段。',
+            'Downloaded content is an HTML challenge page, not an auth JSON object. Re-authenticate or replace the auth file before editing fields.',
+          )
+        : t(
+            '该认证文件不是 JSON 对象，无法编辑字段。',
+            'This auth file is not a JSON object, so its fields cannot be edited.',
+          )
+      return
+    }
+    const headers = authFileHeadersField(detail.json.headers)
+    current.prefix = authFileStringField(detail.json.prefix)
+    current.proxyUrl = authFileStringField(detail.json.proxy_url)
+    current.priority = authFilePriorityField(detail.json.priority)
+    current.websockets = authFileBooleanField(detail.json.websockets ?? detail.json.websocket)
+    current.note = authFileStringField(detail.json.note)
+    current.headersText = Object.keys(headers).length > 0 ? JSON.stringify(headers, null, 2) : ''
+  } catch (error) {
+    const current = authFileEditor.value
+    if (!current || current.fileName !== fileName) {
+      return
+    }
+    current.loading = false
+    current.error = errorText(error, '加载认证文件失败', 'Failed to load auth file')
+  }
+}
+
+function closeAuthFileEditor() {
+  if (!authFileEditor.value?.saving) {
+    authFileEditor.value = null
+  }
+}
+
+async function saveAuthFileEditor() {
+  const editor = authFileEditor.value
+  if (!editor?.json || editor.loading || editor.saving || editor.headersError) {
+    return
+  }
+  let fields: CodexKeeperAuthFileFields
+  try {
+    fields = buildAuthFileEditorFields(editor)
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : String(error))
+    return
+  }
+  if (Object.keys(fields).length === 0) {
+    closeAuthFileEditor()
+    return
+  }
+  editor.saving = true
+  try {
+    await updateCodexKeeperAuthFile(editor.fileName, fields)
+    message.success(t(`已更新认证文件“${editor.fileName}”`, `Auth file “${editor.fileName}” updated`))
+    await loadAccounts()
+    closeAuthFileEditor()
+  } catch (error) {
+    message.error(errorText(error, '更新认证文件失败', 'Failed to update auth file'))
+  } finally {
+    if (authFileEditor.value?.fileName === editor.fileName) {
+      editor.saving = false
+    }
+  }
+}
+
+async function copyAuthFileEditorText() {
+  const text = authFileEditorUpdatedText.value
+  if (!text) {
+    return
+  }
+  try {
+    await navigator.clipboard.writeText(text)
+    message.success(t('认证文件内容已复制', 'Auth file content copied'))
+  } catch (error) {
+    message.error(errorText(error, '复制认证文件内容失败', 'Failed to copy auth file content'))
+  }
+}
+
+function triggerAuthFileUpload() {
+  if (canManageAccounts.value && !isUploadingAuthFiles.value) {
+    authFileInput.value?.click()
+  }
+}
+
+async function handleAuthFileUpload(event: Event) {
+  const input = event.target as HTMLInputElement
+  const files = Array.from(input.files ?? [])
+  input.value = ''
+  if (files.length === 0 || isUploadingAuthFiles.value) {
+    return
+  }
+  const validFiles: File[] = []
+  const invalidNames: string[] = []
+  files.forEach((file) => {
+    if (!file.name.toLowerCase().endsWith('.json')) {
+      invalidNames.push(`${file.name}: ${t('只能上传 JSON 文件', 'Only JSON files can be uploaded')}`)
+      return
+    }
+    if (file.size > AUTH_FILE_MAX_SIZE) {
+      invalidNames.push(`${file.name}: ${t('文件大小不能超过 10 MB', 'File size must not exceed 10 MB')}`)
+      return
+    }
+    validFiles.push(file)
+  })
+  if (invalidNames.length > 0) {
+    message.error(invalidNames.join('; '))
+  }
+  if (validFiles.length === 0) {
+    return
+  }
+  isUploadingAuthFiles.value = true
+  try {
+    const result = await uploadCodexKeeperAuthFiles(validFiles)
+    if (result.uploaded > 0) {
+      message.success(t(`上传成功 ${result.uploaded} 个认证文件`, `Uploaded ${result.uploaded} auth file(s)`))
+      await loadAccounts()
+    }
+    if (result.failed.length > 0) {
+      message.error(result.failed.map((item) => `${item.name}: ${item.error}`).join('; '))
+    }
+  } catch (error) {
+    message.error(errorText(error, '上传认证文件失败', 'Failed to upload auth files'))
+  } finally {
+    isUploadingAuthFiles.value = false
+  }
+}
+
 function openBulkDeleteDialog() {
   if (!canBulkDelete.value) {
     return
@@ -1975,17 +2389,37 @@ onBeforeUnmount(() => {
     <div class="page-header account-page-header">
       <div class="account-header-copy">
         <div class="account-header-title-row">
-          <h1 class="page-title">{{ t('账号状态', 'Account Status') }}</h1>
+          <h1 class="page-title">{{ accountPageTitle }}</h1>
           <div class="header-actions">
+            <NButton
+              v-if="canManageAccounts"
+              type="primary"
+              secondary
+              :loading="isUploadingAuthFiles"
+              @click="triggerAuthFileUpload"
+            >
+              <template #icon>
+                <NIcon :component="Upload" />
+              </template>
+              {{ t('上传文件', 'Upload File') }}
+            </NButton>
             <NButton secondary :loading="isLoading" @click="loadAccounts">
               <template #icon>
                 <NIcon :component="RefreshCw" />
               </template>
               {{ t('重新加载', 'Reload') }}
             </NButton>
+            <input
+              ref="authFileInput"
+              class="auth-file-input"
+              type="file"
+              accept=".json,application/json"
+              multiple
+              @change="handleAuthFileUpload"
+            >
           </div>
         </div>
-        <p class="page-subtitle">{{ t('查看 Codex auth file 的健康、额度和优先级维护结果', 'View Codex auth file health, quota, and priority maintenance results') }}</p>
+        <p class="page-subtitle">{{ accountPageSubtitle }}</p>
       </div>
     </div>
 
@@ -2543,6 +2977,16 @@ onBeforeUnmount(() => {
           <NSpace :size="8" wrap>
             <NButton
               size="small"
+              secondary
+              @click="openAuthFileEditor(selectedAccount)"
+            >
+              <template #icon>
+                <NIcon :component="Pencil" />
+              </template>
+              {{ t('认证文件详情 / 编辑', 'Auth File Details / Edit') }}
+            </NButton>
+            <NButton
+              size="small"
               type="primary"
               secondary
               :disabled="isRowActing(selectedAccount) || isBulkDeleting || isBulkRefreshing"
@@ -2597,6 +3041,114 @@ onBeforeUnmount(() => {
         </div>
       </NDrawerContent>
     </NDrawer>
+
+    <NModal
+      v-if="canManageAccounts"
+      :show="authFileEditor !== null"
+      preset="card"
+      :style="{ width: 'min(720px, calc(100vw - 32px))' }"
+      :title="authFileEditor ? t(`认证文件详情 / 编辑 - ${authFileEditor.fileName}`, `Auth File Details / Edit - ${authFileEditor.fileName}`) : t('认证文件详情 / 编辑', 'Auth File Details / Edit')"
+      :mask-closable="!authFileEditor?.saving"
+      @update:show="(show) => { if (!show) closeAuthFileEditor() }"
+    >
+      <div v-if="authFileEditor" class="auth-file-editor">
+        <div v-if="authFileEditor.loading" class="auth-file-editor-loading">
+          {{ t('正在加载认证文件...', 'Loading auth file...') }}
+        </div>
+        <template v-else>
+          <div v-if="authFileEditor.error" class="auth-file-editor-error">
+            {{ authFileEditor.error }}
+          </div>
+          <div class="auth-file-editor-json-block">
+            <label>{{ t('认证文件信息（info）', 'Auth file info (info)') }}</label>
+            <NInput
+              type="textarea"
+              readonly
+              :value="authFileEditor.fileInfoText"
+              :autosize="{ minRows: 6, maxRows: 10 }"
+            />
+          </div>
+          <div class="auth-file-editor-json-block">
+            <label>
+              {{ authFileEditor.json
+                ? t('认证文件 JSON（预览）', 'Auth file JSON (preview)')
+                : t('下载内容（已截断）', 'Downloaded content (truncated)') }}
+            </label>
+            <NInput
+              v-if="authFileEditor.json"
+              type="textarea"
+              readonly
+              :value="authFileEditorUpdatedText"
+              :autosize="{ minRows: 8, maxRows: 16 }"
+            />
+            <pre v-else class="auth-file-editor-invalid-preview">{{ authFileEditor.invalidContentPreview }}</pre>
+          </div>
+          <div v-if="authFileEditor.json" class="auth-file-editor-fields">
+            <div class="auth-file-editor-field">
+              <label>{{ t('前缀（prefix）', 'Prefix (prefix)') }}</label>
+              <NInput v-model:value="authFileEditor.prefix" />
+            </div>
+            <div class="auth-file-editor-field">
+              <label>{{ t('代理 URL（proxy_url）', 'Proxy URL (proxy_url)') }}</label>
+              <NInput v-model:value="authFileEditor.proxyUrl" :placeholder="t('socks5://username:password@proxy_ip:port/', 'socks5://username:password@proxy_ip:port/')" />
+            </div>
+            <div class="auth-file-editor-field">
+              <label>{{ t('优先级（priority）', 'Priority (priority)') }}</label>
+              <NInput v-model:value="authFileEditor.priority" :placeholder="t('例如：10 或 -1', 'For example: 10 or -1')" />
+              <span class="auth-file-editor-hint">{{ t('仅支持整数；数值越大优先级越高。', 'Integers only; higher values have higher priority.') }}</span>
+            </div>
+            <div class="auth-file-editor-field auth-file-editor-switch-field">
+              <label>{{ t('WebSockets（websockets）', 'WebSockets (websockets)') }}</label>
+              <NSwitch v-model:value="authFileEditor.websockets" @update:value="authFileEditor.websocketsTouched = true" />
+            </div>
+            <div class="auth-file-editor-field auth-file-editor-wide-field">
+              <label>{{ t('自定义请求头（headers）', 'Custom headers (headers)') }}</label>
+              <NInput
+                type="textarea"
+                :value="authFileEditor.headersText"
+                :placeholder="'{\n  &quot;Header-Name&quot;: &quot;value&quot;\n}'"
+                :autosize="{ minRows: 4, maxRows: 8 }"
+                @update:value="handleAuthFileHeadersChange"
+              />
+              <span v-if="authFileEditor.headersError" class="auth-file-editor-error">{{ authFileEditor.headersError }}</span>
+              <span v-else class="auth-file-editor-hint">{{ t('以 JSON 对象格式输入，每个值都必须是字符串。', 'Enter a JSON object; every value must be a string.') }}</span>
+            </div>
+            <div class="auth-file-editor-field auth-file-editor-wide-field">
+              <label>{{ t('备注（note）', 'Note (note)') }}</label>
+              <NInput
+                v-model:value="authFileEditor.note"
+                type="textarea"
+                :autosize="{ minRows: 2, maxRows: 4 }"
+                :placeholder="t('输入备注信息，例如：张三的账号', 'Enter a note, for example: account owner')"
+                @update:value="authFileEditor.noteTouched = true"
+              />
+            </div>
+          </div>
+        </template>
+      </div>
+      <template #footer>
+        <NSpace justify="end">
+          <NButton :disabled="authFileEditor?.saving === true" @click="closeAuthFileEditor">
+            {{ authFileEditorDirty ? t('取消', 'Cancel') : t('关闭', 'Close') }}
+          </NButton>
+          <NButton
+            secondary
+            :disabled="authFileEditor?.saving === true || !authFileEditorUpdatedText"
+            @click="copyAuthFileEditorText"
+          >
+            {{ t('复制', 'Copy') }}
+          </NButton>
+          <NButton
+            type="primary"
+            :loading="authFileEditor?.saving === true"
+            :disabled="!authFileEditorDirty || !!authFileEditor?.headersError || authFileEditor?.loading === true"
+            @click="saveAuthFileEditor"
+          >
+            {{ t('保存', 'Save') }}
+          </NButton>
+        </NSpace>
+      </template>
+    </NModal>
 
     <NModal
       v-if="canManageAccounts"
@@ -2727,8 +3279,13 @@ onBeforeUnmount(() => {
 
 .header-actions {
   display: flex;
+  gap: 8px;
   flex-shrink: 0;
   justify-content: flex-end;
+}
+
+.auth-file-input {
+  display: none;
 }
 
 .account-metrics {
@@ -3532,6 +4089,84 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
+.auth-file-editor {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  max-height: min(72vh, 720px);
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.auth-file-editor-loading {
+  padding: 24px 0;
+  color: var(--cpa-text-muted);
+  text-align: center;
+}
+
+.auth-file-editor-error {
+  color: var(--cpa-danger);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.auth-file-editor-json-block,
+.auth-file-editor-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.auth-file-editor-json-block > label,
+.auth-file-editor-field > label {
+  color: var(--cpa-text-muted);
+  font-size: 12px;
+}
+
+.auth-file-editor-json-block :deep(.n-input__textarea),
+.auth-file-editor-field :deep(.n-input__textarea) {
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+}
+
+.auth-file-editor-invalid-preview {
+  min-height: 120px;
+  max-height: 260px;
+  margin: 0;
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--cpa-border);
+  border-radius: 6px;
+  background: var(--cpa-surface-muted);
+  color: var(--cpa-text);
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.auth-file-editor-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  min-width: 0;
+}
+
+.auth-file-editor-wide-field {
+  grid-column: 1 / -1;
+}
+
+.auth-file-editor-switch-field {
+  align-content: start;
+}
+
+.auth-file-editor-hint {
+  color: var(--cpa-text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 .account-table :deep(.n-data-table-th) {
   white-space: nowrap;
 }
@@ -3935,6 +4570,10 @@ onBeforeUnmount(() => {
   .account-page-header {
     align-items: stretch;
     flex-direction: row;
+  }
+
+  .auth-file-editor-fields {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .account-header-title-row {

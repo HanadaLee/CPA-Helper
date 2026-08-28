@@ -257,6 +257,33 @@ export interface CodexKeeperAccount {
   last_healthy_at: string | null
 }
 
+export interface CodexKeeperAuthFileFields {
+  prefix?: string
+  proxy_url?: string
+  priority?: number
+  websockets?: boolean
+  note?: string
+  headers?: Record<string, string>
+}
+
+export interface CodexKeeperAuthFileDetail {
+  json: Record<string, unknown> | null
+  raw_text?: string
+  invalid_reason?: 'invalid_json' | 'html_challenge'
+}
+
+export interface CodexKeeperAuthFileUploadFailure {
+  name: string
+  error: string
+}
+
+export interface CodexKeeperAuthFileUploadResponse {
+  status: string
+  uploaded: number
+  files: string[]
+  failed: CodexKeeperAuthFileUploadFailure[]
+}
+
 export interface CodexKeeperAccountsResponse {
   items: CodexKeeperAccount[]
   priority_rules: CodexKeeperPriorityRule[]

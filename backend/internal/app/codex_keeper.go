@@ -2,14 +2,18 @@ package app
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"log/slog"
+	"math"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
@@ -28,6 +32,7 @@ const (
 	keeperLogRetainedFiles         = 3
 	keeperMaxInMemoryLogs          = 300
 	keeperQuotaWindowUsageCacheTTL = 30 * time.Second
+	keeperMaxAuthFileSize          = 10 << 20
 	keeperFiveHourWindowSeconds    = 5 * 60 * 60
 	keeperWeekWindowSeconds        = 7 * 24 * 60 * 60
 	keeperMonthWindowSeconds       = 30 * 24 * 60 * 60
@@ -917,6 +922,44 @@ func (a *App) handleCodexKeeper(w http.ResponseWriter, r *http.Request) error {
 			"priority_rules": sortedPriorityRules(cfg.CodexKeeperPriorityRule),
 		})
 		return nil
+	case len(parts) == 1 && parts[0] == "auth-files":
+		if err := requireMethod(r, http.MethodPost); err != nil {
+			return err
+		}
+		return a.uploadKeeperAuthFiles(w, r)
+	case len(parts) == 2 && parts[0] == "auth-files":
+		authName, err := url.PathUnescape(parts[1])
+		if err != nil || strings.TrimSpace(authName) == "" || strings.ContainsAny(authName, `/\\`) {
+			return validationError("认证文件名称无效")
+		}
+		cfg, err := a.loadConfig(r.Context())
+		if err != nil {
+			return err
+		}
+		switch r.Method {
+		case http.MethodGet:
+			detail, err := a.getKeeperRemoteAuthFileEditorDetail(r.Context(), cfg, authName)
+			if err != nil {
+				return err
+			}
+			if detail == nil {
+				return notFoundError("认证文件不存在")
+			}
+			writeJSON(w, http.StatusOK, detail)
+			return nil
+		case http.MethodPatch:
+			var fields map[string]any
+			if err := decodeJSON(r, &fields); err != nil {
+				return err
+			}
+			if err := a.updateKeeperRemoteAuthFileFields(r.Context(), cfg, authName, fields); err != nil {
+				return err
+			}
+			writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
+			return nil
+		default:
+			return methodNotAllowed()
+		}
 	case len(parts) == 1 && parts[0] == "run-once":
 		if err := requireMethod(r, http.MethodPost); err != nil {
 			return err
@@ -2710,13 +2753,170 @@ func (a *App) listKeeperRemoteAuthFiles(ctx context.Context, cfg AppConfig) ([]m
 	return extractKeeperObjects(raw, []string{"files", "items", "data", "value"}), nil
 }
 
-func (a *App) getKeeperRemoteAuthFile(ctx context.Context, cfg AppConfig, name string) (map[string]any, error) {
+type keeperAuthFileUploadFailure struct {
+	Name  string `json:"name"`
+	Error string `json:"error"`
+}
+
+type keeperAuthFileEditorDetail struct {
+	JSON          map[string]any `json:"json"`
+	RawText       string         `json:"raw_text,omitempty"`
+	InvalidReason string         `json:"invalid_reason,omitempty"`
+}
+
+func (a *App) uploadKeeperAuthFiles(w http.ResponseWriter, r *http.Request) error {
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		return validationError("上传认证文件失败：请求不是有效的 multipart 表单")
+	}
+	if r.MultipartForm == nil {
+		return validationError("请选择要上传的认证文件")
+	}
+	defer r.MultipartForm.RemoveAll()
+	fileHeaders := r.MultipartForm.File["file"]
+	if len(fileHeaders) == 0 {
+		fileHeaders = r.MultipartForm.File["files"]
+	}
+	if len(fileHeaders) == 0 {
+		return validationError("请选择要上传的认证文件")
+	}
+	cfg, err := a.loadConfig(r.Context())
+	if err != nil {
+		return err
+	}
+	uploaded := make([]string, 0, len(fileHeaders))
+	failed := make([]keeperAuthFileUploadFailure, 0)
+	for _, header := range fileHeaders {
+		name := strings.TrimSpace(header.Filename)
+		if name == "" || strings.ContainsAny(name, `/\\`) {
+			failed = append(failed, keeperAuthFileUploadFailure{Name: name, Error: "认证文件名称无效"})
+			continue
+		}
+		if !strings.EqualFold(filepath.Ext(name), ".json") {
+			failed = append(failed, keeperAuthFileUploadFailure{Name: name, Error: "只能上传 JSON 文件"})
+			continue
+		}
+		if header.Size > keeperMaxAuthFileSize {
+			failed = append(failed, keeperAuthFileUploadFailure{Name: name, Error: "文件大小不能超过 10 MB"})
+			continue
+		}
+		file, err := header.Open()
+		if err != nil {
+			failed = append(failed, keeperAuthFileUploadFailure{Name: name, Error: "无法读取上传文件"})
+			continue
+		}
+		content, readErr := io.ReadAll(io.LimitReader(file, keeperMaxAuthFileSize+1))
+		closeErr := file.Close()
+		if readErr != nil || closeErr != nil {
+			failed = append(failed, keeperAuthFileUploadFailure{Name: name, Error: "无法读取上传文件"})
+			continue
+		}
+		if len(content) > keeperMaxAuthFileSize {
+			failed = append(failed, keeperAuthFileUploadFailure{Name: name, Error: "文件大小不能超过 10 MB"})
+			continue
+		}
+		if err := a.uploadKeeperRemoteAuthFile(r.Context(), cfg, name, content); err != nil {
+			failed = append(failed, keeperAuthFileUploadFailure{Name: name, Error: err.Error()})
+			continue
+		}
+		uploaded = append(uploaded, name)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":   "ok",
+		"uploaded": len(uploaded),
+		"files":    uploaded,
+		"failed":   failed,
+	})
+	return nil
+}
+
+func (a *App) uploadKeeperRemoteAuthFile(ctx context.Context, cfg AppConfig, name string, content []byte) error {
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("file", name)
+	if err != nil {
+		return validationError("创建认证文件上传请求失败：" + err.Error())
+	}
+	if _, err := part.Write(content); err != nil {
+		return validationError("创建认证文件上传请求失败：" + err.Error())
+	}
+	if err := writer.Close(); err != nil {
+		return validationError("创建认证文件上传请求失败：" + err.Error())
+	}
+	_, _, err = a.keeperRawRequest(
+		ctx,
+		cfg,
+		http.MethodPost,
+		"/v0/management/auth-files",
+		nil,
+		body.Bytes(),
+		writer.FormDataContentType(),
+		time.Duration(cfg.CodexKeeper.CPATimeoutSeconds)*time.Second,
+		8<<20,
+	)
+	return err
+}
+
+func (a *App) getKeeperRemoteAuthFileEditorDetail(ctx context.Context, cfg AppConfig, name string) (*keeperAuthFileEditorDetail, error) {
+	payload, err := a.downloadKeeperRemoteAuthFile(ctx, cfg, name)
+	if err != nil || payload == nil {
+		return nil, err
+	}
+	var raw any
+	if err := json.Unmarshal(payload, &raw); err == nil {
+		if object, ok := raw.(map[string]any); ok {
+			return &keeperAuthFileEditorDetail{JSON: object}, nil
+		}
+	}
+	reason := "invalid_json"
+	if keeperLooksLikeHTMLChallenge(payload) {
+		reason = "html_challenge"
+	}
+	return &keeperAuthFileEditorDetail{
+		RawText:       string(payload),
+		InvalidReason: reason,
+	}, nil
+}
+
+func keeperLooksLikeHTMLChallenge(payload []byte) bool {
+	text := strings.ToLower(strings.TrimSpace(string(payload)))
+	if len(text) > 4096 {
+		text = text[:4096]
+	}
+	return strings.HasPrefix(text, "<!doctype html") ||
+		strings.HasPrefix(text, "<html") ||
+		strings.Contains(text, "<head") ||
+		strings.Contains(text, "<body") ||
+		strings.Contains(text, "cf_chl") ||
+		strings.Contains(text, "__cf_chl_tk") ||
+		strings.Contains(text, "challenge-platform") ||
+		strings.Contains(text, "cloudflare")
+}
+
+func (a *App) downloadKeeperRemoteAuthFile(ctx context.Context, cfg AppConfig, name string) ([]byte, error) {
 	query := url.Values{"name": []string{name}}
-	response, payload, err := a.keeperRequest(ctx, cfg, http.MethodGet, "/v0/management/auth-files/download", query, nil, time.Duration(cfg.CodexKeeper.CPATimeoutSeconds)*time.Second)
+	response, payload, err := a.keeperRawRequest(
+		ctx,
+		cfg,
+		http.MethodGet,
+		"/v0/management/auth-files/download",
+		query,
+		nil,
+		"",
+		time.Duration(cfg.CodexKeeper.CPATimeoutSeconds)*time.Second,
+		keeperMaxAuthFileSize,
+	)
+	if response != nil && response.StatusCode == http.StatusNotFound {
+		return nil, nil
+	}
+	return payload, err
+}
+
+func (a *App) getKeeperRemoteAuthFile(ctx context.Context, cfg AppConfig, name string) (map[string]any, error) {
+	payload, err := a.downloadKeeperRemoteAuthFile(ctx, cfg, name)
 	if err != nil {
 		return nil, err
 	}
-	if response.StatusCode == http.StatusNotFound {
+	if payload == nil {
 		return nil, nil
 	}
 	var raw map[string]any
@@ -2728,6 +2928,53 @@ func (a *App) getKeeperRemoteAuthFile(ctx context.Context, cfg AppConfig, name s
 
 func (a *App) setKeeperRemoteDisabled(ctx context.Context, cfg AppConfig, name string, disabled bool) error {
 	_, _, err := a.keeperRequest(ctx, cfg, http.MethodPatch, "/v0/management/auth-files/status", nil, map[string]any{"name": name, "disabled": disabled}, time.Duration(cfg.CodexKeeper.CPATimeoutSeconds)*time.Second)
+	return err
+}
+
+func (a *App) updateKeeperRemoteAuthFileFields(ctx context.Context, cfg AppConfig, name string, fields map[string]any) error {
+	payload := map[string]any{"name": name}
+	for key, value := range fields {
+		switch key {
+		case "prefix", "proxy_url", "note":
+			text, ok := value.(string)
+			if !ok {
+				return validationError(fmt.Sprintf("认证文件字段 %s 必须是字符串", key))
+			}
+			payload[key] = text
+		case "priority":
+			number, ok := value.(float64)
+			if !ok || number != math.Trunc(number) {
+				return validationError("认证文件优先级必须是整数")
+			}
+			payload[key] = int(number)
+		case "websockets":
+			enabled, ok := value.(bool)
+			if !ok {
+				return validationError("认证文件 websockets 必须是布尔值")
+			}
+			payload[key] = enabled
+		case "headers":
+			headers, ok := value.(map[string]any)
+			if !ok {
+				return validationError("认证文件 headers 必须是 JSON 对象")
+			}
+			normalized := map[string]string{}
+			for headerName, headerValue := range headers {
+				text, ok := headerValue.(string)
+				if !ok {
+					return validationError("认证文件 headers 的值必须是字符串")
+				}
+				normalized[headerName] = text
+			}
+			payload[key] = normalized
+		default:
+			return validationError("认证文件包含不支持的字段")
+		}
+	}
+	if len(payload) == 1 {
+		return validationError("没有需要更新的认证文件字段")
+	}
+	_, _, err := a.keeperRequest(ctx, cfg, http.MethodPatch, "/v0/management/auth-files/fields", nil, payload, time.Duration(cfg.CodexKeeper.CPATimeoutSeconds)*time.Second)
 	return err
 }
 
@@ -2764,6 +3011,67 @@ func (a *App) keeperRequest(ctx context.Context, cfg AppConfig, method, path str
 				continue
 			}
 			return nil, nil, lastErr
+		}
+		if response.StatusCode < 200 || response.StatusCode >= 300 {
+			lastErr = validationError(fmt.Sprintf("CLIProxyAPI 管理请求失败：HTTP %d", response.StatusCode))
+			if keeperShouldRetryRequest(ctx, attempt, attempts, response, nil) {
+				continue
+			}
+			return response, payload, lastErr
+		}
+		return response, payload, nil
+	}
+	return lastResponse, lastPayload, lastErr
+}
+
+func (a *App) keeperRawRequest(ctx context.Context, cfg AppConfig, method, path string, query url.Values, body []byte, contentType string, timeout time.Duration, responseLimit int64) (*http.Response, []byte, error) {
+	attempts := keeperRequestAttempts(cfg.CodexKeeper)
+	target := makeURL(cfg.Collector.CLIProxyURL, path, query)
+	headers := managementHeaders(cfg.Collector.ManagementKey)
+	var lastResponse *http.Response
+	var lastPayload []byte
+	var lastErr error
+	for attempt := 1; attempt <= attempts; attempt++ {
+		var reader io.Reader
+		if body != nil {
+			reader = bytes.NewReader(body)
+		}
+		request, err := http.NewRequestWithContext(ctx, method, target, reader)
+		if err != nil {
+			return nil, nil, validationError("CLIProxyAPI 管理请求失败：" + err.Error())
+		}
+		for key, values := range headers {
+			for _, value := range values {
+				request.Header.Add(key, value)
+			}
+		}
+		if contentType != "" {
+			request.Header.Set("Content-Type", contentType)
+		}
+		response, requestErr := httpClient(timeout).Do(request)
+		lastResponse = response
+		if requestErr != nil {
+			lastErr = validationError("CLIProxyAPI 管理请求失败：" + requestErr.Error())
+			if keeperShouldRetryRequest(ctx, attempt, attempts, response, requestErr) {
+				continue
+			}
+			return nil, nil, lastErr
+		}
+		payload, readErr := io.ReadAll(io.LimitReader(response.Body, responseLimit+1))
+		closeErr := response.Body.Close()
+		lastPayload = payload
+		if readErr != nil || closeErr != nil {
+			if readErr == nil {
+				readErr = closeErr
+			}
+			lastErr = validationError("CLIProxyAPI 管理请求失败：" + readErr.Error())
+			if keeperShouldRetryRequest(ctx, attempt, attempts, response, readErr) {
+				continue
+			}
+			return response, payload, lastErr
+		}
+		if int64(len(payload)) > responseLimit {
+			return response, payload[:responseLimit], validationError("CLIProxyAPI 管理响应超过大小限制")
 		}
 		if response.StatusCode < 200 || response.StatusCode >= 300 {
 			lastErr = validationError(fmt.Sprintf("CLIProxyAPI 管理请求失败：HTTP %d", response.StatusCode))

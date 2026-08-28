@@ -1,5 +1,8 @@
 import { apiClient } from '@/shared/api/apiClient'
 import type {
+  CodexKeeperAuthFileDetail,
+  CodexKeeperAuthFileFields,
+  CodexKeeperAuthFileUploadResponse,
   CodexKeeperBulkDeletePayload,
   CodexKeeperBulkDeleteResponse,
   CodexKeeperCronPreviewPayload,
@@ -10,6 +13,28 @@ import type {
   CodexKeeperSettingsUpdatePayload,
   CodexKeeperStatus,
 } from '@/shared/types/api'
+
+export function uploadCodexKeeperAuthFiles(files: File[]): Promise<CodexKeeperAuthFileUploadResponse> {
+  const form = new FormData()
+  files.forEach((file) => form.append('file', file, file.name))
+  return apiClient.postForm<CodexKeeperAuthFileUploadResponse>('/codex-keeper/auth-files', form)
+}
+
+export function getCodexKeeperAuthFile(name: string): Promise<CodexKeeperAuthFileDetail> {
+  return apiClient.get<CodexKeeperAuthFileDetail>(
+    `/codex-keeper/auth-files/${encodeURIComponent(name)}`,
+  )
+}
+
+export function updateCodexKeeperAuthFile(
+  name: string,
+  fields: CodexKeeperAuthFileFields,
+): Promise<void> {
+  return apiClient.patch<void>(
+    `/codex-keeper/auth-files/${encodeURIComponent(name)}`,
+    fields,
+  )
+}
 
 export function getCodexKeeperSettings(): Promise<CodexKeeperSettings> {
   return apiClient.get<CodexKeeperSettings>('/codex-keeper/settings')

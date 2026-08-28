@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -252,6 +253,8 @@ func TestKeeperAccountStatusCanBeSharedReadOnly(t *testing.T) {
 	}
 
 	requestJSONExpectStatus(t, handler, http.MethodGet, "/api/codex-keeper/settings", nil, memberCookies, http.StatusForbidden)
+	requestJSONExpectStatus(t, handler, http.MethodGet, "/api/codex-keeper/auth-files/member.json", nil, memberCookies, http.StatusForbidden)
+	requestJSONExpectStatus(t, handler, http.MethodPost, "/api/codex-keeper/auth-files", nil, memberCookies, http.StatusForbidden)
 	requestJSONExpectStatus(t, handler, http.MethodPost, "/api/codex-keeper/accounts/refresh", map[string]any{
 		"auth_names": []string{"member.json"},
 	}, memberCookies, http.StatusForbidden)
@@ -260,6 +263,147 @@ func TestKeeperAccountStatusCanBeSharedReadOnly(t *testing.T) {
 		"priority": 10,
 	}, memberCookies, http.StatusForbidden)
 	requestJSONExpectStatus(t, handler, http.MethodDelete, "/api/codex-keeper/accounts/member.json", nil, memberCookies, http.StatusForbidden)
+}
+
+func TestKeeperAuthFileManagementUsesMultipartAndSupportsInvalidPreview(t *testing.T) {
+	t.Setenv("CPA_HELPER_DATA_DIR", t.TempDir())
+
+	var uploadedName string
+	var uploadedContent string
+	var updatedFields map[string]any
+	cpa := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer test-management-key" {
+			http.Error(w, "missing management authorization", http.StatusUnauthorized)
+			return
+		}
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v0/management/auth-files":
+			if err := r.ParseMultipartForm(12 << 20); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			file, header, err := r.FormFile("file")
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			defer file.Close()
+			content, err := io.ReadAll(file)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			uploadedName = header.Filename
+			uploadedContent = string(content)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		case r.Method == http.MethodGet && r.URL.Path == "/v0/management/auth-files/download":
+			switch r.URL.Query().Get("name") {
+			case "valid.json":
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"type":       "codex",
+					"prefix":     "team-a",
+					"proxy_url":  "socks5://127.0.0.1:1080",
+					"priority":   10,
+					"websockets": true,
+				})
+			case "challenge.json":
+				w.Header().Set("Content-Type", "text/html")
+				_, _ = w.Write([]byte("<!doctype html><html><body>Cloudflare challenge</body></html>"))
+			default:
+				http.NotFound(w, r)
+			}
+		case r.Method == http.MethodPatch && r.URL.Path == "/v0/management/auth-files/fields":
+			if err := json.NewDecoder(r.Body).Decode(&updatedFields); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer cpa.Close()
+
+	app, err := backendApp.New()
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	defer app.Close()
+
+	handler := app.Routes()
+	cookies := requestJSON(t, handler, http.MethodPost, "/api/auth/setup", map[string]any{
+		"username": "admin",
+		"password": "test-password",
+		"nickname": "Admin",
+	}, nil, nil)
+	requestJSON(t, handler, http.MethodPut, "/api/settings", map[string]any{
+		"cliaproxy_url":     cpa.URL,
+		"management_key":    "test-management-key",
+		"collector_enabled": false,
+	}, cookies, nil)
+
+	var uploadBody bytes.Buffer
+	uploadWriter := multipart.NewWriter(&uploadBody)
+	uploadPart, err := uploadWriter.CreateFormFile("file", "valid.json")
+	if err != nil {
+		t.Fatalf("CreateFormFile: %v", err)
+	}
+	if _, err := uploadPart.Write([]byte(`{"type":"codex","access_token":"secret"}`)); err != nil {
+		t.Fatalf("write upload part: %v", err)
+	}
+	if err := uploadWriter.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+	uploadRequest := httptest.NewRequest(http.MethodPost, "/api/codex-keeper/auth-files", &uploadBody)
+	uploadRequest.Header.Set("Content-Type", uploadWriter.FormDataContentType())
+	for _, cookie := range cookies {
+		uploadRequest.AddCookie(cookie)
+	}
+	uploadRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(uploadRecorder, uploadRequest)
+	if uploadRecorder.Code != http.StatusOK {
+		t.Fatalf("upload returned %d: %s", uploadRecorder.Code, uploadRecorder.Body.String())
+	}
+	if uploadedName != "valid.json" || uploadedContent != `{"type":"codex","access_token":"secret"}` {
+		t.Fatalf("upstream upload = %q %q", uploadedName, uploadedContent)
+	}
+
+	validDetail := struct {
+		JSON map[string]any `json:"json"`
+	}{}
+	requestJSON(t, handler, http.MethodGet, "/api/codex-keeper/auth-files/valid.json", nil, cookies, &validDetail)
+	if validDetail.JSON["prefix"] != "team-a" || validDetail.JSON["websockets"] != true {
+		t.Fatalf("valid auth detail = %#v", validDetail.JSON)
+	}
+
+	invalidDetail := struct {
+		JSON          map[string]any `json:"json"`
+		RawText       string         `json:"raw_text"`
+		InvalidReason string         `json:"invalid_reason"`
+	}{}
+	requestJSON(t, handler, http.MethodGet, "/api/codex-keeper/auth-files/challenge.json", nil, cookies, &invalidDetail)
+	if invalidDetail.JSON != nil || invalidDetail.InvalidReason != "html_challenge" || !strings.Contains(invalidDetail.RawText, "Cloudflare challenge") {
+		t.Fatalf("invalid auth detail = %#v", invalidDetail)
+	}
+
+	requestJSON(t, handler, http.MethodPatch, "/api/codex-keeper/auth-files/valid.json", map[string]any{
+		"prefix":     "team-b",
+		"priority":   12,
+		"websockets": false,
+		"headers": map[string]string{
+			"X-Test": "value",
+		},
+	}, cookies, nil)
+	if updatedFields["name"] != "valid.json" || updatedFields["prefix"] != "team-b" || updatedFields["priority"] != float64(12) || updatedFields["websockets"] != false {
+		t.Fatalf("updated fields = %#v", updatedFields)
+	}
+	headers, ok := updatedFields["headers"].(map[string]any)
+	if !ok || headers["X-Test"] != "value" {
+		t.Fatalf("updated headers = %#v", updatedFields["headers"])
+	}
 }
 
 func TestKeeperLogsUseStandardFileFormatAndCanBeCleared(t *testing.T) {

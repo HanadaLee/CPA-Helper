@@ -28,13 +28,14 @@ async function parseError(response: Response): Promise<string> {
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers)
+  if (!(init.body instanceof FormData) && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json')
+  }
   const response = await fetch(`/api${path}`, {
     credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init.headers ?? {}),
-    },
     ...init,
+    headers,
   })
 
   if (!response.ok) {
@@ -83,6 +84,9 @@ export const apiClient = {
       init.body = JSON.stringify(body)
     }
     return request<T>(path, init)
+  },
+  postForm<T>(path: string, body: FormData) {
+    return request<T>(path, { method: 'POST', body })
   },
   delete(path: string) {
     return request<void>(path, { method: 'DELETE' })
