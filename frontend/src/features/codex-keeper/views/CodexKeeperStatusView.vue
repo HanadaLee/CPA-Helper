@@ -1593,13 +1593,12 @@ async function saveAuthFileEditor() {
   try {
     await updateCodexKeeperAuthFile(editor.fileName, fields)
     message.success(t(`已更新认证文件“${editor.fileName}”`, `Auth file “${editor.fileName}” updated`))
+    await loadAccounts()
     if (selectedAccount.value?.name === editor.fileName) {
       selectedAccountNoteRequestID += 1
-      isSelectedAccountNoteLoading.value = false
-      const note = editor.note.trim()
-      selectedAccountNote.value = note || null
+      isSelectedAccountNoteLoading.value = true
+      await loadSelectedAccountNote(editor.fileName, selectedAccountNoteRequestID)
     }
-    await loadAccounts()
     authFileEditor.value = null
     await refreshAccounts([editor.fileName], {
       successMessage: t(

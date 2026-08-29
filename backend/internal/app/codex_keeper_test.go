@@ -382,12 +382,21 @@ func TestKeeperAuthFileManagementUsesMultipartAndSupportsInvalidPreview(t *testi
 	uploadedNames := []string{}
 	uploadedContents := []string{}
 	var updatedFields map[string]any
+	remoteNote := "CPA 中的初始备注"
 	cpa := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer test-management-key" {
 			http.Error(w, "missing management authorization", http.StatusUnauthorized)
 			return
 		}
 		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v0/management/auth-files":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"files": []map[string]any{
+					{"name": "valid.json", "type": "codex", "note": remoteNote},
+					{"name": "challenge.json", "type": "codex"},
+				},
+			})
 		case r.Method == http.MethodPost && r.URL.Path == "/v0/management/auth-files":
 			if err := r.ParseMultipartForm(12 << 20); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
@@ -429,6 +438,9 @@ func TestKeeperAuthFileManagementUsesMultipartAndSupportsInvalidPreview(t *testi
 			if err := json.NewDecoder(r.Body).Decode(&updatedFields); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
+			}
+			if note, ok := updatedFields["note"].(string); ok {
+				remoteNote = note
 			}
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
@@ -543,7 +555,7 @@ func TestKeeperAuthFileManagementUsesMultipartAndSupportsInvalidPreview(t *testi
 		JSON map[string]any `json:"json"`
 	}{}
 	requestJSON(t, handler, http.MethodGet, "/api/codex-keeper/auth-files/valid.json", nil, cookies, &validDetail)
-	if validDetail.JSON["prefix"] != "team-a" || validDetail.JSON["websockets"] != true {
+	if validDetail.JSON["prefix"] != "team-a" || validDetail.JSON["websockets"] != true || validDetail.JSON["note"] != remoteNote {
 		t.Fatalf("valid auth detail = %#v", validDetail.JSON)
 	}
 
@@ -561,16 +573,22 @@ func TestKeeperAuthFileManagementUsesMultipartAndSupportsInvalidPreview(t *testi
 		"prefix":     "team-b",
 		"priority":   12,
 		"websockets": false,
+		"note":       "CPA 中更新后的备注",
 		"headers": map[string]string{
 			"X-Test": "value",
 		},
 	}, cookies, nil)
-	if updatedFields["name"] != "valid.json" || updatedFields["prefix"] != "team-b" || updatedFields["priority"] != float64(12) || updatedFields["websockets"] != false {
+	if updatedFields["name"] != "valid.json" || updatedFields["prefix"] != "team-b" || updatedFields["priority"] != float64(12) || updatedFields["websockets"] != false || updatedFields["note"] != remoteNote {
 		t.Fatalf("updated fields = %#v", updatedFields)
 	}
 	headers, ok := updatedFields["headers"].(map[string]any)
 	if !ok || headers["X-Test"] != "value" {
 		t.Fatalf("updated headers = %#v", updatedFields["headers"])
+	}
+	validDetail.JSON = nil
+	requestJSON(t, handler, http.MethodGet, "/api/codex-keeper/auth-files/valid.json", nil, cookies, &validDetail)
+	if validDetail.JSON["note"] != "CPA 中更新后的备注" {
+		t.Fatalf("updated note was not reloaded from CPA: %#v", validDetail.JSON)
 	}
 }
 

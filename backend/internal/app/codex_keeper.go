@@ -3395,9 +3395,26 @@ func (a *App) getKeeperRemoteAuthFileEditorDetail(ctx context.Context, cfg AppCo
 	if err != nil || payload == nil {
 		return nil, err
 	}
+	authFiles, err := a.listKeeperRemoteAuthFiles(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	note := ""
+	for _, authFile := range authFiles {
+		if keeperString(authFile["name"]) == name {
+			note = keeperString(authFile["note"])
+			break
+		}
+	}
 	var raw any
 	if err := json.Unmarshal(payload, &raw); err == nil {
 		if object, ok := raw.(map[string]any); ok {
+			// CPA stores note as auth-file metadata returned by the list API rather
+			// than in the downloadable JSON. Keep CPA as the only source of truth.
+			delete(object, "note")
+			if note != "" {
+				object["note"] = note
+			}
 			return &keeperAuthFileEditorDetail{JSON: object}, nil
 		}
 	}
