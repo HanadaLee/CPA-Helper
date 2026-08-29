@@ -29,9 +29,15 @@ export interface FirstAdminSetupPayload {
   nickname: string
 }
 
+export interface ModelRequestExtraEndpoint {
+  url: string
+  description: string
+}
+
 export interface SettingsResponse {
   cliaproxy_url: string
   model_request_url: string
+  model_request_extra_endpoints: ModelRequestExtraEndpoint[]
   cpamc_url: string
   management_key: string
   management_key_set: boolean
@@ -47,6 +53,7 @@ export interface SettingsResponse {
 export interface SettingsUpdatePayload {
   cliaproxy_url?: string
   model_request_url?: string
+  model_request_extra_endpoints?: ModelRequestExtraEndpoint[]
   cpamc_url?: string
   management_key?: string
   collector_enabled?: boolean
@@ -62,6 +69,7 @@ export interface ModelRequestGuide {
   model_request_url: string
   openai_base_url: string
   chat_completions_url: string
+  extra_endpoints: ModelRequestExtraEndpoint[]
 }
 
 export type ModelRequestEndpoint = 'chat_completions' | 'responses' | 'claude_messages'

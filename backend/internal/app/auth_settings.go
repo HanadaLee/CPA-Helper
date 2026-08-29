@@ -265,17 +265,18 @@ func (a *App) userCredentialsByUsername(ctx context.Context, username string) (A
 }
 
 type settingsUpdateRequest struct {
-	CLIProxyURL            *string  `json:"cliaproxy_url"`
-	ModelRequestURL        *string  `json:"model_request_url"`
-	CPAMCURL               *string  `json:"cpamc_url"`
-	ManagementKey          *string  `json:"management_key"`
-	CollectorEnabled       *bool    `json:"collector_enabled"`
-	QueueName              *string  `json:"queue_name"`
-	BatchSize              *int     `json:"batch_size"`
-	PollIntervalSeconds    *float64 `json:"poll_interval_seconds"`
-	RetryIntervalSeconds   *float64 `json:"retry_interval_seconds"`
-	AllowUserAccountStatus *bool    `json:"allow_user_account_status"`
-	AllowUserUsageHistory  *bool    `json:"allow_user_usage_history"`
+	CLIProxyURL                *string                      `json:"cliaproxy_url"`
+	ModelRequestURL            *string                      `json:"model_request_url"`
+	ModelRequestExtraEndpoints *[]ModelRequestExtraEndpoint `json:"model_request_extra_endpoints"`
+	CPAMCURL                   *string                      `json:"cpamc_url"`
+	ManagementKey              *string                      `json:"management_key"`
+	CollectorEnabled           *bool                        `json:"collector_enabled"`
+	QueueName                  *string                      `json:"queue_name"`
+	BatchSize                  *int                         `json:"batch_size"`
+	PollIntervalSeconds        *float64                     `json:"poll_interval_seconds"`
+	RetryIntervalSeconds       *float64                     `json:"retry_interval_seconds"`
+	AllowUserAccountStatus     *bool                        `json:"allow_user_account_status"`
+	AllowUserUsageHistory      *bool                        `json:"allow_user_usage_history"`
 }
 
 type modelRequestTestPayload struct {
@@ -328,6 +329,13 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) error {
 				return err
 			}
 			cfg.ModelRequestURL = value
+		}
+		if payload.ModelRequestExtraEndpoints != nil {
+			value, err := normalizeModelRequestExtraEndpoints(*payload.ModelRequestExtraEndpoints)
+			if err != nil {
+				return err
+			}
+			cfg.ModelRequestExtraEndpoints = value
 		}
 		if payload.CPAMCURL != nil {
 			value := strings.TrimSpace(*payload.CPAMCURL)
@@ -386,18 +394,19 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) error {
 func settingsResponse(cfg AppConfig) map[string]any {
 	collector := cfg.Collector
 	return map[string]any{
-		"cliaproxy_url":             collector.CLIProxyURL,
-		"model_request_url":         cfg.ModelRequestURL,
-		"cpamc_url":                 cfg.CPAMCURL,
-		"management_key":            collector.ManagementKey,
-		"management_key_set":        strings.TrimSpace(collector.ManagementKey) != "",
-		"collector_enabled":         collector.Enabled,
-		"queue_name":                collector.QueueName,
-		"batch_size":                collector.BatchSize,
-		"poll_interval_seconds":     collector.PollIntervalSeconds,
-		"retry_interval_seconds":    collector.RetryIntervalSeconds,
-		"allow_user_account_status": cfg.AllowUserAccountStatus,
-		"allow_user_usage_history":  cfg.AllowUserUsageHistory,
+		"cliaproxy_url":                 collector.CLIProxyURL,
+		"model_request_url":             cfg.ModelRequestURL,
+		"model_request_extra_endpoints": cfg.ModelRequestExtraEndpoints,
+		"cpamc_url":                     cfg.CPAMCURL,
+		"management_key":                collector.ManagementKey,
+		"management_key_set":            strings.TrimSpace(collector.ManagementKey) != "",
+		"collector_enabled":             collector.Enabled,
+		"queue_name":                    collector.QueueName,
+		"batch_size":                    collector.BatchSize,
+		"poll_interval_seconds":         collector.PollIntervalSeconds,
+		"retry_interval_seconds":        collector.RetryIntervalSeconds,
+		"allow_user_account_status":     cfg.AllowUserAccountStatus,
+		"allow_user_usage_history":      cfg.AllowUserUsageHistory,
 	}
 }
 
@@ -412,7 +421,7 @@ func (a *App) handleCurrentModelRequestGuide(w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		return err
 	}
-	writeJSON(w, http.StatusOK, modelRequestGuideResponse(cfg.ModelRequestURL))
+	writeJSON(w, http.StatusOK, modelRequestGuideResponse(cfg.ModelRequestURL, cfg.ModelRequestExtraEndpoints))
 	return nil
 }
 
@@ -698,7 +707,38 @@ func normalizeModelRequestURL(value string) (string, error) {
 	return strings.TrimRight(parsed.String(), "/"), nil
 }
 
-func modelRequestGuideResponse(modelRequestURL string) map[string]any {
+func normalizeModelRequestExtraEndpoints(input []ModelRequestExtraEndpoint) ([]ModelRequestExtraEndpoint, error) {
+	if len(input) > 20 {
+		return nil, validationError("额外 Endpoint 不能超过 20 个")
+	}
+	normalized := make([]ModelRequestExtraEndpoint, 0, len(input))
+	seen := make(map[string]struct{}, len(input))
+	for _, endpoint := range input {
+		endpointURL, err := normalizeModelRequestURL(endpoint.URL)
+		if err != nil {
+			return nil, err
+		}
+		description := strings.TrimSpace(endpoint.Description)
+		if description == "" {
+			return nil, validationError("额外 Endpoint 说明不能为空")
+		}
+		if len([]rune(description)) > 200 {
+			return nil, validationError("额外 Endpoint 说明不能超过 200 个字符")
+		}
+		duplicateKey := strings.ToLower(endpointURL)
+		if _, exists := seen[duplicateKey]; exists {
+			return nil, validationError("额外 Endpoint 地址不能重复")
+		}
+		seen[duplicateKey] = struct{}{}
+		normalized = append(normalized, ModelRequestExtraEndpoint{
+			URL:         endpointURL,
+			Description: description,
+		})
+	}
+	return normalized, nil
+}
+
+func modelRequestGuideResponse(modelRequestURL string, extraEndpoints []ModelRequestExtraEndpoint) map[string]any {
 	requestURL := strings.TrimRight(strings.TrimSpace(modelRequestURL), "/")
 	if requestURL == "" {
 		requestURL = defaultCPAURL
@@ -708,6 +748,7 @@ func modelRequestGuideResponse(modelRequestURL string) map[string]any {
 		"model_request_url":    requestURL,
 		"openai_base_url":      openAIBaseURL,
 		"chat_completions_url": strings.TrimRight(openAIBaseURL, "/") + "/chat/completions",
+		"extra_endpoints":      extraEndpoints,
 	}
 }
 

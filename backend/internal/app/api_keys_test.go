@@ -60,14 +60,19 @@ func TestAccountModelRequestGuideUsesConfiguredURL(t *testing.T) {
 	requestJSON(t, handler, http.MethodPut, "/api/settings", map[string]any{
 		"cliaproxy_url":     "http://127.0.0.1:8317",
 		"model_request_url": "http://models.example.local/proxy",
+		"model_request_extra_endpoints": []map[string]any{
+			{"url": "https://edge-a.example.local/v1/", "description": "线路 A"},
+			{"url": "https://edge-b.example.local/api", "description": "  线路 B  "},
+		},
 		"management_key":    "test-management-key",
 		"collector_enabled": false,
 	}, cookies, nil)
 
 	var guide struct {
-		ModelRequestURL    string `json:"model_request_url"`
-		OpenAIBaseURL      string `json:"openai_base_url"`
-		ChatCompletionsURL string `json:"chat_completions_url"`
+		ModelRequestURL    string                                 `json:"model_request_url"`
+		OpenAIBaseURL      string                                 `json:"openai_base_url"`
+		ChatCompletionsURL string                                 `json:"chat_completions_url"`
+		ExtraEndpoints     []backendApp.ModelRequestExtraEndpoint `json:"extra_endpoints"`
 	}
 	requestJSON(t, handler, http.MethodGet, "/api/account/model-request", nil, cookies, &guide)
 	if guide.ModelRequestURL != "http://models.example.local/proxy" {
@@ -78,6 +83,15 @@ func TestAccountModelRequestGuideUsesConfiguredURL(t *testing.T) {
 	}
 	if guide.ChatCompletionsURL != "http://models.example.local/proxy/v1/chat/completions" {
 		t.Fatalf("chat_completions_url = %q", guide.ChatCompletionsURL)
+	}
+	if len(guide.ExtraEndpoints) != 2 {
+		t.Fatalf("extra_endpoints length = %d, want 2", len(guide.ExtraEndpoints))
+	}
+	if guide.ExtraEndpoints[0].URL != "https://edge-a.example.local/v1" || guide.ExtraEndpoints[0].Description != "线路 A" {
+		t.Fatalf("first extra endpoint = %#v", guide.ExtraEndpoints[0])
+	}
+	if guide.ExtraEndpoints[1].URL != "https://edge-b.example.local/api" || guide.ExtraEndpoints[1].Description != "线路 B" {
+		t.Fatalf("second extra endpoint = %#v", guide.ExtraEndpoints[1])
 	}
 
 	requestJSON(t, handler, http.MethodPut, "/api/settings", map[string]any{
@@ -165,6 +179,9 @@ func TestAccountModelRequestTestUsesCurrentUserAPIKey(t *testing.T) {
 	requestJSON(t, handler, http.MethodPut, "/api/settings", map[string]any{
 		"cliaproxy_url":     cpa.URL,
 		"model_request_url": cpa.URL,
+		"model_request_extra_endpoints": []map[string]any{
+			{"url": "https://unused.example.local/v1", "description": "仅展示线路"},
+		},
 		"management_key":    "test-management-key",
 		"collector_enabled": false,
 	}, cookies, nil)

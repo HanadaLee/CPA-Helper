@@ -23,7 +23,7 @@ import {
   updateSettings,
 } from '@/features/settings/api/settingsApi'
 import { useI18n } from '@/shared/i18n'
-import type { CollectorStatus, SettingsUpdatePayload } from '@/shared/types/api'
+import type { CollectorStatus, ModelRequestExtraEndpoint, SettingsUpdatePayload } from '@/shared/types/api'
 import { formatDateTime, formatInteger } from '@/shared/utils/format'
 
 const message = useMessage()
@@ -36,6 +36,7 @@ const keeperSettingsPanel = ref<InstanceType<typeof CodexKeeperSettingsPanel> | 
 const settingsForm = reactive({
   cliaproxy_url: 'http://127.0.0.1:8317',
   model_request_url: 'http://127.0.0.1:8317',
+  model_request_extra_endpoints: [] as ModelRequestExtraEndpoint[],
   cpamc_url: '/management.html',
   management_key: '',
   collector_enabled: false,
@@ -69,6 +70,14 @@ const remoteStatusText = computed(() => {
 const collectorEnabledText = computed(() => (collectorStatus.value?.enabled ? t('开启', 'On') : t('关闭', 'Off')))
 const collectorRunningText = computed(() => (collectorStatus.value?.running ? t('运行中', 'Running') : t('空闲', 'Idle')))
 
+function addModelRequestExtraEndpoint() {
+  settingsForm.model_request_extra_endpoints.push({ url: '', description: '' })
+}
+
+function removeModelRequestExtraEndpoint(index: number) {
+  settingsForm.model_request_extra_endpoints.splice(index, 1)
+}
+
 async function refresh() {
   isLoading.value = true
   try {
@@ -78,6 +87,7 @@ async function refresh() {
     ])
     settingsForm.cliaproxy_url = settings.cliaproxy_url
     settingsForm.model_request_url = settings.model_request_url
+    settingsForm.model_request_extra_endpoints = (settings.model_request_extra_endpoints ?? []).map((endpoint) => ({ ...endpoint }))
     settingsForm.cpamc_url = settings.cpamc_url
     settingsForm.management_key = settings.management_key
     settingsForm.collector_enabled = settings.collector_enabled
@@ -106,6 +116,7 @@ async function saveSettings() {
     const payload: SettingsUpdatePayload = {
       cliaproxy_url: settingsForm.cliaproxy_url,
       model_request_url: settingsForm.model_request_url,
+      model_request_extra_endpoints: settingsForm.model_request_extra_endpoints.map((endpoint) => ({ ...endpoint })),
       cpamc_url: settingsForm.cpamc_url,
       management_key: settingsForm.management_key,
       collector_enabled: settingsForm.collector_enabled,
@@ -197,7 +208,52 @@ onMounted(refresh)
                   v-model:value="settingsForm.model_request_url"
                   :placeholder="t('例如：http://192.168.26.50:8317', 'Example: http://192.168.26.50:8317')"
                 />
-                <div class="form-help">{{ t('仅用于 API 密钥页「请求测试」生成 URL 和示例。', 'Only used to generate URLs and examples for request tests on the API keys page.') }}</div>
+                <div class="form-help">{{ t('作为默认 Endpoint 展示，并用于 API 密钥页「请求测试」生成 URL 和示例。', 'Displayed as the default endpoint and used to generate URLs and examples for request tests on the API keys page.') }}</div>
+              </div>
+              <div class="field-stack extra-endpoints-field">
+                <div class="extra-endpoints-heading">
+                  <div>
+                    <div class="field-label">{{ t('额外 API Endpoint', 'Additional API endpoints') }}</div>
+                    <div class="form-help">{{ t('仅展示在 API 密钥页，不参与请求测试。每个 Endpoint 可以填写独立说明。', 'Shown only on the API keys page and never used for request tests. Each endpoint can have its own description.') }}</div>
+                  </div>
+                  <NButton
+                    size="small"
+                    type="primary"
+                    secondary
+                    :disabled="settingsForm.model_request_extra_endpoints.length >= 20"
+                    @click="addModelRequestExtraEndpoint"
+                  >
+                    {{ t('追加 Endpoint', 'Add endpoint') }}
+                  </NButton>
+                </div>
+                <div v-if="settingsForm.model_request_extra_endpoints.length === 0" class="extra-endpoints-empty">
+                  {{ t('暂无额外 Endpoint', 'No additional endpoints') }}
+                </div>
+                <div v-else class="extra-endpoints-list">
+                  <div
+                    v-for="(endpoint, index) in settingsForm.model_request_extra_endpoints"
+                    :key="index"
+                    class="extra-endpoint-row"
+                  >
+                    <NInput
+                      v-model:value="endpoint.url"
+                      :placeholder="t('Endpoint URL，例如：https://api.example.com/v1', 'Endpoint URL, for example: https://api.example.com/v1')"
+                    />
+                    <NInput
+                      v-model:value="endpoint.description"
+                      :placeholder="t('Endpoint 说明，例如：备用线路', 'Endpoint description, for example: Backup route')"
+                      :maxlength="200"
+                      show-count
+                    />
+                    <NButton
+                      type="error"
+                      secondary
+                      @click="removeModelRequestExtraEndpoint(index)"
+                    >
+                      {{ t('移除', 'Remove') }}
+                    </NButton>
+                  </div>
+                </div>
               </div>
               <div class="field-stack">
                 <div class="field-label">{{ t('CPAMC 页面地址', 'CPAMC page URL') }}</div>
@@ -306,6 +362,44 @@ onMounted(refresh)
   align-content: start;
 }
 
+.extra-endpoints-field {
+  grid-column: 1 / -1;
+}
+
+.extra-endpoints-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.extra-endpoints-heading > div {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.extra-endpoints-list {
+  display: grid;
+  gap: 8px;
+}
+
+.extra-endpoint-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px;
+}
+
+.extra-endpoints-empty {
+  padding: 12px;
+  border: 1px dashed var(--cpa-border);
+  border-radius: var(--cpa-radius);
+  color: var(--cpa-text-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
 .field-label {
   color: var(--cpa-text);
   font-size: 14px;
@@ -333,6 +427,14 @@ onMounted(refresh)
 
   .form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .extra-endpoint-row {
+    grid-template-columns: 1fr;
+  }
+
+  .extra-endpoint-row .n-button {
+    justify-self: start;
   }
 }
 

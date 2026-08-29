@@ -489,16 +489,22 @@ type LiteLLMProxyConfig struct {
 	ProxyURL string `json:"proxy_url"`
 }
 
+type ModelRequestExtraEndpoint struct {
+	URL         string `json:"url"`
+	Description string `json:"description"`
+}
+
 type AppConfig struct {
-	Collector               CollectorConfig    `json:"collector"`
-	CodexKeeper             KeeperConfig       `json:"codex_keeper"`
-	CodexKeeperPriorityRule map[string]int     `json:"codex_keeper_priority_rules"`
-	LiteLLMProxy            LiteLLMProxyConfig `json:"litellm_proxy"`
-	ModelRequestURL         string             `json:"model_request_url"`
-	CPAMCURL                string             `json:"cpamc_url"`
-	AllowUserAccountStatus  bool               `json:"allow_user_account_status"`
-	AllowUserUsageHistory   bool               `json:"allow_user_usage_history"`
-	SessionSecret           string             `json:"session_secret"`
+	Collector                  CollectorConfig             `json:"collector"`
+	CodexKeeper                KeeperConfig                `json:"codex_keeper"`
+	CodexKeeperPriorityRule    map[string]int              `json:"codex_keeper_priority_rules"`
+	LiteLLMProxy               LiteLLMProxyConfig          `json:"litellm_proxy"`
+	ModelRequestURL            string                      `json:"model_request_url"`
+	ModelRequestExtraEndpoints []ModelRequestExtraEndpoint `json:"model_request_extra_endpoints"`
+	CPAMCURL                   string                      `json:"cpamc_url"`
+	AllowUserAccountStatus     bool                        `json:"allow_user_account_status"`
+	AllowUserUsageHistory      bool                        `json:"allow_user_usage_history"`
+	SessionSecret              string                      `json:"session_secret"`
 }
 
 func defaultConfig() (AppConfig, error) {
@@ -534,9 +540,10 @@ func defaultConfig() (AppConfig, error) {
 			Enabled:  false,
 			ProxyURL: "",
 		},
-		ModelRequestURL: defaultCPAURL,
-		CPAMCURL:        defaultCPAMCURL,
-		SessionSecret:   secret,
+		ModelRequestURL:            defaultCPAURL,
+		ModelRequestExtraEndpoints: []ModelRequestExtraEndpoint{},
+		CPAMCURL:                   defaultCPAMCURL,
+		SessionSecret:              secret,
 	}, nil
 }
 
@@ -555,15 +562,15 @@ func (a *App) loadConfig(ctx context.Context) (AppConfig, error) {
 		SELECT collector_enabled, cliaproxy_url, management_key, queue_name, batch_size,
 		       poll_interval_seconds, retry_interval_seconds, codex_keeper_settings,
 		       codex_keeper_priority_rules, litellm_proxy_enabled, litellm_proxy_url,
-		       model_request_url, cpamc_url, allow_user_account_status,
+		       model_request_url, model_request_extra_endpoints, cpamc_url, allow_user_account_status,
 		       allow_user_usage_history, session_secret
 		FROM app_settings WHERE id = 1
 	`)
 	var collectorEnabled, litellmProxyEnabled, allowUserAccountStatus, allowUserUsageHistory bool
-	var cliaproxyURL, managementKey, queueName, keeperJSON, rulesJSON, litellmProxyURL, modelRequestURL, cpamcURL, sessionSecret string
+	var cliaproxyURL, managementKey, queueName, keeperJSON, rulesJSON, litellmProxyURL, modelRequestURL, modelRequestExtraEndpointsJSON, cpamcURL, sessionSecret string
 	var batchSize int
 	var pollInterval, retryInterval float64
-	if err := row.Scan(&collectorEnabled, &cliaproxyURL, &managementKey, &queueName, &batchSize, &pollInterval, &retryInterval, &keeperJSON, &rulesJSON, &litellmProxyEnabled, &litellmProxyURL, &modelRequestURL, &cpamcURL, &allowUserAccountStatus, &allowUserUsageHistory, &sessionSecret); err != nil {
+	if err := row.Scan(&collectorEnabled, &cliaproxyURL, &managementKey, &queueName, &batchSize, &pollInterval, &retryInterval, &keeperJSON, &rulesJSON, &litellmProxyEnabled, &litellmProxyURL, &modelRequestURL, &modelRequestExtraEndpointsJSON, &cpamcURL, &allowUserAccountStatus, &allowUserUsageHistory, &sessionSecret); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return AppConfig{}, fmt.Errorf("%w: app_settings id=1 is missing; run `cpa-helper migrate`", ErrAppSettingsMissing)
 		}
@@ -600,6 +607,14 @@ func (a *App) loadConfig(ctx context.Context) (AppConfig, error) {
 		ProxyURL: strings.TrimSpace(litellmProxyURL),
 	}
 	cfg.ModelRequestURL = nonBlank(strings.TrimRight(strings.TrimSpace(modelRequestURL), "/"), cfg.Collector.CLIProxyURL)
+	if strings.TrimSpace(modelRequestExtraEndpointsJSON) != "" {
+		var endpoints []ModelRequestExtraEndpoint
+		if json.Unmarshal([]byte(modelRequestExtraEndpointsJSON), &endpoints) == nil {
+			if normalized, normalizeErr := normalizeModelRequestExtraEndpoints(endpoints); normalizeErr == nil {
+				cfg.ModelRequestExtraEndpoints = normalized
+			}
+		}
+	}
 	cfg.CPAMCURL = nonBlank(strings.TrimSpace(cpamcURL), defaultCPAMCURL)
 	cfg.AllowUserAccountStatus = allowUserAccountStatus
 	cfg.AllowUserUsageHistory = allowUserUsageHistory
@@ -651,16 +666,24 @@ func (a *App) saveConfig(ctx context.Context, cfg AppConfig) error {
 	if err != nil {
 		return err
 	}
+	extraEndpoints, err := normalizeModelRequestExtraEndpoints(cfg.ModelRequestExtraEndpoints)
+	if err != nil {
+		return err
+	}
+	extraEndpointBytes, err := json.Marshal(extraEndpoints)
+	if err != nil {
+		return err
+	}
 	_, err = a.db.ExecContext(ctx, `
 		UPDATE app_settings
 		SET collector_enabled = ?, cliaproxy_url = ?, management_key = ?, queue_name = ?,
 		    batch_size = ?, poll_interval_seconds = ?, retry_interval_seconds = ?,
 		    codex_keeper_settings = ?, codex_keeper_priority_rules = ?,
 		    litellm_proxy_enabled = ?, litellm_proxy_url = ?,
-		    model_request_url = ?, cpamc_url = ?, allow_user_account_status = ?,
+		    model_request_url = ?, model_request_extra_endpoints = ?, cpamc_url = ?, allow_user_account_status = ?,
 		    allow_user_usage_history = ?, session_secret = ?, updated_at = ?
 		WHERE id = 1
-	`, cfg.Collector.Enabled, strings.TrimRight(strings.TrimSpace(cfg.Collector.CLIProxyURL), "/"), strings.TrimSpace(cfg.Collector.ManagementKey), strings.TrimSpace(cfg.Collector.QueueName), cfg.Collector.BatchSize, cfg.Collector.PollIntervalSeconds, cfg.Collector.RetryIntervalSeconds, string(keeperBytes), string(rulesBytes), cfg.LiteLLMProxy.Enabled, strings.TrimSpace(cfg.LiteLLMProxy.ProxyURL), strings.TrimRight(strings.TrimSpace(cfg.ModelRequestURL), "/"), strings.TrimSpace(cfg.CPAMCURL), cfg.AllowUserAccountStatus, cfg.AllowUserUsageHistory, cfg.SessionSecret, dbTime(time.Now()))
+	`, cfg.Collector.Enabled, strings.TrimRight(strings.TrimSpace(cfg.Collector.CLIProxyURL), "/"), strings.TrimSpace(cfg.Collector.ManagementKey), strings.TrimSpace(cfg.Collector.QueueName), cfg.Collector.BatchSize, cfg.Collector.PollIntervalSeconds, cfg.Collector.RetryIntervalSeconds, string(keeperBytes), string(rulesBytes), cfg.LiteLLMProxy.Enabled, strings.TrimSpace(cfg.LiteLLMProxy.ProxyURL), strings.TrimRight(strings.TrimSpace(cfg.ModelRequestURL), "/"), string(extraEndpointBytes), strings.TrimSpace(cfg.CPAMCURL), cfg.AllowUserAccountStatus, cfg.AllowUserUsageHistory, cfg.SessionSecret, dbTime(time.Now()))
 	return err
 }
 

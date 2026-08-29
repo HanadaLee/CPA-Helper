@@ -63,6 +63,9 @@ func TestRunMigrationsCreatesGooseVersionAndFinalSchema(t *testing.T) {
 	if !testColumnExists(t, app.db, "app_settings", "model_request_url") {
 		t.Fatal("app_settings.model_request_url was not created")
 	}
+	if !testColumnExists(t, app.db, "app_settings", "model_request_extra_endpoints") {
+		t.Fatal("app_settings.model_request_extra_endpoints was not created")
+	}
 	if !testColumnExists(t, app.db, "app_settings", "cpamc_url") {
 		t.Fatal("app_settings.cpamc_url was not created")
 	}
@@ -78,6 +81,13 @@ func TestRunMigrationsCreatesGooseVersionAndFinalSchema(t *testing.T) {
 	}
 	if cpamcURL != "/management.html" {
 		t.Fatalf("app_settings.cpamc_url = %q, want /management.html", cpamcURL)
+	}
+	var modelRequestExtraEndpoints string
+	if err := app.db.QueryRow(`SELECT model_request_extra_endpoints FROM app_settings WHERE id = 1`).Scan(&modelRequestExtraEndpoints); err != nil {
+		t.Fatalf("query app_settings.model_request_extra_endpoints: %v", err)
+	}
+	if modelRequestExtraEndpoints != "[]" {
+		t.Fatalf("app_settings.model_request_extra_endpoints = %q, want []", modelRequestExtraEndpoints)
 	}
 	var allowUserAccountStatus, allowUserUsageHistory bool
 	if err := app.db.QueryRow(`
@@ -306,6 +316,9 @@ func TestRunMigrationsRepairsOldPythonSchemaWithoutOldCode(t *testing.T) {
 	}
 	if !testColumnExists(t, app.db, "app_settings", "allow_user_usage_history") {
 		t.Fatal("old schema migration did not create app_settings.allow_user_usage_history")
+	}
+	if !testColumnExists(t, app.db, "app_settings", "model_request_extra_endpoints") {
+		t.Fatal("old schema migration did not create app_settings.model_request_extra_endpoints")
 	}
 
 	var username, storedAPIKey, usageUsername string

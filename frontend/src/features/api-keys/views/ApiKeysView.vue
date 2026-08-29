@@ -93,6 +93,12 @@ interface RequestEndpointOption {
   urlLabel: string
 }
 
+interface PublicRequestEndpoint {
+  key: string
+  label: string
+  url: string
+}
+
 const chatCompletionsEndpointOption = computed<RequestEndpointOption>(() => ({
   label: t('聊天补全', 'Chat Completions'),
   value: 'chat_completions',
@@ -179,6 +185,27 @@ const apiKeyMetrics = computed<ApiKeyMetricCard[]>(() => {
 const canCreateApiKey = computed(() => quotaStatus.value?.can_create_keys ?? true)
 
 const requestBaseURL = computed(() => modelRequestGuide.value?.openai_base_url ?? requestLoadingText.value)
+const publicRequestEndpoints = computed<PublicRequestEndpoint[]>(() => {
+  const baseURL = modelRequestGuide.value?.openai_base_url?.replace(/\/$/, '')
+  const extraEndpoints = modelRequestGuide.value?.extra_endpoints ?? []
+  return [
+    {
+      key: 'base',
+      label: t('基础 URL', 'Base URL'),
+      url: baseURL || requestLoadingText.value,
+    },
+    ...requestEndpointOptions.value.map((option) => ({
+      key: option.value,
+      label: option.urlLabel,
+      url: baseURL ? `${baseURL}${option.path}` : requestLoadingText.value,
+    })),
+    ...extraEndpoints.map((endpoint, index) => ({
+      key: `extra-${index}`,
+      label: endpoint.description,
+      url: endpoint.url,
+    })),
+  ]
+})
 const requestEndpointMeta = computed(
   () =>
     requestEndpointOptions.value.find((option) => option.value === requestEndpoint.value) ??
@@ -731,42 +758,60 @@ onMounted(refresh)
       </div>
     </div>
 
-    <section class="panel api-key-panel-shell">
-      <div class="panel-inner api-key-panel">
-        <NAlert type="warning" :bordered="false" :title="t('请求链路说明', 'Request path note')">
-          {{ t('Agent 发起的模型请求仍需 Agent 直接发送到 CPA，CPA-Helper 不代理或中转这些请求；仅调用 CPA 的 usage 队列、API KEY 创建与删除、凭证管理等接口，用于用量查看、密钥创建和凭证维护。API 密钥拥有当前账号的完整权限，请妥善保管。', 'Model requests from agents must still be sent directly to CPA by the agent. CPA-Helper does not proxy or relay these requests. It only calls CPA usage queue, API key create/delete, and credential management APIs for usage views, key creation, and credential maintenance. API keys have full permissions for the current account; store them carefully.') }}
-        </NAlert>
+    <div class="grid-two api-key-content-grid">
+      <section class="panel api-key-panel-shell">
+        <div class="panel-inner api-key-panel">
+          <NAlert v-if="quotaStatus?.paused" type="error" :bordered="false" :title="t('额度已用尽', 'Quota exhausted')">
+            {{ t('当前账号 API KEY 已从 CPA 暂停。补充额度或进入新的日、周、月周期后，系统会自动恢复可用 Key。', 'API keys for this account are paused in CPA. Available keys are restored automatically after quota is added or a new daily, weekly, or monthly period begins.') }}
+          </NAlert>
+          <NAlert v-else-if="quotaStatus?.unpriced_records" type="warning" :bordered="false">
+            {{ t(`当前账号存在 ${formatInteger(quotaStatus.unpriced_records)} 条未定价用量，未计入额度扣减。`, `This account has ${formatInteger(quotaStatus.unpriced_records)} unpriced usage records that are not deducted from quota.`) }}
+          </NAlert>
 
-        <NAlert v-if="quotaStatus?.paused" type="error" :bordered="false" :title="t('额度已用尽', 'Quota exhausted')">
-          {{ t('当前账号 API KEY 已从 CPA 暂停。补充额度或进入新的日、周、月周期后，系统会自动恢复可用 Key。', 'API keys for this account are paused in CPA. Available keys are restored automatically after quota is added or a new daily, weekly, or monthly period begins.') }}
-        </NAlert>
-        <NAlert v-else-if="quotaStatus?.unpriced_records" type="warning" :bordered="false">
-          {{ t(`当前账号存在 ${formatInteger(quotaStatus.unpriced_records)} 条未定价用量，未计入额度扣减。`, `This account has ${formatInteger(quotaStatus.unpriced_records)} unpriced usage records that are not deducted from quota.`) }}
-        </NAlert>
-
-        <div v-if="generatedApiKey" class="generated-key-box">
-          <div class="generated-key-main">
-            <div class="generated-key-title">{{ t('新创建的密钥', 'Newly created key') }}</div>
-            <div class="generated-key-value">{{ generatedApiKey }}</div>
+          <div v-if="generatedApiKey" class="generated-key-box">
+            <div class="generated-key-main">
+              <div class="generated-key-title">{{ t('新创建的密钥', 'Newly created key') }}</div>
+              <div class="generated-key-value">{{ generatedApiKey }}</div>
+            </div>
+            <NSpace>
+              <NButton secondary @click="copyGeneratedApiKey">{{ t('复制', 'Copy') }}</NButton>
+              <NButton tertiary @click="closeGeneratedApiKey">{{ t('关闭', 'Close') }}</NButton>
+            </NSpace>
           </div>
-          <NSpace>
-            <NButton secondary @click="copyGeneratedApiKey">{{ t('复制', 'Copy') }}</NButton>
-            <NButton tertiary @click="closeGeneratedApiKey">{{ t('关闭', 'Close') }}</NButton>
-          </NSpace>
-        </div>
 
-        <NDataTable
-          class="api-key-table"
-          size="small"
-          :loading="isLoading"
-          :columns="columns"
-          :data="apiKeys"
-          :pagination="{ pageSize: 12 }"
-          table-layout="fixed"
-          :scroll-x="1080"
-        />
-      </div>
-    </section>
+          <NDataTable
+            class="api-key-table"
+            size="small"
+            :loading="isLoading"
+            :columns="columns"
+            :data="apiKeys"
+            :pagination="{ pageSize: 12 }"
+            table-layout="fixed"
+            :scroll-x="1080"
+          />
+        </div>
+      </section>
+
+      <section class="panel api-endpoint-panel-shell">
+        <div class="panel-inner api-endpoint-panel">
+          <h2 class="section-title">API Endpoint</h2>
+          <div class="request-guide-list">
+            <div v-for="endpoint in publicRequestEndpoints" :key="endpoint.key" class="request-guide-row">
+              <div>
+                <div class="request-guide-label">{{ endpoint.label }}</div>
+                <code class="request-guide-value">{{ endpoint.url }}</code>
+              </div>
+              <NButton size="small" secondary @click="copyRequestValue(endpoint.label, endpoint.url)">
+                <template #icon>
+                  <NIcon :component="Copy" />
+                </template>
+                {{ t('复制', 'Copy') }}
+              </NButton>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
 
     <NModal
       v-model:show="editorVisible"
@@ -949,11 +994,26 @@ onMounted(refresh)
   min-width: 0;
 }
 
+.api-key-content-grid {
+  align-items: start;
+}
+
+.api-endpoint-panel {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.api-endpoint-panel .section-title {
+  margin-bottom: 0;
+}
+
 .api-key-metrics {
   grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 .api-key-panel-shell,
+.api-endpoint-panel-shell,
 .api-key-table {
   min-width: 0;
   min-height: 0;
