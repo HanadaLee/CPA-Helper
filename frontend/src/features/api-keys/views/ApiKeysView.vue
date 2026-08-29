@@ -605,7 +605,7 @@ async function refresh() {
   try {
     const [nextApiKeys, overview, quota, guide] = await Promise.all([
       listApiKeys(),
-      getUsageOverview({ scope: 'account' }),
+      getUsageOverview({ scope: 'account' }, false),
       getCurrentUserQuota(),
       getModelRequestGuide(),
     ])

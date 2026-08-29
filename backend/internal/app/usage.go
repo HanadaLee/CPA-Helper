@@ -264,15 +264,15 @@ func (a *App) usageSummary(w http.ResponseWriter, r *http.Request, filters Usage
 	if err != nil {
 		return err
 	}
-	records, err := a.filteredUsageRecords(r.Context(), scoped, "")
-	if err != nil {
-		return err
-	}
 	prices, err := a.priceMap(r.Context())
 	if err != nil {
 		return err
 	}
-	writeJSON(w, http.StatusOK, usageSummaryFromRecords(scoped, records, prices))
+	aggregate, err := a.buildUsageAggregate(r.Context(), scoped, usageAggregateSummary, nil, prices)
+	if err != nil {
+		return err
+	}
+	writeJSON(w, http.StatusOK, aggregate.summaryResponse())
 	return nil
 }
 
@@ -282,15 +282,15 @@ func (a *App) usageTrends(w http.ResponseWriter, r *http.Request, filters UsageF
 	if err != nil {
 		return err
 	}
-	records, err := a.filteredUsageRecords(r.Context(), scoped, "timestamp ASC")
-	if err != nil {
-		return err
-	}
 	prices, err := a.priceMap(r.Context())
 	if err != nil {
 		return err
 	}
-	writeJSON(w, http.StatusOK, trendPointsFromRecords(scoped, records, prices))
+	aggregate, err := a.buildUsageAggregate(r.Context(), scoped, usageAggregateTrends, nil, prices)
+	if err != nil {
+		return err
+	}
+	writeJSON(w, http.StatusOK, aggregate.trendResponse())
 	return nil
 }
 
@@ -311,10 +311,6 @@ func (a *App) usageRankings(w http.ResponseWriter, r *http.Request, filters Usag
 	if err != nil {
 		return err
 	}
-	records, err := a.filteredUsageRecords(r.Context(), scoped, "")
-	if err != nil {
-		return err
-	}
 	prices, err := a.priceMap(r.Context())
 	if err != nil {
 		return err
@@ -323,7 +319,17 @@ func (a *App) usageRankings(w http.ResponseWriter, r *http.Request, filters Usag
 	if err != nil {
 		return err
 	}
-	writeJSON(w, http.StatusOK, rankingFromRecords(records, prices, groupBy, users))
+	aggregate, err := a.buildUsageAggregate(r.Context(), scoped, usageAggregateRankings, users, prices)
+	if err != nil {
+		return err
+	}
+	groups := aggregate.apiKeys
+	if groupBy == "model" {
+		groups = aggregate.models
+	} else if groupBy == "user" {
+		groups = aggregate.usersByKey
+	}
+	writeJSON(w, http.StatusOK, usageRankingResponse(groupBy, groups))
 	return nil
 }
 
@@ -333,25 +339,21 @@ func (a *App) usageDistributions(w http.ResponseWriter, r *http.Request, filters
 	if err != nil {
 		return err
 	}
-	records, err := a.filteredUsageRecords(r.Context(), scoped, "")
-	if err != nil {
-		return err
-	}
 	prices, err := a.priceMap(r.Context())
 	if err != nil {
 		return err
 	}
-	writeJSON(w, http.StatusOK, distributionsFromRecords(records, prices))
+	aggregate, err := a.buildUsageAggregate(r.Context(), scoped, usageAggregateDistributions, nil, prices)
+	if err != nil {
+		return err
+	}
+	writeJSON(w, http.StatusOK, aggregate.distributionsResponse())
 	return nil
 }
 
 func (a *App) usageOverview(w http.ResponseWriter, r *http.Request, filters UsageFilters, user *AuthUser) error {
 	scope := accessScope(user, filters.Scope)
 	scoped, err := a.scopedFilters(r.Context(), normalizedUsageFilters(filters), scope)
-	if err != nil {
-		return err
-	}
-	records, err := a.filteredUsageRecords(r.Context(), scoped, "timestamp ASC")
 	if err != nil {
 		return err
 	}
@@ -363,25 +365,25 @@ func (a *App) usageOverview(w http.ResponseWriter, r *http.Request, filters Usag
 	if err != nil {
 		return err
 	}
-	apiKeyRanking := rankingFromRecords(records, prices, "api_key_description", users)
-	userRanking := map[string]any{"group_by": "user", "items": []any{}}
-	if scope.IsAdmin {
-		userRanking = rankingFromRecords(records, prices, "user", users)
-	}
-	options, err := a.usageOptionsResponse(r.Context(), user, usageOptionFilters(filters))
+	response, err := a.usageOverviewAggregates(r.Context(), scoped, scope, prices, users)
 	if err != nil {
 		return err
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"summary":                     usageSummaryFromRecords(scoped, records, prices),
-		"trends":                      trendPointsFromRecords(scoped, records, prices),
-		"user_ranking":                userRanking,
-		"api_key_description_ranking": apiKeyRanking,
-		"api_key_ranking":             apiKeyRanking,
-		"model_ranking":               rankingFromRecords(records, prices, "model", users),
-		"distributions":               distributionsFromRecords(records, prices),
-		"options":                     options,
-	})
+	includeOptions := true
+	if raw := strings.TrimSpace(r.URL.Query().Get("include_options")); raw != "" {
+		includeOptions, err = strconv.ParseBool(raw)
+		if err != nil {
+			return validationError("include_options 参数无效")
+		}
+	}
+	if includeOptions {
+		options, err := a.usageOptionsResponse(r.Context(), user, usageOptionFilters(filters))
+		if err != nil {
+			return err
+		}
+		response["options"] = options
+	}
+	writeJSON(w, http.StatusOK, response)
 	return nil
 }
 
@@ -396,9 +398,19 @@ func (a *App) usageRecords(w http.ResponseWriter, r *http.Request, filters Usage
 	if pageSize > 200 {
 		pageSize = 200
 	}
-	total, err := a.countUsageRecords(r.Context(), scoped)
-	if err != nil {
-		return err
+	includeTotal := true
+	if raw := strings.TrimSpace(r.URL.Query().Get("include_total")); raw != "" {
+		includeTotal, err = strconv.ParseBool(raw)
+		if err != nil {
+			return validationError("include_total 参数无效")
+		}
+	}
+	total := 0
+	if includeTotal {
+		total, err = a.countUsageRecords(r.Context(), scoped)
+		if err != nil {
+			return err
+		}
 	}
 	records, err := a.pagedUsageRecords(r.Context(), scoped, page, pageSize)
 	if err != nil {
@@ -417,14 +429,17 @@ func (a *App) usageRecords(w http.ResponseWriter, r *http.Request, filters Usage
 	for _, record := range records {
 		items = append(items, listItemFromRecord(record, users, prices, redaction))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
+	response := map[string]any{
 		"items":     items,
-		"total":     total,
 		"page":      page,
 		"page_size": pageSize,
 		"start":     usageAPITimePtr(scoped.Start),
 		"end":       usageAPITimePtr(scoped.End),
-	})
+	}
+	if includeTotal {
+		response["total"] = total
+	}
+	writeJSON(w, http.StatusOK, response)
 	return nil
 }
 
@@ -475,6 +490,13 @@ func (a *App) usageOptionsResponse(ctx context.Context, user *AuthUser, filters 
 	if err != nil {
 		return nil, err
 	}
+	cacheKey := fmt.Sprintf("admin=%t|user=%d|username=%s|start=%v|end=%v", scope.IsAdmin, scope.UserID, scope.Username, dbTimePtr(scoped.Start), dbTimePtr(scoped.End))
+	return a.cachedUsageOptions(ctx, cacheKey, func(ctx context.Context) (map[string]any, error) {
+		return a.loadUsageOptionsResponse(ctx, scope, scoped)
+	})
+}
+
+func (a *App) loadUsageOptionsResponse(ctx context.Context, scope usageAccessScope, scoped UsageFilters) (map[string]any, error) {
 	where, args := usageWhere(scoped)
 	users := []map[string]any{}
 	distinctStrings := func(column string) ([]string, error) {
@@ -497,7 +519,7 @@ func (a *App) usageOptionsResponse(ctx context.Context, user *AuthUser, filters 
 		return values, rows.Err()
 	}
 	distinctSourceOptions := func() ([]map[string]string, error) {
-		rows, err := a.db.QueryContext(ctx, `SELECT DISTINCT source, auth, raw_json FROM usage_records `+where+` AND source IS NOT NULL`, args...)
+		rows, err := a.db.QueryContext(ctx, `SELECT DISTINCT source_key, source, auth FROM usage_records `+where+` AND source_key IS NOT NULL AND source IS NOT NULL`, args...)
 		if err != nil {
 			return nil, err
 		}
@@ -508,26 +530,26 @@ func (a *App) usageOptionsResponse(ctx context.Context, user *AuthUser, filters 
 		}
 		values := map[string]sourceOption{}
 		for rows.Next() {
-			var source, auth, rawJSON sql.NullString
-			if err := rows.Scan(&source, &auth, &rawJSON); err != nil {
+			var sourceKey, source, auth sql.NullString
+			if err := rows.Scan(&sourceKey, &source, &auth); err != nil {
 				return nil, err
 			}
 			sourceValue := strings.TrimSpace(source.String)
 			if !source.Valid || sourceValue == "" {
 				continue
 			}
-			record := UsageRecord{Source: &sourceValue, RawJSON: rawJSON.String}
+			record := UsageRecord{Source: &sourceValue}
 			if auth.Valid {
 				record.Auth = &auth.String
 			}
 			displaySource := redactedUsageSource(record.Source, usageRecordAuth(record), usageRedactionOptions{})
-			sourceKey := usageSourceKey(record.Source)
-			if displaySource == nil || sourceKey == nil {
+			key := strings.TrimSpace(sourceKey.String)
+			if displaySource == nil || !sourceKey.Valid || key == "" {
 				continue
 			}
-			existing, ok := values[*sourceKey]
+			existing, ok := values[key]
 			if !ok || (existing.Label == sourceValue && *displaySource != sourceValue) {
-				values[*sourceKey] = sourceOption{Key: *sourceKey, Label: *displaySource}
+				values[key] = sourceOption{Key: key, Label: *displaySource}
 			}
 		}
 		options := make([]sourceOption, 0, len(values))
@@ -611,36 +633,7 @@ func parsePositiveInt(value string, fallback int) int {
 	return parsed
 }
 
-func (a *App) filteredUsageRecords(ctx context.Context, filters UsageFilters, orderBy string) ([]UsageRecord, error) {
-	where, args := usageWhere(filters)
-	query := `SELECT id, CAST(timestamp AS TEXT), usage_username, api_key_description, provider, model, reasoning_effort, endpoint, source,
-		source_account, request_id, auth, auth_index, latency_ms, ttft_ms, failed, input_tokens, output_tokens, cached_tokens,
-		cache_read_tokens, cache_creation_tokens, reasoning_tokens, total_tokens, dedupe_key, raw_json FROM usage_records ` + where
-	if strings.TrimSpace(orderBy) != "" {
-		query += " ORDER BY " + orderBy
-	} else {
-		query += " ORDER BY timestamp"
-	}
-	rows, err := a.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	records, err := scanUsageRecords(rows)
-	if err != nil {
-		return nil, err
-	}
-	return applyUsagePostFilters(records, filters), nil
-}
-
 func (a *App) countUsageRecords(ctx context.Context, filters UsageFilters) (int, error) {
-	if hasUsagePostFilters(filters) {
-		records, err := a.filteredUsageRecords(ctx, filters, "")
-		if err != nil {
-			return 0, err
-		}
-		return len(records), nil
-	}
 	where, args := usageWhere(filters)
 	var total int
 	err := a.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_records `+where, args...).Scan(&total)
@@ -648,52 +641,16 @@ func (a *App) countUsageRecords(ctx context.Context, filters UsageFilters) (int,
 }
 
 func (a *App) pagedUsageRecords(ctx context.Context, filters UsageFilters, page, pageSize int) ([]UsageRecord, error) {
-	if hasUsagePostFilters(filters) {
-		records, err := a.filteredUsageRecords(ctx, filters, "timestamp DESC")
-		if err != nil {
-			return nil, err
-		}
-		start := (page - 1) * pageSize
-		if start >= len(records) {
-			return []UsageRecord{}, nil
-		}
-		end := start + pageSize
-		if end > len(records) {
-			end = len(records)
-		}
-		return records[start:end], nil
-	}
 	where, args := usageWhere(filters)
 	args = append(args, pageSize, (page-1)*pageSize)
 	rows, err := a.db.QueryContext(ctx, `SELECT id, CAST(timestamp AS TEXT), usage_username, api_key_description, provider, model, reasoning_effort, endpoint, source,
-		source_account, request_id, auth, auth_index, latency_ms, ttft_ms, failed, input_tokens, output_tokens, cached_tokens,
-		cache_read_tokens, cache_creation_tokens, reasoning_tokens, total_tokens, dedupe_key, raw_json FROM usage_records `+where+` ORDER BY timestamp DESC LIMIT ? OFFSET ?`, args...)
+		NULL, request_id, auth, auth_index, latency_ms, ttft_ms, failed, input_tokens, output_tokens, cached_tokens,
+		cache_read_tokens, cache_creation_tokens, reasoning_tokens, total_tokens, '', '' FROM usage_records `+where+` ORDER BY timestamp DESC LIMIT ? OFFSET ?`, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	return scanUsageRecords(rows)
-}
-
-func hasUsagePostFilters(filters UsageFilters) bool {
-	return filters.SourceKey != nil
-}
-
-func applyUsagePostFilters(records []UsageRecord, filters UsageFilters) []UsageRecord {
-	if !hasUsagePostFilters(filters) {
-		return records
-	}
-	filtered := records[:0]
-	for _, record := range records {
-		if filters.SourceKey != nil {
-			key := usageSourceKey(record.Source)
-			if key == nil || *key != *filters.SourceKey {
-				continue
-			}
-		}
-		filtered = append(filtered, record)
-	}
-	return filtered
 }
 
 func (a *App) getUsageRecord(ctx context.Context, id int) (UsageRecord, error) {
@@ -740,6 +697,10 @@ func usageWhere(filters UsageFilters) (string, []any) {
 	if filters.Model != nil {
 		clauses = append(clauses, "model = ?")
 		args = append(args, *filters.Model)
+	}
+	if filters.SourceKey != nil {
+		clauses = append(clauses, "source_key = ?")
+		args = append(args, *filters.SourceKey)
 	}
 	if filters.Endpoint != nil {
 		clauses = append(clauses, "endpoint = ?")
@@ -799,6 +760,10 @@ func (a *App) userLookup(ctx context.Context, scope usageAccessScope) (map[strin
 			scope.Username: {ID: scope.UserID, Username: scope.Username, Name: scope.Username},
 		}, nil
 	}
+	return a.cachedAdminUserLookup(ctx)
+}
+
+func (a *App) loadAdminUserLookup(ctx context.Context) (map[string]userInfo, error) {
 	users, err := a.allUsers(ctx)
 	if err != nil {
 		return nil, err
@@ -1273,13 +1238,14 @@ func (a *App) saveUsageMessage(ctx context.Context, raw []byte) (UsageRecord, bo
 		return UsageRecord{}, false, err
 	}
 	now := dbTime(time.Now())
+	sourceKey := usageSourceKey(normalized.Source)
 	result, err := a.db.ExecContext(ctx, `
 		INSERT INTO usage_records (
 			created_at, timestamp, usage_username, api_key_description, provider, model, endpoint,
-			reasoning_effort, source, source_account, request_id, auth, auth_index, latency_ms, ttft_ms, failed, input_tokens, output_tokens,
+			reasoning_effort, source, source_key, source_account, request_id, auth, auth_index, latency_ms, ttft_ms, failed, input_tokens, output_tokens,
 			cached_tokens, cache_read_tokens, cache_creation_tokens, reasoning_tokens, total_tokens, dedupe_key, raw_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, now, dbTime(normalized.Timestamp), usageUsername, description, normalized.Provider, normalized.Model, normalized.Endpoint, normalized.ReasoningEffort, normalized.Source, normalized.SourceAccount, normalized.RequestID, normalized.Auth, normalized.AuthIndex, normalized.LatencyMS, normalized.TTFTMS, normalized.Failed, normalized.InputTokens, normalized.OutputTokens, normalized.CachedTokens, normalized.CacheReadTokens, normalized.CacheCreationTokens, normalized.ReasoningTokens, normalized.TotalTokens, normalized.DedupeKey, normalized.RawJSON)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, now, dbTime(normalized.Timestamp), usageUsername, description, normalized.Provider, normalized.Model, normalized.Endpoint, normalized.ReasoningEffort, normalized.Source, sourceKey, normalized.SourceAccount, normalized.RequestID, normalized.Auth, normalized.AuthIndex, normalized.LatencyMS, normalized.TTFTMS, normalized.Failed, normalized.InputTokens, normalized.OutputTokens, normalized.CachedTokens, normalized.CacheReadTokens, normalized.CacheCreationTokens, normalized.ReasoningTokens, normalized.TotalTokens, normalized.DedupeKey, normalized.RawJSON)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
 			record, getErr := a.usageRecordByDedupe(ctx, normalized.DedupeKey)
@@ -1288,6 +1254,7 @@ func (a *App) saveUsageMessage(ctx context.Context, raw []byte) (UsageRecord, bo
 		return UsageRecord{}, false, err
 	}
 	id, _ := result.LastInsertId()
+	a.invalidateUsageOptions()
 	record, err := a.getUsageRecord(ctx, int(id))
 	if err != nil {
 		return UsageRecord{}, false, err

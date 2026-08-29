@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	backendMigrations "cpa-helper/backend/migrations"
@@ -38,6 +39,30 @@ func TestRunMigrationsCreatesGooseVersionAndFinalSchema(t *testing.T) {
 	}
 	if !testColumnExists(t, app.db, "usage_records", "ttft_ms") {
 		t.Fatal("usage_records.ttft_ms was not created")
+	}
+	if !testColumnExists(t, app.db, "usage_records", "source_key") {
+		t.Fatal("usage_records.source_key was not created")
+	}
+	for _, index := range []string{
+		"ix_usage_records_source_key_timestamp",
+		"ix_usage_records_usage_username_timestamp",
+		"ix_usage_records_failed_timestamp",
+		"ix_usage_records_api_key_description_timestamp",
+		"ix_usage_records_provider_timestamp",
+		"ix_usage_records_model_timestamp",
+		"ix_usage_records_endpoint_timestamp",
+	} {
+		if !testIndexExists(t, app.db, index) {
+			t.Fatalf("usage query index %s was not created", index)
+		}
+	}
+	if !testQueryPlanUsesIndex(t, app.db, "ix_usage_records_source_key_timestamp", `
+		EXPLAIN QUERY PLAN
+		SELECT id FROM usage_records
+		WHERE source_key = ? AND timestamp >= ? AND timestamp < ?
+		ORDER BY timestamp DESC LIMIT 50
+	`, "source-key", "2026-08-30T00:00:00+08:00", "2026-08-31T00:00:00+08:00") {
+		t.Fatal("source/date usage query does not use the composite source_key index")
 	}
 	if !testColumnExists(t, app.db, "model_prices", "cache_read_usd_per_million") {
 		t.Fatal("model_prices.cache_read_usd_per_million was not created")
@@ -468,6 +493,36 @@ func testColumnExists(t *testing.T, db *sql.DB, table, column string) bool {
 			t.Fatal(err)
 		}
 		if name == column {
+			return true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return false
+}
+
+func testIndexExists(t *testing.T, db *sql.DB, index string) bool {
+	t.Helper()
+	var name string
+	err := db.QueryRow(`SELECT name FROM sqlite_master WHERE type = 'index' AND name = ?`, index).Scan(&name)
+	return err == nil
+}
+
+func testQueryPlanUsesIndex(t *testing.T, db *sql.DB, index, query string, args ...any) bool {
+	t.Helper()
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, parent, notUsed int
+		var detail string
+		if err := rows.Scan(&id, &parent, &notUsed, &detail); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(detail, index) {
 			return true
 		}
 	}

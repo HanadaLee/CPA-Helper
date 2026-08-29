@@ -202,6 +202,7 @@ func requireSchemaShape(ctx context.Context, db *sql.DB) error {
 		{"users", "username"},
 		{"usage_records", "dedupe_key"},
 		{"usage_records", "ttft_ms"},
+		{"usage_records", "source_key"},
 		{"model_prices", "request_usd"},
 		{"users", "quota_daily_usd"},
 		{"users", "quota_weekly_usd"},

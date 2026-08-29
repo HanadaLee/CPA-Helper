@@ -417,7 +417,12 @@ export interface UsageOverviewResponse {
   api_key_ranking?: UsageRankingsResponse
   model_ranking: UsageRankingsResponse
   distributions: UsageDistributionsResponse
-  options: UsageOptionsResponse
+  options?: UsageOptionsResponse
+  today_trends: TrendPoint[]
+  failed_summary: UsageSummary
+  failed_trends: TrendPoint[]
+  failed_endpoint_distribution: DistributionItem[]
+  realtime_summary: UsageSummary
 }
 
 export interface UsageRecordListItem {
@@ -450,7 +455,7 @@ export interface UsageRecordListItem {
 
 export interface UsageRecordsResponse {
   items: UsageRecordListItem[]
-  total: number
+  total?: number
   page: number
   page_size: number
   start: string

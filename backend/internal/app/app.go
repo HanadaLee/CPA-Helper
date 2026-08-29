@@ -58,6 +58,7 @@ type App struct {
 	collector        *CollectorRunner
 	keeper           *KeeperRunner
 	keeperUsageCache keeperWindowUsageCache
+	usageCache       usageQueryCache
 }
 
 type AppError struct {

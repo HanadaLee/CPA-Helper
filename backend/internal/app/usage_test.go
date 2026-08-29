@@ -72,6 +72,20 @@ type usageOverviewOptionsResponse struct {
 	Options usageOptionsTestResponse `json:"options"`
 }
 
+type optimizedUsageOverviewResponse struct {
+	Summary struct {
+		TotalRecords int `json:"total_records"`
+	} `json:"summary"`
+	FailedSummary struct {
+		TotalRecords int `json:"total_records"`
+	} `json:"failed_summary"`
+	FailedTrends               []map[string]any          `json:"failed_trends"`
+	FailedEndpointDistribution []usageDistributionItem   `json:"failed_endpoint_distribution"`
+	TodayTrends                []map[string]any          `json:"today_trends"`
+	RealtimeSummary            usageSummaryResponse      `json:"realtime_summary"`
+	Options                    *usageOptionsTestResponse `json:"options"`
+}
+
 type usageHistoryAccessUserResponse struct {
 	CanViewUsageHistory bool `json:"can_view_usage_history"`
 }
@@ -268,6 +282,50 @@ func TestUsageOverviewIncludesModelDistribution(t *testing.T) {
 	}
 	if item.Records != 1 || item.TotalTokens != 12 {
 		t.Fatalf("model distribution totals = records %d tokens %d, want 1 and 12", item.Records, item.TotalTokens)
+	}
+}
+
+func TestUsageOverviewReturnsAuxiliaryMetricsWithoutOptions(t *testing.T) {
+	dataDir := t.TempDir()
+	t.Setenv("CPA_HELPER_DATA_DIR", dataDir)
+
+	app, err := backendApp.New()
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	defer app.Close()
+	handler := app.Routes()
+	cookies := requestJSON(t, handler, http.MethodPost, "/api/auth/setup", map[string]any{
+		"username": "admin", "password": "test-password", "nickname": "Admin",
+	}, nil, nil)
+	seedUsageRecordWithValues(t, dataDir, usageRecordSeed{
+		Timestamp: "2026-05-16T16:37:00+08:00", Username: "admin", Source: "source-success",
+		RequestID: "req-overview-success", Auth: "bearer", DedupeKey: "overview-success",
+		RawJSON: `{"request_id":"req-overview-success"}`, InputTokens: 10, OutputTokens: 2, TotalTokens: 12,
+	})
+	seedUsageRecordWithValues(t, dataDir, usageRecordSeed{
+		Timestamp: "2026-05-16T16:38:00+08:00", Username: "admin", Source: "source-failed",
+		RequestID: "req-overview-failed", Auth: "bearer", DedupeKey: "overview-failed", Failed: true,
+		RawJSON: `{"request_id":"req-overview-failed","failed":true}`, InputTokens: 5, OutputTokens: 1, TotalTokens: 6,
+	})
+
+	const path = "/api/usage/overview?scope=admin&include_options=false&start=2026-05-16T00:00:00&end=2026-05-17T00:00:00"
+	overview := optimizedUsageOverviewResponse{}
+	requestJSON(t, handler, http.MethodGet, path, nil, cookies, &overview)
+	if overview.Summary.TotalRecords != 2 || overview.FailedSummary.TotalRecords != 1 {
+		t.Fatalf("overview totals = %d/%d, want 2/1", overview.Summary.TotalRecords, overview.FailedSummary.TotalRecords)
+	}
+	if len(overview.FailedTrends) != 1 || len(overview.FailedEndpointDistribution) != 1 {
+		t.Fatalf("failed auxiliary metrics = trends %d/endpoints %d, want 1/1", len(overview.FailedTrends), len(overview.FailedEndpointDistribution))
+	}
+	if overview.Options != nil {
+		t.Fatal("overview options should be omitted when include_options=false")
+	}
+
+	records := map[string]any{}
+	requestJSON(t, handler, http.MethodGet, "/api/usage/records?scope=admin&include_total=false&start=2026-05-16T00:00:00&end=2026-05-17T00:00:00&page=1&page_size=10", nil, cookies, &records)
+	if _, ok := records["total"]; ok {
+		t.Fatal("records total should be omitted when include_total=false")
 	}
 }
 
@@ -623,6 +681,7 @@ func TestUsageRecordDetailRedactsAccountSourceForNonAdminOnly(t *testing.T) {
 		Source:       source,
 		RequestID:    "req-account-source",
 		Auth:         "oauth",
+		AuthIndex:    authIndex,
 		DedupeKey:    "account-source-test",
 		RawJSON:      `{"auth_type":"oauth","auth_index":"` + authIndex + `","source":"` + source + `","request_id":"req-account-source"}`,
 		InputTokens:  10,
@@ -698,10 +757,12 @@ type usageRecordSeed struct {
 	Source            string
 	RequestID         string
 	Auth              string
+	AuthIndex         string
 	DedupeKey         string
 	RawJSON           string
 	ReasoningEffort   string
 	TTFTMS            *float64
+	Failed            bool
 	InputTokens       int
 	OutputTokens      int
 	TotalTokens       int
@@ -736,12 +797,12 @@ func seedUsageRecordWithValues(t *testing.T, dataDir string, seed usageRecordSee
 	result, err := db.Exec(`
 		INSERT INTO usage_records (
 			created_at, timestamp, usage_username, api_key_description, provider, model,
-			reasoning_effort, endpoint, source, request_id, auth, latency_ms, ttft_ms, failed, input_tokens,
+			reasoning_effort, endpoint, source, source_key, request_id, auth, auth_index, latency_ms, ttft_ms, failed, input_tokens,
 			output_tokens, cached_tokens, reasoning_tokens, total_tokens, dedupe_key, raw_json
 		) VALUES (
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1000, ?, 0, ?, ?, 0, 0, ?, ?, ?
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1000, ?, ?, ?, ?, 0, 0, ?, ?, ?
 		)
-	`, seed.Timestamp, seed.Timestamp, seed.Username, description, provider, model, nullableSeedString(seed.ReasoningEffort), endpoint, seed.Source, seed.RequestID, seed.Auth, nullableSeedFloat(seed.TTFTMS), seed.InputTokens, seed.OutputTokens, seed.TotalTokens, seed.DedupeKey, seed.RawJSON)
+	`, seed.Timestamp, seed.Timestamp, seed.Username, description, provider, model, nullableSeedString(seed.ReasoningEffort), endpoint, seed.Source, nullableSeedSourceKey(seed.Source), seed.RequestID, seed.Auth, nullableSeedString(seed.AuthIndex), nullableSeedFloat(seed.TTFTMS), seed.Failed, seed.InputTokens, seed.OutputTokens, seed.TotalTokens, seed.DedupeKey, seed.RawJSON)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -772,6 +833,14 @@ func nullableSeedFloat(value *float64) any {
 		return nil
 	}
 	return *value
+}
+
+func nullableSeedSourceKey(value string) any {
+	normalized := strings.TrimSpace(value)
+	if normalized == "" {
+		return nil
+	}
+	return sourceKeyForTest(normalized)
 }
 
 func assertStringSlice(t *testing.T, got, want []string) {

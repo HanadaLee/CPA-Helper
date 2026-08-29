@@ -12,7 +12,7 @@ import {
   Zap,
 } from 'lucide-vue-next'
 
-import { getUsageOverview } from '@/features/usage/api/usageApi'
+import { getUsageOptions, getUsageOverview } from '@/features/usage/api/usageApi'
 import { getCurrentUserQuota } from '@/features/users/api/usersApi'
 import ChartPanel, { type ChartOption } from '@/features/usage/components/ChartPanel.vue'
 import type {
@@ -91,7 +91,6 @@ interface HourActivityItem {
 const AUTO_REFRESH_INTERVAL_MS = 30_000
 const HOUR_MS = 60 * 60 * 1000
 const DAY_MS = 24 * HOUR_MS
-const THIRTY_MINUTES_MS = 30 * 60 * 1000
 const DISTRIBUTION_CHART_COLORS = [
   { token: '--cpa-chart-1', fallback: '#009aa8' },
   { token: '--cpa-chart-2', fallback: '#1d8dff' },
@@ -520,31 +519,13 @@ async function refresh({ silent = false }: RefreshOptions = {}) {
   try {
     const filters = buildFilters()
     const usedServerDefaultRange = filters.start === undefined && filters.end === undefined
-    const [todayStart, todayEnd] = todayRange()
-    const [realtimeStart, realtimeEnd] = rollingRange(THIRTY_MINUTES_MS)
-    const todayFilters: UsageFilters = {
-      ...filters,
-      start: formatLocalDateTimeParam(todayStart),
-      end: formatLocalDateTimeParam(todayEnd),
-    }
-    const failedFilters: UsageFilters = { ...filters, failed: true }
-    const realtimeRequest =
-      activeQuickRange.value === 'today'
-        ? getUsageOverview({
-            ...filters,
-            start: formatLocalDateTimeParam(realtimeStart),
-            end: formatLocalDateTimeParam(realtimeEnd),
-          })
-        : Promise.resolve(null)
+    const optionsRequest = silent ? Promise.resolve(null) : getUsageOptions(filters)
     const quotaRequest = isAccountScope.value ? getCurrentUserQuota() : Promise.resolve(null)
-    const [overviewResult, todayResult, failedResult, realtimeResult, quotaResult] =
-      await Promise.allSettled([
-        getUsageOverview(filters),
-        getUsageOverview(todayFilters),
-        getUsageOverview(failedFilters),
-        realtimeRequest,
-        quotaRequest,
-      ] as const)
+    const [overviewResult, optionsResult, quotaResult] = await Promise.allSettled([
+      getUsageOverview(filters, false),
+      optionsRequest,
+      quotaRequest,
+    ] as const)
 
     if (overviewResult.status === 'rejected') {
       throw overviewResult.reason
@@ -564,28 +545,13 @@ async function refresh({ silent = false }: RefreshOptions = {}) {
       : (overview.user_ranking ?? emptyRanking('user')).items
     modelRanking.value = (overview.model_ranking ?? emptyRanking('model')).items
     distributions.value = normalizeUsageDistributions(overview.distributions)
-    options.value = normalizeUsageOptions(overview.options)
-
-    if (todayResult.status === 'fulfilled') {
-      todayTrends.value = todayResult.value.trends
-    } else {
-      todayTrends.value = []
-    }
-
-    if (failedResult.status === 'fulfilled') {
-      failedSummary.value = failedResult.value.summary
-      failedTrends.value = failedResult.value.trends
-      failedEndpointDistribution.value = failedResult.value.distributions.endpoints ?? []
-    } else {
-      failedSummary.value = null
-      failedTrends.value = []
-      failedEndpointDistribution.value = []
-    }
-
-    if (realtimeResult.status === 'fulfilled') {
-      realtimeSummary.value = realtimeResult.value?.summary ?? null
-    } else {
-      realtimeSummary.value = null
+    todayTrends.value = overview.today_trends ?? []
+    failedSummary.value = overview.failed_summary ?? null
+    failedTrends.value = overview.failed_trends ?? []
+    failedEndpointDistribution.value = overview.failed_endpoint_distribution ?? []
+    realtimeSummary.value = overview.realtime_summary ?? null
+    if (!silent && optionsResult.status === 'fulfilled' && optionsResult.value) {
+      options.value = normalizeUsageOptions(optionsResult.value)
     }
 
     if (quotaResult.status === 'fulfilled') {
@@ -595,9 +561,7 @@ async function refresh({ silent = false }: RefreshOptions = {}) {
     }
 
     auxiliaryError.value =
-      todayResult.status === 'rejected' ||
-      failedResult.status === 'rejected' ||
-      realtimeResult.status === 'rejected' ||
+      optionsResult.status === 'rejected' ||
       quotaResult.status === 'rejected'
         ? t('部分辅助指标加载失败', 'Some auxiliary metrics failed to load')
         : null
@@ -1274,14 +1238,24 @@ const endpointDistributionOption = computed<ChartOption>(() =>
 
 let autoRefreshTimer: number | undefined
 
+function handleVisibilityChange() {
+  if (!document.hidden) {
+    void refresh({ silent: true })
+  }
+}
+
 onMounted(() => {
   void refresh()
+  document.addEventListener('visibilitychange', handleVisibilityChange)
   autoRefreshTimer = window.setInterval(() => {
-    void refresh({ silent: true })
+    if (!document.hidden) {
+      void refresh({ silent: true })
+    }
   }, AUTO_REFRESH_INTERVAL_MS)
 })
 
 onBeforeUnmount(() => {
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
   if (autoRefreshTimer !== undefined) {
     window.clearInterval(autoRefreshTimer)
   }

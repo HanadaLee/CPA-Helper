@@ -253,6 +253,10 @@ func (a *App) listPrices(ctx context.Context) ([]ModelPrice, error) {
 }
 
 func (a *App) priceMap(ctx context.Context) (map[[2]string]ModelPrice, error) {
+	return a.cachedPriceMap(ctx)
+}
+
+func (a *App) loadPriceMap(ctx context.Context) (map[[2]string]ModelPrice, error) {
 	prices, err := a.listPrices(ctx)
 	if err != nil {
 		return nil, err
@@ -516,6 +520,7 @@ func (a *App) createPrice(ctx context.Context, payload modelPricePayload) (Model
 		return ModelPrice{}, err
 	}
 	id, _ := result.LastInsertId()
+	a.invalidateUsagePrices()
 	return a.getPrice(ctx, int(id))
 }
 
@@ -542,6 +547,7 @@ func (a *App) updatePrice(ctx context.Context, id int, payload modelPricePayload
 	if affected == 0 {
 		return ModelPrice{}, notFoundError("模型价格不存在")
 	}
+	a.invalidateUsagePrices()
 	return a.getPrice(ctx, id)
 }
 
@@ -554,6 +560,7 @@ func (a *App) deletePrice(ctx context.Context, id int) error {
 	if affected == 0 {
 		return notFoundError("模型价格不存在")
 	}
+	a.invalidateUsagePrices()
 	return nil
 }
 
@@ -677,6 +684,7 @@ func (a *App) syncLiteLLMPrices(ctx context.Context, sourceURL string, rawData m
 		return nil, err
 	}
 	committed = true
+	a.invalidateUsagePrices()
 	return map[string]any{
 		"source_url":      sourceURL,
 		"total_entries":   len(rawData),

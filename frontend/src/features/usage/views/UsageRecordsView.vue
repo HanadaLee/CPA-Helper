@@ -48,6 +48,7 @@ interface Props {
 }
 
 const AUTO_REFRESH_INTERVAL_MS = 10_000
+const TOTAL_REFRESH_INTERVAL_MS = 60_000
 const HOUR_MS = 60 * 60 * 1000
 const DAY_MS = 24 * HOUR_MS
 const ALL_RECORDS_START_PARAM = '0001-01-01T00:00:00+08:00'
@@ -460,6 +461,7 @@ async function applyQuickRange(key: QuickRangeKey) {
 }
 
 let queuedRefresh: RefreshOptions | null = null
+let lastTotalRefreshAt = 0
 
 function queueRefresh(options: RefreshOptions) {
   if (options.silent) {
@@ -472,6 +474,9 @@ function queueRefresh(options: RefreshOptions) {
 }
 
 async function refresh({ resetPage = false, silent = false }: RefreshOptions = {}) {
+  if (silent && (document.hidden || page.value !== 1)) {
+    return
+  }
   if (isLoading.value || isAutoRefreshing.value) {
     queueRefresh({ resetPage, silent })
     return
@@ -490,8 +495,9 @@ async function refresh({ resetPage = false, silent = false }: RefreshOptions = {
   try {
     const filters = buildFilters()
     const usedServerDefaultRange = filters.start === undefined && filters.end === undefined
+    const includeTotal = !silent || Date.now() - lastTotalRefreshAt >= TOTAL_REFRESH_INTERVAL_MS
     const [recordsResult, optionsResult] = await Promise.allSettled([
-      getUsageRecords(filters, page.value, pageSize.value),
+      getUsageRecords(filters, page.value, pageSize.value, includeTotal),
       silent ? Promise.resolve(null) : getUsageOptions(filters),
     ])
     if (recordsResult.status === 'rejected') {
@@ -499,8 +505,16 @@ async function refresh({ resetPage = false, silent = false }: RefreshOptions = {
     }
     const nextRecords = recordsResult.value
     const nextOptions = optionsResult.status === 'fulfilled' ? optionsResult.value : null
+    const previousIDs = new Set(records.value.map((record) => record.id))
     records.value = nextRecords.items
-    total.value = nextRecords.total
+    if (typeof nextRecords.total === 'number') {
+      total.value = nextRecords.total
+      lastTotalRefreshAt = Date.now()
+    } else if (page.value === 1 && nextRecords.items.length < pageSize.value) {
+      total.value = nextRecords.items.length
+    } else {
+      total.value += nextRecords.items.filter((record) => !previousIDs.has(record.id)).length
+    }
     if (!silent) {
       options.value = normalizeUsageOptions(nextOptions, nextRecords.items)
     }
@@ -878,8 +892,15 @@ const columns = computed<DataTableColumns<UsageRecordListItem>>(() => [
 
 let autoRefreshTimer: number | undefined
 
+function handleVisibilityChange() {
+  if (!document.hidden) {
+    void refresh({ silent: true })
+  }
+}
+
 onMounted(() => {
   desktopRecordsLayoutQuery.addEventListener('change', handleRecordsLayoutChange)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
   void refresh()
   autoRefreshTimer = window.setInterval(() => {
     void refresh({ silent: true })
@@ -888,6 +909,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   desktopRecordsLayoutQuery.removeEventListener('change', handleRecordsLayoutChange)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
   if (autoRefreshTimer !== undefined) {
     window.clearInterval(autoRefreshTimer)
   }

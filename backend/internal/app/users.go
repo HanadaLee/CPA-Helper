@@ -393,6 +393,7 @@ func (a *App) createUser(ctx context.Context, payload userPayload) (UserSummaryR
 		return UserSummaryResponse{}, err
 	}
 	id, _ := result.LastInsertId()
+	a.invalidateUsageUsers()
 	user, err := a.getUser(ctx, int(id))
 	if err != nil {
 		return UserSummaryResponse{}, err
@@ -435,6 +436,7 @@ func (a *App) updateUser(ctx context.Context, id int, payload userPayload) (User
 			return UserSummaryResponse{}, err
 		}
 	}
+	a.invalidateUsageUsers()
 	users, err := a.listUsers(ctx)
 	if err != nil {
 		return UserSummaryResponse{}, err
@@ -465,6 +467,9 @@ func (a *App) disableUser(ctx context.Context, id int) error {
 		}
 	}
 	_, err = a.db.ExecContext(ctx, `UPDATE users SET disabled_at = ?, updated_at = ? WHERE id = ?`, dbTime(time.Now()), dbTime(time.Now()), id)
+	if err == nil {
+		a.invalidateUsageUsers()
+	}
 	return err
 }
 
@@ -506,6 +511,9 @@ func (a *App) enableUser(ctx context.Context, id int) error {
 		restored = append(restored, key.APIKeyHash)
 	}
 	_, err = a.db.ExecContext(ctx, `UPDATE users SET disabled_at = NULL, quota_paused_at = NULL, quota_pause_reason = NULL, quota_sync_error = NULL, updated_at = ? WHERE id = ?`, dbTime(time.Now()), id)
+	if err == nil {
+		a.invalidateUsageUsers()
+	}
 	return err
 }
 
@@ -950,17 +958,13 @@ func (a *App) userUsageSummaries(ctx context.Context) (map[string]userUsageSumma
 		return nil, err
 	}
 	filters := UsageFilters{}
-	records, err := a.filteredUsageRecords(ctx, filters, "")
-	if err != nil {
-		return nil, err
-	}
 	todayStart, todayEnd := defaultTodayRange()
 	result := map[string]userUsageSummary{}
 	providerSeen := map[string]map[string]bool{}
 	modelSeen := map[string]map[string]bool{}
-	for _, record := range records {
+	err = a.walkAggregateUsageRecords(ctx, filters, func(record UsageRecord) {
 		if record.UsageUsername == nil || strings.TrimSpace(*record.UsageUsername) == "" {
-			continue
+			return
 		}
 		username := *record.UsageUsername
 		summary := result[username]
@@ -1007,6 +1011,9 @@ func (a *App) userUsageSummaries(ctx context.Context) (map[string]userUsageSumma
 			}
 		}
 		result[username] = summary
+	})
+	if err != nil {
+		return nil, err
 	}
 	return result, nil
 }

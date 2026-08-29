@@ -53,19 +53,27 @@ export function getUsageDistributions(
   return apiClient.get<UsageDistributionsResponse>('/usage/distributions', filtersToParams(filters))
 }
 
-export function getUsageOverview(filters: UsageFilters): Promise<UsageOverviewResponse> {
-  return apiClient.get<UsageOverviewResponse>('/usage/overview', filtersToParams(filters))
+export function getUsageOverview(
+  filters: UsageFilters,
+  includeOptions = true,
+): Promise<UsageOverviewResponse> {
+  return apiClient.get<UsageOverviewResponse>('/usage/overview', {
+    ...filtersToParams(filters),
+    include_options: includeOptions,
+  })
 }
 
 export function getUsageRecords(
   filters: UsageFilters,
   page: number,
   pageSize: number,
+  includeTotal = true,
 ): Promise<UsageRecordsResponse> {
   return apiClient.get<UsageRecordsResponse>('/usage/records', {
     ...filtersToParams(filters),
     page,
     page_size: pageSize,
+    include_total: includeTotal,
   })
 }
 
