@@ -3357,13 +3357,10 @@ func (a *App) deleteKeeperAccount(ctx context.Context, authName string) error {
 	if err != nil {
 		return err
 	}
-	if !state.Disabled {
-		return validationError("只能删除已禁用账号")
-	}
-	if err := a.deleteKeeperRemoteAuthFile(ctx, cfg, authName); err != nil {
+	if err := a.deleteKeeperRemoteAuthFile(ctx, cfg, state.Name); err != nil {
 		return err
 	}
-	_, err = a.db.ExecContext(ctx, `DELETE FROM codex_keeper_auth_states WHERE auth_name = ?`, authName)
+	_, err = a.db.ExecContext(ctx, `DELETE FROM codex_keeper_auth_states WHERE auth_name = ?`, state.Name)
 	return err
 }
 

@@ -84,6 +84,44 @@ func TestKeeperRequestDoesNotRetryManagementClientErrors(t *testing.T) {
 	}
 }
 
+func TestDeleteKeeperAccountAllowsEnabledAccount(t *testing.T) {
+	t.Setenv("CPA_HELPER_DATA_DIR", t.TempDir())
+
+	deletedName := ""
+	cpa := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer test-management-key" {
+			http.Error(w, "missing management authorization", http.StatusUnauthorized)
+			return
+		}
+		if r.Method != http.MethodDelete || r.URL.Path != "/v0/management/auth-files" {
+			http.NotFound(w, r)
+			return
+		}
+		deletedName = r.URL.Query().Get("name")
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	}))
+	defer cpa.Close()
+
+	app, err := New()
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	defer app.Close()
+	configureKeeperTestCPA(t, app, cpa.URL, nil)
+	insertKeeperStateForCandidate(t, app, "enabled.json", nil, nil)
+
+	if err := app.deleteKeeperAccount(context.Background(), "enabled.json"); err != nil {
+		t.Fatalf("delete enabled account: %v", err)
+	}
+	if deletedName != "enabled.json" {
+		t.Fatalf("deleted auth file = %q, want enabled.json", deletedName)
+	}
+	if got := countKeeperRows(t, app, `SELECT COUNT(*) FROM codex_keeper_auth_states WHERE auth_name = 'enabled.json'`); got != 0 {
+		t.Fatalf("enabled account rows = %d, want 0", got)
+	}
+}
+
 func TestConditionalKeeperRefreshCandidatesUseUsageQuotaAndCache(t *testing.T) {
 	t.Setenv("CPA_HELPER_DATA_DIR", t.TempDir())
 	app, err := New()

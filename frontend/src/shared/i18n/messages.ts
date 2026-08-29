@@ -280,7 +280,6 @@ const serverMessagePatterns: ServerMessagePattern[] = [
   [/^模拟应用类型优先级：(.+) -> priority (-?\d+)$/, ([, accountType, priority]) => `Dry run apply type priority: ${accountType} -> priority ${priority}`],
   [/^启用 WebSocket 传输失败：(.+)$/, ([, detail]) => `Failed to enable WebSocket transport: ${translateNested(detail ?? '')}`],
   [/^(.+): 已启用 WebSocket 传输$/, ([, name]) => `${name}: enabled WebSocket transport`],
-  [/^只能删除已禁用账号$/, () => 'Only disabled accounts can be deleted'],
   [/^只能设置小于 -1、大于 20，或当前账号类型 (.+) 对应的 priority (-?\d+)$/, ([, accountType, priority]) => `Priority must be less than -1, greater than 20, or the current account type ${accountType} priority ${priority}`],
   [/^该账号类型没有可设置的系统 priority$/, () => 'This account type has no system priority that can be set'],
   [/^模拟(.+)$/, ([, action]) => `Dry run: ${translateNested(action ?? '')}`],
