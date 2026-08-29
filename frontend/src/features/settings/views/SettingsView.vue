@@ -31,6 +31,7 @@ const { errorText, serverText, t } = useI18n()
 const isLoading = ref(false)
 const isSaving = ref(false)
 const collectorStatus = ref<CollectorStatus | null>(null)
+const keeperSettingsPanel = ref<InstanceType<typeof CodexKeeperSettingsPanel> | null>(null)
 
 const settingsForm = reactive({
   cliaproxy_url: 'http://127.0.0.1:8317',
@@ -96,6 +97,12 @@ async function refresh() {
 async function saveSettings() {
   isSaving.value = true
   try {
+    const keeperPanel = keeperSettingsPanel.value
+    if (!keeperPanel) {
+      throw new Error(t('巡检配置尚未加载', 'Inspection settings have not loaded yet'))
+    }
+    keeperPanel.validateSettings()
+
     const payload: SettingsUpdatePayload = {
       cliaproxy_url: settingsForm.cliaproxy_url,
       model_request_url: settingsForm.model_request_url,
@@ -108,7 +115,10 @@ async function saveSettings() {
       allow_user_account_status: settingsForm.allow_user_account_status,
       allow_user_usage_history: settingsForm.allow_user_usage_history,
     }
-    const saved = await updateSettings(payload)
+    const [saved] = await Promise.all([
+      updateSettings(payload),
+      keeperPanel.saveSettings(),
+    ])
     settingsForm.management_key = saved.management_key
     message.success(t('设置已保存', 'Settings saved'))
     await refresh()
@@ -269,7 +279,7 @@ onMounted(refresh)
       </section>
     </div>
 
-    <CodexKeeperSettingsPanel />
+    <CodexKeeperSettingsPanel ref="keeperSettingsPanel" />
   </section>
 </template>
 

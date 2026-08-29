@@ -2365,7 +2365,6 @@ onBeforeUnmount(() => {
         <NButton
           v-if="canManageAccounts"
           type="primary"
-          secondary
           @click="openCodexOAuthDialog"
         >
           <template #icon>
@@ -2376,7 +2375,6 @@ onBeforeUnmount(() => {
         <NButton
           v-if="canManageAccounts"
           type="primary"
-          secondary
           :loading="isUploadingAuthFiles"
           @click="triggerAuthFileUpload"
         >

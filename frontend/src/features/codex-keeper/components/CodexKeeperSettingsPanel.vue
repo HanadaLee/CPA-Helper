@@ -35,7 +35,6 @@ import { formatDateTime } from '@/shared/utils/format'
 const message = useMessage()
 const { errorText, t } = useI18n()
 const isLoading = ref(false)
-const isSaving = ref(false)
 const isActing = ref(false)
 const status = ref<CodexKeeperStatus | null>(null)
 const priorityRules = ref<CodexKeeperPriorityRule[]>([])
@@ -66,7 +65,6 @@ const form = reactive({
   auto_start_daemon: false,
 })
 
-const isRunning = computed(() => status.value?.running === true)
 const runningModes = computed(() => new Set(status.value?.running_modes ?? []))
 const isDaemonRunning = computed(() => status.value?.daemon_running === true)
 const isRunOnceBlocked = computed(
@@ -139,26 +137,25 @@ function normalizedRules(): CodexKeeperPriorityRule[] {
     })
 }
 
-async function saveSettings() {
+function settingsPayload(): CodexKeeperSettingsUpdatePayload {
   const rules = normalizedRules()
   if (rules.length !== priorityRules.value.length) {
-    message.error(t('账号类型不可为空或重复，优先级必须在 0 ~ 20', 'Account types cannot be empty or duplicated, and priorities must be 0-20'))
-    return
+    throw new Error(t('账号类型不可为空或重复，优先级必须在 0 ~ 20', 'Account types cannot be empty or duplicated, and priorities must be 0-20'))
   }
-  isSaving.value = true
-  try {
-    const payload: CodexKeeperSettingsUpdatePayload = {
-      ...form,
-      priority_rules: rules,
-    }
-    const saved = await updateCodexKeeperSettings(payload)
-    applySettings(saved)
-    message.success(t('巡检配置已保存', 'Inspection settings saved'))
-  } catch (error) {
-    message.error(errorText(error, '保存巡检配置失败', 'Failed to save inspection settings'))
-  } finally {
-    isSaving.value = false
+
+  return {
+    ...form,
+    priority_rules: rules,
   }
+}
+
+function validateSettings() {
+  settingsPayload()
+}
+
+async function saveSettings() {
+  const saved = await updateCodexKeeperSettings(settingsPayload())
+  applySettings(saved)
 }
 
 async function loadSchedulePreview() {
@@ -264,6 +261,8 @@ const priorityColumns = computed<DataTableColumns<CodexKeeperPriorityRule>>(() =
   },
 ])
 
+defineExpose({ saveSettings, validateSettings })
+
 onMounted(() => {
   void loadAll()
   statusTimer = window.setInterval(() => {
@@ -321,15 +320,6 @@ onBeforeUnmount(() => {
               @click="runAction(stopCodexKeeper, t('已请求停止', 'Stop requested'))"
             >
               {{ t('停止', 'Stop') }}
-            </NButton>
-            <NButton
-              size="small"
-              type="primary"
-              :loading="isSaving"
-              :disabled="isRunning"
-              @click="saveSettings"
-            >
-              {{ t('保存巡检配置', 'Save Inspection Settings') }}
             </NButton>
           </NSpace>
         </div>
