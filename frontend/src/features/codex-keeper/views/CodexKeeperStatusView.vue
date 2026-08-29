@@ -51,6 +51,7 @@ import {
   runCodexKeeperOnce,
   startCodexKeeperOAuth,
   submitCodexKeeperOAuthCallback,
+  syncCodexKeeperAccountList,
   updateCodexKeeperAuthFile,
   updateCodexKeeperPriority,
   uploadCodexKeeperAuthFiles,
@@ -86,6 +87,7 @@ type PriorityMode = 'low' | 'high' | 'default'
 type AccountAction = 'toggle' | 'priority' | 'delete' | 'refresh'
 type AccountConfirmType = 'default' | 'warning' | 'error' | 'primary'
 type OAuthDialogStatus = 'idle' | 'waiting' | 'success' | 'error'
+type KeeperPollMode = 'once' | 'accounts'
 type QuotaWindowItem = {
   label: string
   usedPercent: number
@@ -142,11 +144,11 @@ const accountPageTitle = computed(() =>
 const accountPageSubtitle = computed(() =>
   canManageAccounts.value
     ? t(
-        '管理 Codex auth file 的健康、额度、优先级和认证文件',
+        '管理 Codex 认证文件的健康、额度、优先级和文件内容',
         'Manage Codex auth file health, quota, priority, and credential files',
       )
     : t(
-        '查看 Codex auth file 的健康、额度和优先级维护结果',
+        '查看 Codex 认证文件的健康、额度和优先级维护结果',
         'View Codex auth file health, quota, and priority maintenance results',
       ),
 )
@@ -172,6 +174,7 @@ const selectedAccountKeys = ref<DataTableRowKey[]>([])
 const detailOpen = ref(false)
 const authFileInput = ref<HTMLInputElement | null>(null)
 const isUploadingAuthFiles = ref(false)
+const isStartingAccountInspection = ref(false)
 const authFileEditor = ref<AuthFileEditorState | null>(null)
 const oauthDialogOpen = ref(false)
 const oauthDialogStatus = ref<OAuthDialogStatus>('idle')
@@ -211,7 +214,7 @@ const priorityDialog = reactive({
   account: null as CodexKeeperAccount | null,
   value: null as number | null,
 })
-let refreshPollToken = 0
+const keeperPollTokens: Record<KeeperPollMode, number> = { once: 0, accounts: 0 }
 let keeperStatusTimer: number | undefined
 let oauthPollToken = 0
 
@@ -314,6 +317,11 @@ const hasDisabledAccounts = computed(() => disabledAccountCount.value > 0)
 const showListLoadingState = computed(() => isLoading.value && accounts.value.length === 0)
 const isKeeperRunning = computed(() => keeperStatus.value?.running === true)
 const isKeeperDaemonRunning = computed(() => keeperStatus.value?.daemon_running === true)
+const keeperRunningModes = computed(() => new Set(keeperStatus.value?.running_modes ?? []))
+const isAccountInspectionRunning = computed(() => keeperRunningModes.value.has('once'))
+const isAccountInspectionBlocked = computed(
+  () => isAccountInspectionRunning.value || keeperRunningModes.value.has('daemon'),
+)
 const keeperStateType = computed(() => {
   if (isKeeperRunning.value || isKeeperDaemonRunning.value) {
     return 'success'
@@ -519,7 +527,7 @@ const bulkDeletePreviewOverflow = computed(() =>
 const bulkDeleteDialogTitle = computed(() => t('批量删除账号', 'Bulk Delete Accounts'))
 const bulkDeleteWarningText = computed(() =>
   t(
-    `将删除已选 ${selectedAccountCount.value} 个账号，并从 CPA 删除 auth file。此操作不可恢复。`,
+    `将删除已选 ${selectedAccountCount.value} 个账号，并从 CPA 删除认证文件。此操作不可恢复。`,
     `This will delete ${selectedAccountCount.value} selected accounts and remove their auth files from CPA. This cannot be undone.`,
   ),
 )
@@ -1470,6 +1478,30 @@ function handleAuthFileHeadersChange(value: string) {
   }
 }
 
+async function reloadAccounts() {
+  isLoading.value = true
+  if (canManageAccounts.value) {
+    try {
+      await syncCodexKeeperAccountList()
+    } catch (error) {
+      message.error(errorText(error, '同步 CPA 账号列表失败', 'Failed to sync the CPA account list'))
+    }
+  }
+  try {
+    const [accountsResponse, nextStatus] = await Promise.all([
+      listCodexKeeperAccounts(),
+      getCodexKeeperStatus(),
+    ])
+    accounts.value = accountsResponse.items
+    priorityRules.value = accountsResponse.priority_rules
+    keeperStatus.value = nextStatus
+  } catch (error) {
+    message.error(errorText(error, '加载账号状态失败', 'Failed to load account status'))
+  } finally {
+    isLoading.value = false
+  }
+}
+
 async function openAuthFileEditor(account: CodexKeeperAccount) {
   if (!canManageAccounts.value) {
     return
@@ -1568,7 +1600,13 @@ async function saveAuthFileEditor() {
       selectedAccountNote.value = note || null
     }
     await loadAccounts()
-    closeAuthFileEditor()
+    authFileEditor.value = null
+    await refreshAccounts([editor.fileName], {
+      successMessage: t(
+        `已开始巡检“${editor.fileName}”以同步账号信息`,
+        `Started inspecting “${editor.fileName}” to sync account information`,
+      ),
+    })
   } catch (error) {
     message.error(errorText(error, '更新认证文件失败', 'Failed to update auth file'))
   } finally {
@@ -1617,7 +1655,7 @@ function closeCodexOAuthDialog() {
 async function reloadAccountsAfterOAuth() {
   try {
     await runCodexKeeperOnce()
-    void pollRefreshUntilIdle()
+    void pollKeeperModeUntilIdle('once')
   } catch {
     await loadAccounts()
   }
@@ -1731,6 +1769,25 @@ function triggerAuthFileUpload() {
   }
 }
 
+async function startAccountInspection(): Promise<boolean> {
+  if (!canManageAccounts.value || isStartingAccountInspection.value) {
+    return false
+  }
+  isStartingAccountInspection.value = true
+  try {
+    await runCodexKeeperOnce()
+    message.success(t('已开始账号巡检', 'Account inspection started'))
+    await loadKeeperStatus()
+    void pollKeeperModeUntilIdle('once')
+    return true
+  } catch (error) {
+    message.error(errorText(error, '启动账号巡检失败', 'Failed to start account inspection'))
+    return false
+  } finally {
+    isStartingAccountInspection.value = false
+  }
+}
+
 async function handleAuthFileUpload(event: Event) {
   const input = event.target as HTMLInputElement
   const files = Array.from(input.files ?? [])
@@ -1762,7 +1819,12 @@ async function handleAuthFileUpload(event: Event) {
     const result = await uploadCodexKeeperAuthFiles(validFiles)
     if (result.uploaded > 0) {
       message.success(t(`上传成功 ${result.uploaded} 个认证文件`, `Uploaded ${result.uploaded} auth file(s)`))
-      await loadAccounts()
+      await refreshAccounts(result.files, {
+        successMessage: t(
+          `已开始巡检 ${result.uploaded} 个新账号`,
+          `Started inspecting ${result.uploaded} new account(s)`,
+        ),
+      })
     }
     if (result.failed.length > 0) {
       message.error(result.failed.map((item) => `${item.name}: ${item.error}`).join('; '))
@@ -2019,7 +2081,7 @@ function confirmDisableAccount(account: CodexKeeperAccount) {
 function confirmDeleteAccount(account: CodexKeeperAccount) {
   openAccountConfirm(
     t('删除账号', 'Delete Account'),
-    t(`删除 ${account.name}？此操作会从 CPA 删除 auth file。`, `Delete ${account.name}? This will remove the auth file from CPA.`),
+    t(`删除 ${account.name}？此操作会从 CPA 删除认证文件。`, `Delete ${account.name}? This will remove the auth file from CPA.`),
     t('确认删除', 'Confirm Delete'),
     'error',
     () => deleteAccount(account),
@@ -2069,20 +2131,19 @@ function sleep(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms))
 }
 
-async function pollRefreshUntilIdle() {
-  const token = ++refreshPollToken
+async function pollKeeperModeUntilIdle(mode: KeeperPollMode) {
+  const token = ++keeperPollTokens[mode]
   for (;;) {
     await sleep(REFRESH_STATUS_POLL_INTERVAL_MS)
-    if (token !== refreshPollToken) {
+    if (token !== keeperPollTokens[mode]) {
       return
     }
     try {
       const status = await getCodexKeeperStatus()
       keeperStatus.value = status
       const runningModes = status.running_modes ?? []
-      const accountRefreshRunning =
-        runningModes.length > 0 ? runningModes.includes('accounts') : status.running
-      if (accountRefreshRunning) {
+      const modeRunning = runningModes.length > 0 ? runningModes.includes(mode) : status.running
+      if (modeRunning) {
         continue
       }
       await loadAccounts()
@@ -2095,7 +2156,7 @@ async function pollRefreshUntilIdle() {
 
 async function refreshAccounts(
   rawNames: string[],
-  options: { closeDetail?: boolean; clearSelection?: boolean } = {},
+  options: { closeDetail?: boolean; clearSelection?: boolean; successMessage?: string } = {},
 ) {
   const authNames = uniqueAccountNames(rawNames)
   if (authNames.length === 0) {
@@ -2116,16 +2177,16 @@ async function refreshAccounts(
   }
   try {
     await refreshCodexKeeperAccounts({ auth_names: authNames })
-    message.success(authNames.length === 1
+    message.success(options.successMessage ?? (authNames.length === 1
       ? t('已开始刷新账号', 'Started refreshing account')
-      : t(`已开始刷新 ${authNames.length} 个账号`, `Started refreshing ${authNames.length} accounts`))
+      : t(`已开始刷新 ${authNames.length} 个账号`, `Started refreshing ${authNames.length} accounts`)))
     if (options.closeDetail) {
       detailOpen.value = false
     }
     if (options.clearSelection) {
       selectedAccountKeys.value = []
     }
-    void pollRefreshUntilIdle()
+    void pollKeeperModeUntilIdle('accounts')
   } catch (error) {
     message.error(errorText(error, '刷新账号失败', 'Failed to refresh accounts'))
   } finally {
@@ -2346,7 +2407,8 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
-  refreshPollToken += 1
+  keeperPollTokens.once += 1
+  keeperPollTokens.accounts += 1
   oauthPollToken += 1
   if (keeperStatusTimer !== undefined) {
     window.clearInterval(keeperStatusTimer)
@@ -2381,9 +2443,21 @@ onBeforeUnmount(() => {
           <template #icon>
             <NIcon :component="Upload" />
           </template>
-          {{ t('上传文件', 'Upload File') }}
+          {{ t('上传文件', 'Upload Files') }}
         </NButton>
-        <NButton secondary :loading="isLoading" @click="loadAccounts">
+        <NButton
+          v-if="canManageAccounts"
+          type="primary"
+          :loading="isStartingAccountInspection || isAccountInspectionRunning"
+          :disabled="isAccountInspectionBlocked"
+          @click="startAccountInspection"
+        >
+          <template #icon>
+            <NIcon :component="ShieldCheck" />
+          </template>
+          {{ t('账号巡检', 'Inspect Accounts') }}
+        </NButton>
+        <NButton secondary :loading="isLoading" @click="reloadAccounts">
           <template #icon>
             <NIcon :component="RefreshCw" />
           </template>
@@ -2419,7 +2493,7 @@ onBeforeUnmount(() => {
         </div>
         <div class="metric-label">{{ t('账号总数', 'Total Accounts') }}</div>
         <div class="metric-value">{{ formatInteger(accounts.length) }}</div>
-        <div class="metric-footnote">{{ t('全部 auth file', 'All auth files') }}</div>
+        <div class="metric-footnote">{{ t('全部认证文件', 'All auth files') }}</div>
       </div>
       <button
         type="button"
@@ -2638,9 +2712,8 @@ onBeforeUnmount(() => {
       <div class="account-table-footer">
         <div class="account-range-controls">
           <span class="account-range-text">
-            {{ t(`第 ${accountRangeStart} 到第 ${accountRangeEnd} 条，总共`, `Items ${accountRangeStart} to ${accountRangeEnd},`) }}
-            <strong>{{ sortedListAccounts.length }}</strong>
-            {{ t('条', 'items total') }}
+            <span>{{ t(`第 ${accountRangeStart} - ${accountRangeEnd} 条`, `Items ${accountRangeStart} - ${accountRangeEnd}`) }}</span>
+            <span>{{ t(`共 ${sortedListAccounts.length} 条`, `${sortedListAccounts.length} total`) }}</span>
           </span>
           <div class="page-size-control">
             <span>{{ t('每页显示', 'Show') }}</span>
@@ -2795,7 +2868,7 @@ onBeforeUnmount(() => {
     >
       <div class="oauth-dialog">
         <p class="oauth-dialog-description">
-          {{ t('通过 Codex OAuth 登录，认证成功后生成的 auth file 会自动加入账号管理。', 'Sign in with Codex OAuth. The generated auth file will be added to account management automatically.') }}
+          {{ t('通过 Codex OAuth 登录，认证成功后生成的认证文件会自动加入账号管理。', 'Sign in with Codex OAuth. The generated auth file will be added to account management automatically.') }}
         </p>
         <div class="oauth-status-row">
           <span>{{ t('认证状态', 'Authentication status') }}</span>
@@ -3269,9 +3342,10 @@ onBeforeUnmount(() => {
   font-weight: 600;
 }
 
-.account-range-text strong {
-  color: var(--cpa-text);
-  font-size: 13px;
+.account-range-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .page-size-control {

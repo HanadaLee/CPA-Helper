@@ -23,6 +23,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 )
 
 const (
@@ -1041,6 +1042,20 @@ func (a *App) handleCodexKeeper(w http.ResponseWriter, r *http.Request) error {
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "started"})
 		return nil
+	case len(parts) == 2 && parts[0] == "accounts" && parts[1] == "sync":
+		if err := requireMethod(r, http.MethodPost); err != nil {
+			return err
+		}
+		added, removed, err := a.syncKeeperAccountList(r.Context())
+		if err != nil {
+			return err
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"status":  "synced",
+			"added":   added,
+			"removed": removed,
+		})
+		return nil
 	case len(parts) == 3 && parts[0] == "accounts" && (parts[2] == "enable" || parts[2] == "disable"):
 		if err := requireMethod(r, http.MethodPost); err != nil {
 			return err
@@ -1729,11 +1744,11 @@ func (a *App) executeKeeperRunWithOptions(ctx context.Context, options keeperRun
 		if stats.NetworkError > 0 {
 			detail = fmt.Sprintf("巡检完成：网络错误 %d", stats.NetworkError)
 		} else if stats.Total > 0 && options.UseRefreshCache {
-			detail = "缓存时间内没有需要自动刷新的 Codex auth file"
+			detail = "缓存时间内没有需要自动刷新的 Codex 认证文件"
 		} else if len(targetSet) > 0 {
-			detail = "未发现指定 Codex auth file"
+			detail = "未发现指定 Codex 认证文件"
 		} else {
-			detail = "未发现 Codex auth file"
+			detail = "未发现 Codex 认证文件"
 		}
 		if runID > 0 {
 			_ = a.finishKeeperRun(ctx, runID, "completed", detail, stats)
@@ -2419,7 +2434,7 @@ func (a *App) processKeeperAuth(ctx context.Context, cfg AppConfig, authInfo map
 	result := keeperAccountResult{Name: name, Result: "skipped", CheckedAt: now}
 	detail, err := a.getKeeperRemoteAuthFile(ctx, cfg, name)
 	if err != nil {
-		message := "读取 auth file 详情失败：" + err.Error()
+		message := "读取认证文件详情失败：" + err.Error()
 		result.Result = "network_error"
 		result.LastError = &message
 		result.LatestAction = &message
@@ -2428,7 +2443,7 @@ func (a *App) processKeeperAuth(ctx context.Context, cfg AppConfig, authInfo map
 		return result
 	}
 	if detail == nil {
-		message := "读取 auth file 详情失败"
+		message := "读取认证文件详情失败"
 		result.Result = "network_error"
 		result.LastError = &message
 		result.LatestAction = &message
@@ -2779,7 +2794,7 @@ func (a *App) listKeeperRemoteAuthFiles(ctx context.Context, cfg AppConfig) ([]m
 	}
 	var raw any
 	if err := json.Unmarshal(payload, &raw); err != nil {
-		return nil, validationError("读取 auth files 失败：响应不是有效 JSON")
+		return nil, validationError("读取认证文件失败：响应不是有效 JSON")
 	}
 	return extractKeeperObjects(raw, []string{"files", "items", "data", "value"}), nil
 }
@@ -2787,6 +2802,11 @@ func (a *App) listKeeperRemoteAuthFiles(ctx context.Context, cfg AppConfig) ([]m
 type keeperAuthFileUploadFailure struct {
 	Name  string `json:"name"`
 	Error string `json:"error"`
+}
+
+type keeperAuthFileUploadCandidate struct {
+	Name    string
+	Content []byte
 }
 
 type keeperAuthFileEditorDetail struct {
@@ -2970,11 +2990,19 @@ func (a *App) uploadKeeperAuthFiles(w http.ResponseWriter, r *http.Request) erro
 			failed = append(failed, keeperAuthFileUploadFailure{Name: name, Error: "文件大小不能超过 10 MB"})
 			continue
 		}
-		if err := a.uploadKeeperRemoteAuthFile(r.Context(), cfg, name, content); err != nil {
-			failed = append(failed, keeperAuthFileUploadFailure{Name: name, Error: err.Error()})
-			continue
+		candidates, conversionFailures := keeperAuthFileUploadCandidates(name, content, time.Now().In(appTimeLocation))
+		failed = append(failed, conversionFailures...)
+		for _, candidate := range candidates {
+			if len(candidate.Content) > keeperMaxAuthFileSize {
+				failed = append(failed, keeperAuthFileUploadFailure{Name: candidate.Name, Error: "转换后的认证文件大小不能超过 10 MB"})
+				continue
+			}
+			if err := a.uploadKeeperRemoteAuthFile(r.Context(), cfg, candidate.Name, candidate.Content); err != nil {
+				failed = append(failed, keeperAuthFileUploadFailure{Name: candidate.Name, Error: err.Error()})
+				continue
+			}
+			uploaded = append(uploaded, candidate.Name)
 		}
-		uploaded = append(uploaded, name)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":   "ok",
@@ -2983,6 +3011,356 @@ func (a *App) uploadKeeperAuthFiles(w http.ResponseWriter, r *http.Request) erro
 		"failed":   failed,
 	})
 	return nil
+}
+
+func keeperAuthFileUploadCandidates(name string, content []byte, now time.Time) ([]keeperAuthFileUploadCandidate, []keeperAuthFileUploadFailure) {
+	accounts, recognized, err := keeperSub2APIAccounts(content)
+	if !recognized {
+		return []keeperAuthFileUploadCandidate{{Name: name, Content: content}}, nil
+	}
+	if err != nil {
+		return nil, []keeperAuthFileUploadFailure{{Name: name, Error: err.Error()}}
+	}
+	usedNames := map[string]int{}
+	candidates := []keeperAuthFileUploadCandidate{}
+	failures := []keeperAuthFileUploadFailure{}
+	matched := 0
+	for index, account := range accounts {
+		platform := strings.ToLower(keeperString(account["platform"]))
+		authType := strings.ToLower(keeperString(account["type"]))
+		if platform != "openai" || authType != "oauth" {
+			continue
+		}
+		matched++
+		converted, err := keeperSub2APIAccountToCPA(account, now)
+		failureName := fmt.Sprintf("%s#accounts[%d]", name, index)
+		if err != nil {
+			failures = append(failures, keeperAuthFileUploadFailure{Name: failureName, Error: err.Error()})
+			continue
+		}
+		convertedContent, err := json.MarshalIndent(converted, "", "  ")
+		if err != nil {
+			failures = append(failures, keeperAuthFileUploadFailure{Name: failureName, Error: "转换 Sub2API 账号失败：" + err.Error()})
+			continue
+		}
+		candidateName := keeperSub2APIAccountFileName(account, converted, index, usedNames)
+		candidates = append(candidates, keeperAuthFileUploadCandidate{Name: candidateName, Content: convertedContent})
+	}
+	if matched == 0 {
+		failures = append(failures, keeperAuthFileUploadFailure{Name: name, Error: "Sub2API 文件中没有可转换的 OpenAI OAuth 账号"})
+	}
+	return candidates, failures
+}
+
+func keeperSub2APIAccounts(content []byte) ([]map[string]any, bool, error) {
+	var document map[string]any
+	if err := json.Unmarshal(content, &document); err != nil {
+		return nil, false, nil
+	}
+	rawAccounts, hasAccounts := document["accounts"]
+	if !hasAccounts {
+		return nil, false, nil
+	}
+	_, hasExportedAt := document["exported_at"]
+	_, hasProxies := document["proxies"]
+	accountValues, isArray := rawAccounts.([]any)
+	recognized := hasExportedAt || hasProxies
+	if !recognized && isArray {
+		for _, value := range accountValues {
+			account, ok := value.(map[string]any)
+			if !ok {
+				continue
+			}
+			_, hasCredentials := account["credentials"]
+			if strings.EqualFold(keeperString(account["platform"]), "openai") && hasCredentials {
+				recognized = true
+				break
+			}
+		}
+	}
+	if !recognized {
+		return nil, false, nil
+	}
+	if !isArray {
+		return nil, true, validationError("Sub2API accounts 必须是数组")
+	}
+	if len(accountValues) == 0 {
+		return nil, true, validationError("Sub2API accounts 不能为空")
+	}
+	accounts := make([]map[string]any, 0, len(accountValues))
+	for index, value := range accountValues {
+		account, ok := value.(map[string]any)
+		if !ok {
+			return nil, true, validationError(fmt.Sprintf("Sub2API accounts[%d] 必须是对象", index))
+		}
+		accounts = append(accounts, account)
+	}
+	return accounts, true, nil
+}
+
+func keeperSub2APIAccountToCPA(account map[string]any, now time.Time) (map[string]any, error) {
+	credentials, ok := account["credentials"].(map[string]any)
+	if !ok {
+		return nil, validationError("Sub2API 账号缺少 credentials")
+	}
+	extra, _ := account["extra"].(map[string]any)
+	accessToken := keeperFirstString(
+		credentials["access_token"],
+		credentials["accessToken"],
+		account["access_token"],
+		account["accessToken"],
+	)
+	if accessToken == "" {
+		return nil, validationError("Sub2API 账号缺少 access_token")
+	}
+	refreshToken := keeperFirstString(credentials["refresh_token"], credentials["refreshToken"], account["refresh_token"], account["refreshToken"])
+	idToken := keeperFirstString(credentials["id_token"], credentials["idToken"], account["id_token"], account["idToken"])
+	sessionToken := keeperFirstString(credentials["session_token"], credentials["sessionToken"], account["session_token"], account["sessionToken"])
+	accessClaims := keeperIDTokenClaims(accessToken)
+	idClaims := keeperIDTokenClaims(idToken)
+	accessAuth := keeperClaimObject(accessClaims, "https://api.openai.com/auth")
+	idAuth := keeperClaimObject(idClaims, "https://api.openai.com/auth")
+	accessProfile := keeperClaimObject(accessClaims, "https://api.openai.com/profile")
+	email := keeperFirstString(
+		account["email"],
+		credentials["email"],
+		extra["email"],
+		accessProfile["email"],
+		keeperClaimValue(idClaims, "email"),
+		keeperClaimValue(accessClaims, "email"),
+	)
+	accountID := keeperFirstString(
+		account["account_id"],
+		account["chatgpt_account_id"],
+		credentials["account_id"],
+		credentials["chatgpt_account_id"],
+		credentials["chatgptAccountId"],
+		accessAuth["chatgpt_account_id"],
+		idAuth["chatgpt_account_id"],
+	)
+	userID := keeperFirstString(
+		account["user_id"],
+		account["chatgpt_user_id"],
+		credentials["user_id"],
+		credentials["chatgpt_user_id"],
+		credentials["chatgptUserId"],
+		accessAuth["chatgpt_user_id"],
+		accessAuth["user_id"],
+		idAuth["chatgpt_user_id"],
+		idAuth["user_id"],
+	)
+	planType := keeperFirstString(
+		account["plan_type"],
+		account["planType"],
+		credentials["plan_type"],
+		credentials["planType"],
+		accessAuth["chatgpt_plan_type"],
+		idAuth["chatgpt_plan_type"],
+	)
+	accountName := keeperFirstString(email, account["name"], accountID)
+	expiresAt := keeperSub2APIExpiration(account, credentials, accessClaims, refreshToken == "")
+	syntheticIDToken := false
+	if idToken == "" && accountID != "" {
+		var err error
+		idToken, err = keeperSyntheticCodexIDToken(email, accountID, planType, userID, expiresAt, now)
+		if err != nil {
+			return nil, validationError("构造 CPA id_token 失败：" + err.Error())
+		}
+		syntheticIDToken = true
+	}
+	converted := map[string]any{
+		"type":          "codex",
+		"access_token":  accessToken,
+		"refresh_token": refreshToken,
+		"last_refresh":  keeperISOTime(now),
+	}
+	keeperSetIfNotEmpty(converted, "account_id", accountID)
+	keeperSetIfNotEmpty(converted, "chatgpt_account_id", accountID)
+	keeperSetIfNotEmpty(converted, "email", email)
+	keeperSetIfNotEmpty(converted, "name", accountName)
+	keeperSetIfNotEmpty(converted, "plan_type", planType)
+	keeperSetIfNotEmpty(converted, "chatgpt_plan_type", planType)
+	keeperSetIfNotEmpty(converted, "id_token", idToken)
+	keeperSetIfNotEmpty(converted, "session_token", sessionToken)
+	if syntheticIDToken {
+		converted["id_token_synthetic"] = true
+	}
+	if expiresAt != nil {
+		converted["expired"] = keeperISOTime(*expiresAt)
+	}
+	if keeperBool(account["disabled"]) {
+		converted["disabled"] = true
+	}
+	return converted, nil
+}
+
+func keeperSub2APIExpiration(account, credentials, accessClaims map[string]any, include bool) *time.Time {
+	if !include {
+		return nil
+	}
+	if expiresAt := keeperTimeFromUnixSeconds(keeperClaimValue(accessClaims, "exp")); expiresAt != nil {
+		return expiresAt
+	}
+	for _, value := range []any{account["expires"], account["expires_at"], account["expiresAt"], credentials["expires_at"], credentials["expiresAt"]} {
+		if expiresAt := keeperTimeValue(value); expiresAt != nil {
+			return expiresAt
+		}
+	}
+	return nil
+}
+
+func keeperSyntheticCodexIDToken(email, accountID, planType, userID string, expiresAt *time.Time, now time.Time) (string, error) {
+	authInfo := map[string]any{"chatgpt_account_id": accountID}
+	keeperSetIfNotEmpty(authInfo, "chatgpt_plan_type", planType)
+	if userID != "" {
+		authInfo["chatgpt_user_id"] = userID
+		authInfo["user_id"] = userID
+	}
+	expires := now.Add(90 * 24 * time.Hour).Unix()
+	if expiresAt != nil {
+		expires = expiresAt.Unix()
+	}
+	payload := map[string]any{
+		"iat":                         now.Unix(),
+		"exp":                         expires,
+		"https://api.openai.com/auth": authInfo,
+	}
+	keeperSetIfNotEmpty(payload, "email", email)
+	headerJSON, err := json.Marshal(map[string]any{"alg": "none", "typ": "JWT", "cpa_synthetic": true})
+	if err != nil {
+		return "", err
+	}
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(headerJSON) + "." + base64.RawURLEncoding.EncodeToString(payloadJSON) + ".synthetic", nil
+}
+
+func keeperSub2APIAccountFileName(account, converted map[string]any, index int, usedNames map[string]int) string {
+	credentials, _ := account["credentials"].(map[string]any)
+	identity := keeperFirstString(converted["email"], account["name"], converted["account_id"], credentials["chatgpt_account_id"])
+	token := keeperAuthFileNameToken(identity)
+	if token == "" {
+		token = fmt.Sprintf("account-%d", index+1)
+	}
+	base := "codex-" + token
+	key := strings.ToLower(base)
+	usedNames[key]++
+	if usedNames[key] > 1 {
+		base += fmt.Sprintf("-%d", usedNames[key])
+	}
+	return base + ".json"
+}
+
+func keeperAuthFileNameToken(value string) string {
+	value = strings.TrimSpace(strings.ToLower(value))
+	runes := []rune{}
+	lastDash := false
+	for _, char := range value {
+		if unicode.IsControl(char) || unicode.IsSpace(char) || strings.ContainsRune(`/\\:*?"<>|`, char) {
+			if !lastDash {
+				runes = append(runes, '-')
+				lastDash = true
+			}
+			continue
+		}
+		runes = append(runes, char)
+		lastDash = false
+		if len(runes) >= 100 {
+			break
+		}
+	}
+	return strings.Trim(string(runes), ".-_")
+}
+
+func keeperFirstString(values ...any) string {
+	for _, value := range values {
+		if text := keeperString(value); text != "" {
+			return text
+		}
+	}
+	return ""
+}
+
+func keeperClaimObject(claims map[string]any, key string) map[string]any {
+	if claims == nil {
+		return nil
+	}
+	object, _ := claims[key].(map[string]any)
+	return object
+}
+
+func keeperClaimValue(claims map[string]any, key string) any {
+	if claims == nil {
+		return nil
+	}
+	return claims[key]
+}
+
+func keeperSetIfNotEmpty(target map[string]any, key, value string) {
+	if value != "" {
+		target[key] = value
+	}
+}
+
+func keeperTimeFromUnixSeconds(value any) *time.Time {
+	var seconds int64
+	switch typed := value.(type) {
+	case float64:
+		seconds = int64(typed)
+	case float32:
+		seconds = int64(typed)
+	case int:
+		seconds = int64(typed)
+	case int64:
+		seconds = typed
+	case json.Number:
+		parsed, err := typed.Int64()
+		if err != nil {
+			return nil
+		}
+		seconds = parsed
+	case string:
+		parsed, err := strconv.ParseInt(strings.TrimSpace(typed), 10, 64)
+		if err != nil {
+			return nil
+		}
+		seconds = parsed
+	default:
+		return nil
+	}
+	if seconds <= 0 {
+		return nil
+	}
+	if seconds > 100_000_000_000 {
+		seconds /= 1000
+	}
+	result := time.Unix(seconds, 0).UTC()
+	return &result
+}
+
+func keeperTimeValue(value any) *time.Time {
+	if value == nil {
+		return nil
+	}
+	if parsed := keeperTimeFromUnixSeconds(value); parsed != nil {
+		return parsed
+	}
+	text := keeperString(value)
+	if text == "" {
+		return nil
+	}
+	parsed, err := time.Parse(time.RFC3339, text)
+	if err != nil {
+		return nil
+	}
+	result := parsed.UTC()
+	return &result
+}
+
+func keeperISOTime(value time.Time) string {
+	return value.UTC().Format("2006-01-02T15:04:05.000Z")
 }
 
 func (a *App) uploadKeeperRemoteAuthFile(ctx context.Context, cfg AppConfig, name string, content []byte) error {
@@ -3077,7 +3455,7 @@ func (a *App) getKeeperRemoteAuthFile(ctx context.Context, cfg AppConfig, name s
 	}
 	var raw map[string]any
 	if err := json.Unmarshal(payload, &raw); err != nil {
-		return nil, validationError("读取 auth file 详情失败：响应不是有效 JSON")
+		return nil, validationError("读取认证文件详情失败：响应不是有效 JSON")
 	}
 	return raw, nil
 }
@@ -3317,6 +3695,102 @@ func (a *App) listKeeperAccounts(ctx context.Context) ([]keeperAccount, error) {
 		accounts = append(accounts, state.keeperAccount)
 	}
 	return accounts, rows.Err()
+}
+
+func (a *App) syncKeeperAccountList(ctx context.Context) (int, int, error) {
+	cfg, err := a.loadConfig(ctx)
+	if err != nil {
+		return 0, 0, err
+	}
+	authFiles, err := a.listKeeperRemoteAuthFiles(ctx, cfg)
+	if err != nil {
+		return 0, 0, err
+	}
+	remoteAccounts := map[string]map[string]any{}
+	for _, item := range authFiles {
+		if keeperString(item["type"]) != "codex" {
+			continue
+		}
+		name := keeperString(item["name"])
+		if name != "" {
+			remoteAccounts[name] = item
+		}
+	}
+
+	tx, err := a.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer tx.Rollback()
+	now := dbTime(time.Now().In(appTimeLocation))
+	insert, err := tx.PrepareContext(ctx, `
+		INSERT OR IGNORE INTO codex_keeper_auth_states (
+			auth_name, email, auth_index, account_type, disabled, priority, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer insert.Close()
+	added := 0
+	for name, item := range remoteAccounts {
+		result, err := insert.ExecContext(
+			ctx,
+			name,
+			keeperStringPtr(item["email"]),
+			keeperRemoteAuthIndex(item),
+			keeperStringPtr(item["account_type"], item["accountType"]),
+			keeperBool(item["disabled"]),
+			keeperIntPtr(item["priority"]),
+			now,
+			now,
+		)
+		if err != nil {
+			return 0, 0, err
+		}
+		affected, _ := result.RowsAffected()
+		added += int(affected)
+	}
+
+	rows, err := tx.QueryContext(ctx, `SELECT auth_name FROM codex_keeper_auth_states`)
+	if err != nil {
+		return 0, 0, err
+	}
+	stale := []string{}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			_ = rows.Close()
+			return 0, 0, err
+		}
+		if _, exists := remoteAccounts[name]; !exists {
+			stale = append(stale, name)
+		}
+	}
+	if err := rows.Close(); err != nil {
+		return 0, 0, err
+	}
+	if err := rows.Err(); err != nil {
+		return 0, 0, err
+	}
+	remove, err := tx.PrepareContext(ctx, `DELETE FROM codex_keeper_auth_states WHERE auth_name = ?`)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer remove.Close()
+	removed := 0
+	for _, name := range stale {
+		result, err := remove.ExecContext(ctx, name)
+		if err != nil {
+			return 0, 0, err
+		}
+		affected, _ := result.RowsAffected()
+		removed += int(affected)
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, 0, err
+	}
+	return added, removed, nil
 }
 
 func (a *App) pruneKeeperMissingAuthStates(ctx context.Context, remoteNames map[string]bool) (int, error) {

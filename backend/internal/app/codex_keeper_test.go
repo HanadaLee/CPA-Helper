@@ -273,6 +273,7 @@ func TestKeeperAccountStatusCanBeSharedReadOnly(t *testing.T) {
 	requestJSONExpectStatus(t, handler, http.MethodPost, "/api/codex-keeper/accounts/refresh", map[string]any{
 		"auth_names": []string{"member.json"},
 	}, memberCookies, http.StatusForbidden)
+	requestJSONExpectStatus(t, handler, http.MethodPost, "/api/codex-keeper/accounts/sync", nil, memberCookies, http.StatusForbidden)
 	requestJSONExpectStatus(t, handler, http.MethodPost, "/api/codex-keeper/accounts/member.json/disable", nil, memberCookies, http.StatusForbidden)
 	requestJSONExpectStatus(t, handler, http.MethodPatch, "/api/codex-keeper/accounts/member.json/priority", map[string]any{
 		"priority": 10,
@@ -378,8 +379,8 @@ func TestKeeperOAuthProxyUsesManagementAuthAndCodexProvider(t *testing.T) {
 func TestKeeperAuthFileManagementUsesMultipartAndSupportsInvalidPreview(t *testing.T) {
 	t.Setenv("CPA_HELPER_DATA_DIR", t.TempDir())
 
-	var uploadedName string
-	var uploadedContent string
+	uploadedNames := []string{}
+	uploadedContents := []string{}
 	var updatedFields map[string]any
 	cpa := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer test-management-key" {
@@ -403,8 +404,8 @@ func TestKeeperAuthFileManagementUsesMultipartAndSupportsInvalidPreview(t *testi
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
-			uploadedName = header.Filename
-			uploadedContent = string(content)
+			uploadedNames = append(uploadedNames, header.Filename)
+			uploadedContents = append(uploadedContents, string(content))
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 		case r.Method == http.MethodGet && r.URL.Path == "/v0/management/auth-files/download":
@@ -464,6 +465,29 @@ func TestKeeperAuthFileManagementUsesMultipartAndSupportsInvalidPreview(t *testi
 	if _, err := uploadPart.Write([]byte(`{"type":"codex","access_token":"secret"}`)); err != nil {
 		t.Fatalf("write upload part: %v", err)
 	}
+	secondUploadPart, err := uploadWriter.CreateFormFile("file", "second.json")
+	if err != nil {
+		t.Fatalf("CreateFormFile second file: %v", err)
+	}
+	if _, err := secondUploadPart.Write([]byte(`{"type":"codex","access_token":"second-secret"}`)); err != nil {
+		t.Fatalf("write second upload part: %v", err)
+	}
+	sub2APIUploadPart, err := uploadWriter.CreateFormFile("file", "sub2api-export.json")
+	if err != nil {
+		t.Fatalf("CreateFormFile Sub2API file: %v", err)
+	}
+	sub2APIContent := `{
+		"exported_at":"2026-08-29T00:00:00.000Z",
+		"proxies":[],
+		"accounts":[
+			{"name":"First","platform":"openai","type":"oauth","credentials":{"access_token":"first-access","chatgpt_account_id":"account-first","email":"first@example.com","plan_type":"plus"}},
+			{"name":"Second","platform":"openai","type":"oauth","credentials":{"access_token":"second-access","refresh_token":"second-refresh","id_token":"second-id","chatgpt_account_id":"account-second","email":"second@example.com"}},
+			{"name":"Ignored","platform":"anthropic","type":"oauth","credentials":{"access_token":"ignored-access"}}
+		]
+	}`
+	if _, err := sub2APIUploadPart.Write([]byte(sub2APIContent)); err != nil {
+		t.Fatalf("write Sub2API upload part: %v", err)
+	}
 	if err := uploadWriter.Close(); err != nil {
 		t.Fatalf("close multipart writer: %v", err)
 	}
@@ -477,8 +501,42 @@ func TestKeeperAuthFileManagementUsesMultipartAndSupportsInvalidPreview(t *testi
 	if uploadRecorder.Code != http.StatusOK {
 		t.Fatalf("upload returned %d: %s", uploadRecorder.Code, uploadRecorder.Body.String())
 	}
-	if uploadedName != "valid.json" || uploadedContent != `{"type":"codex","access_token":"secret"}` {
-		t.Fatalf("upstream upload = %q %q", uploadedName, uploadedContent)
+	if len(uploadedNames) != 4 || uploadedNames[0] != "valid.json" || uploadedNames[1] != "second.json" || uploadedNames[2] != "codex-first@example.com.json" || uploadedNames[3] != "codex-second@example.com.json" {
+		t.Fatalf("upstream uploaded names = %#v", uploadedNames)
+	}
+	if len(uploadedContents) != 4 || uploadedContents[0] != `{"type":"codex","access_token":"secret"}` || uploadedContents[1] != `{"type":"codex","access_token":"second-secret"}` {
+		t.Fatalf("upstream uploaded contents = %#v", uploadedContents)
+	}
+	firstConverted := map[string]any{}
+	if err := json.Unmarshal([]byte(uploadedContents[2]), &firstConverted); err != nil {
+		t.Fatalf("decode first converted Sub2API account: %v", err)
+	}
+	if firstConverted["type"] != "codex" || firstConverted["access_token"] != "first-access" || firstConverted["account_id"] != "account-first" || firstConverted["email"] != "first@example.com" || firstConverted["plan_type"] != "plus" || firstConverted["id_token_synthetic"] != true {
+		t.Fatalf("first converted Sub2API account = %#v", firstConverted)
+	}
+	if idToken, _ := firstConverted["id_token"].(string); len(strings.Split(idToken, ".")) != 3 {
+		t.Fatalf("first converted id_token = %q, want three JWT segments", idToken)
+	}
+	secondConverted := map[string]any{}
+	if err := json.Unmarshal([]byte(uploadedContents[3]), &secondConverted); err != nil {
+		t.Fatalf("decode second converted Sub2API account: %v", err)
+	}
+	if secondConverted["type"] != "codex" || secondConverted["access_token"] != "second-access" || secondConverted["refresh_token"] != "second-refresh" || secondConverted["id_token"] != "second-id" {
+		t.Fatalf("second converted Sub2API account = %#v", secondConverted)
+	}
+	if _, exists := secondConverted["expired"]; exists {
+		t.Fatalf("refreshable converted account unexpectedly has expired: %#v", secondConverted)
+	}
+	uploadResponse := struct {
+		Uploaded int      `json:"uploaded"`
+		Files    []string `json:"files"`
+		Failed   []any    `json:"failed"`
+	}{}
+	if err := json.Unmarshal(uploadRecorder.Body.Bytes(), &uploadResponse); err != nil {
+		t.Fatalf("decode upload response: %v", err)
+	}
+	if uploadResponse.Uploaded != 4 || len(uploadResponse.Files) != 4 || len(uploadResponse.Failed) != 0 {
+		t.Fatalf("upload response = %#v", uploadResponse)
 	}
 
 	validDetail := struct {
@@ -922,6 +980,145 @@ func TestKeeperRefreshAccountsOnlyProcessesSelectedAuths(t *testing.T) {
 	}
 	if got := usageCalls["skip-me.json"]; got != 0 {
 		t.Fatalf("skip-me usage calls = %d, want 0", got)
+	}
+}
+
+func TestKeeperSyncAccountListOnlyReconcilesMembership(t *testing.T) {
+	dataDir := t.TempDir()
+	t.Setenv("CPA_HELPER_DATA_DIR", dataDir)
+
+	var mu sync.Mutex
+	listCalls := 0
+	detailCalls := 0
+	usageCalls := 0
+	cpa := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v0/management/auth-files":
+			mu.Lock()
+			listCalls++
+			mu.Unlock()
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"files": []map[string]any{
+					{"name": "kept.json", "type": "codex", "disabled": true, "priority": 99},
+					{"name": "new.json", "type": "codex", "email": "new@example.com", "account_type": "plus", "disabled": true, "priority": 7},
+					{"name": "ignored.json", "type": "openai"},
+				},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v0/management/auth-files/download":
+			mu.Lock()
+			detailCalls++
+			mu.Unlock()
+			_ = json.NewEncoder(w).Encode(map[string]any{"name": r.URL.Query().Get("name")})
+		case r.Method == http.MethodPost && r.URL.Path == "/v0/management/api-call":
+			mu.Lock()
+			usageCalls++
+			mu.Unlock()
+			_ = json.NewEncoder(w).Encode(map[string]any{"status_code": http.StatusOK})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer cpa.Close()
+
+	app, err := backendApp.New()
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	defer app.Close()
+
+	handler := app.Routes()
+	cookies := requestJSON(t, handler, http.MethodPost, "/api/auth/setup", map[string]any{
+		"username": "admin",
+		"password": "test-password",
+		"nickname": "Admin",
+	}, nil, nil)
+	requestJSON(t, handler, http.MethodPut, "/api/settings", map[string]any{
+		"cliaproxy_url":     cpa.URL,
+		"management_key":    "test-management-key",
+		"collector_enabled": false,
+	}, cookies, nil)
+
+	db, err := sql.Open("sqlite", filepath.Join(dataDir, "db", "cpa_helper.sqlite3")+"?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)")
+	if err != nil {
+		t.Fatalf("open sqlite db: %v", err)
+	}
+	defer db.Close()
+	now := "2026-08-29 10:00:00"
+	_, err = db.Exec(`
+		INSERT INTO codex_keeper_auth_states (
+			auth_name, email, disabled, priority, last_checked_at, created_at, updated_at
+		) VALUES
+			('kept.json', 'kept@example.com', 0, 11, ?, ?, ?),
+			('stale.json', 'stale@example.com', 0, 3, ?, ?, ?)
+	`, now, now, now, now, now, now)
+	if err != nil {
+		t.Fatalf("seed keeper account states: %v", err)
+	}
+
+	syncResponse := struct {
+		Added   int `json:"added"`
+		Removed int `json:"removed"`
+	}{}
+	requestJSON(t, handler, http.MethodPost, "/api/codex-keeper/accounts/sync", nil, cookies, &syncResponse)
+	if syncResponse.Added != 1 || syncResponse.Removed != 1 {
+		t.Fatalf("sync result = added %d, removed %d; want 1 and 1", syncResponse.Added, syncResponse.Removed)
+	}
+
+	response := keeperAccountsResponse{}
+	requestJSON(t, handler, http.MethodGet, "/api/codex-keeper/accounts", nil, cookies, &response)
+	if len(response.Items) != 2 {
+		t.Fatalf("accounts length = %d, want 2", len(response.Items))
+	}
+	items := map[string]struct {
+		AccountType   *string
+		Disabled      bool
+		Priority      *int
+		LastCheckedAt *string
+	}{}
+	for _, item := range response.Items {
+		items[item.Name] = struct {
+			AccountType   *string
+			Disabled      bool
+			Priority      *int
+			LastCheckedAt *string
+		}{item.AccountType, item.Disabled, item.Priority, item.LastCheckedAt}
+	}
+	kept, ok := items["kept.json"]
+	if !ok {
+		t.Fatal("kept.json missing after sync")
+	}
+	if kept.Disabled || kept.Priority == nil || *kept.Priority != 11 {
+		t.Fatalf("existing account fields changed during sync: disabled=%v priority=%v", kept.Disabled, kept.Priority)
+	}
+	added, ok := items["new.json"]
+	if !ok {
+		t.Fatal("new.json missing after sync")
+	}
+	if !added.Disabled || added.Priority == nil || *added.Priority != 7 || added.AccountType == nil || *added.AccountType != "plus" {
+		t.Fatalf("new account list fields = disabled=%v priority=%v account_type=%v", added.Disabled, added.Priority, added.AccountType)
+	}
+	if added.LastCheckedAt != nil {
+		t.Fatalf("new account last_checked_at = %v, want nil without inspection", added.LastCheckedAt)
+	}
+	if _, ok := items["stale.json"]; ok {
+		t.Fatal("stale.json still present after sync")
+	}
+	if _, ok := items["ignored.json"]; ok {
+		t.Fatal("non-Codex account was added during sync")
+	}
+
+	var runCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM codex_keeper_runs`).Scan(&runCount); err != nil {
+		t.Fatalf("read keeper run count: %v", err)
+	}
+	if runCount != 0 {
+		t.Fatalf("keeper run count = %d, want 0", runCount)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if listCalls != 1 || detailCalls != 0 || usageCalls != 0 {
+		t.Fatalf("CPA calls = list %d, detail %d, usage %d; want 1, 0, 0", listCalls, detailCalls, usageCalls)
 	}
 }
 

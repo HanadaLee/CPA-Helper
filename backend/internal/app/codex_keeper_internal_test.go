@@ -28,6 +28,74 @@ func TestKeeperUsageTimeoutDefaultIsThirtyButExistingValueIsPreserved(t *testing
 	}
 }
 
+func TestKeeperSub2APIUploadConversionUsesTokenClaimsAndReportsInvalidAccounts(t *testing.T) {
+	now := time.Date(2026, time.August, 29, 12, 0, 0, 0, time.UTC)
+	header, err := json.Marshal(map[string]any{"alg": "none", "typ": "JWT"})
+	if err != nil {
+		t.Fatalf("marshal JWT header: %v", err)
+	}
+	payload, err := json.Marshal(map[string]any{
+		"exp":   float64(1_788_019_200),
+		"email": "claims@example.com",
+		"https://api.openai.com/auth": map[string]any{
+			"chatgpt_account_id": "claims-account",
+			"chatgpt_plan_type":  "team",
+			"chatgpt_user_id":    "claims-user",
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal JWT payload: %v", err)
+	}
+	accessToken := base64.RawURLEncoding.EncodeToString(header) + "." + base64.RawURLEncoding.EncodeToString(payload) + ".signature"
+	document, err := json.Marshal(map[string]any{
+		"exported_at": now,
+		"proxies":     []any{},
+		"accounts": []any{
+			map[string]any{
+				"name":     "Claims Account",
+				"platform": "openai",
+				"type":     "oauth",
+				"credentials": map[string]any{
+					"access_token": accessToken,
+				},
+			},
+			map[string]any{
+				"name":        "Missing Token",
+				"platform":    "openai",
+				"type":        "oauth",
+				"credentials": map[string]any{},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal Sub2API document: %v", err)
+	}
+
+	candidates, failures := keeperAuthFileUploadCandidates("sub2api.json", document, now)
+	if len(candidates) != 1 || candidates[0].Name != "codex-claims@example.com.json" {
+		t.Fatalf("converted candidates = %#v", candidates)
+	}
+	if len(failures) != 1 || failures[0].Name != "sub2api.json#accounts[1]" || !strings.Contains(failures[0].Error, "access_token") {
+		t.Fatalf("conversion failures = %#v", failures)
+	}
+	converted := map[string]any{}
+	if err := json.Unmarshal(candidates[0].Content, &converted); err != nil {
+		t.Fatalf("decode converted CPA account: %v", err)
+	}
+	if converted["account_id"] != "claims-account" || converted["plan_type"] != "team" || converted["expired"] != "2026-08-29T16:00:00.000Z" {
+		t.Fatalf("converted CPA claims = %#v", converted)
+	}
+	idToken := keeperString(converted["id_token"])
+	idClaims := keeperIDTokenClaims(idToken)
+	if idClaims == nil || idClaims["email"] != "claims@example.com" || idClaims["exp"] != float64(1_788_019_200) {
+		t.Fatalf("synthetic id_token claims = %#v", idClaims)
+	}
+	authClaims, _ := idClaims["https://api.openai.com/auth"].(map[string]any)
+	if authClaims["chatgpt_account_id"] != "claims-account" || authClaims["chatgpt_user_id"] != "claims-user" {
+		t.Fatalf("synthetic id_token auth claims = %#v", authClaims)
+	}
+}
+
 func TestKeeperRequestRetriesTransientManagementFailures(t *testing.T) {
 	attempts := 0
 	cpa := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1412,7 +1480,7 @@ func TestKeeperAuthDetailRequestFailureCountsAsNetworkError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get keeper state: %v", err)
 	}
-	if state.LastError == nil || !strings.Contains(*state.LastError, "读取 auth file 详情失败") {
+	if state.LastError == nil || !strings.Contains(*state.LastError, "读取认证文件详情失败") {
 		t.Fatalf("last_error = %v, want auth detail failure", state.LastError)
 	}
 }
