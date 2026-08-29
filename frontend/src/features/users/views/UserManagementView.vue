@@ -122,9 +122,6 @@ function quotaBalanceClass(row: UserSummary): string {
   if (row.quota.paused || !row.quota.can_create_keys) {
     return 'is-error'
   }
-  if (row.quota.unpriced_records > 0) {
-    return 'is-warning'
-  }
   return row.quota.unlimited ? 'is-unlimited' : 'is-normal'
 }
 
@@ -134,9 +131,6 @@ function quotaDetail(row: UserSummary): string | null {
   }
   if (row.quota.sync_error) {
     return t('同步异常', 'Sync error')
-  }
-  if (row.quota.unpriced_records > 0) {
-    return t(`未定价 ${formatInteger(row.quota.unpriced_records)} 条`, `${formatInteger(row.quota.unpriced_records)} unpriced`)
   }
   return null
 }
@@ -735,11 +729,6 @@ onMounted(refresh)
 :global(.quota-balance-row.is-unlimited) {
   background: var(--cpa-primary-wash);
   color: var(--cpa-primary);
-}
-
-:global(.quota-balance-row.is-warning) {
-  background: var(--cpa-warning-weak);
-  color: var(--cpa-warning);
 }
 
 :global(.quota-balance-row.is-error) {
