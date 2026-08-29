@@ -5,6 +5,7 @@ import {
   NAlert,
   NButton,
   NDataTable,
+  NEllipsis,
   NForm,
   NFormItem,
   NIcon,
@@ -689,7 +690,7 @@ const columns = computed<DataTableColumns<UserApiKeySummary>>(() => [
   {
     title: renderMaskedKeyTitle,
     key: 'api_key',
-    width: 430,
+    width: 540,
     render: (row) =>
       h(
         'div',
@@ -727,13 +728,16 @@ const columns = computed<DataTableColumns<UserApiKeySummary>>(() => [
   {
     title: t('描述', 'Description'),
     key: 'description',
-    width: 240,
-    render: (row) => row.description || '-',
+    width: 160,
+    render: (row) =>
+      row.description
+        ? h(NEllipsis, { tooltip: true, style: { maxWidth: '100%' } }, { default: () => row.description })
+        : '-',
   },
   {
     title: t('创建时间', 'Created at'),
     key: 'created_at',
-    width: 180,
+    width: 150,
     render: (row) => formatDateTime(row.created_at),
   },
   {
