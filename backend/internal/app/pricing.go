@@ -793,6 +793,13 @@ func findMatchingPrice(prices map[[2]string]ModelPrice, provider, model *string)
 }
 
 func recordCost(record UsageRecord, prices map[[2]string]ModelPrice) (float64, bool) {
+	if record.CostStored {
+		return mathRound(record.CostUSD, 8), record.Unpriced
+	}
+	return calculateRecordCost(record, prices)
+}
+
+func calculateRecordCost(record UsageRecord, prices map[[2]string]ModelPrice) (float64, bool) {
 	price := findMatchingPrice(prices, record.Provider, record.Model)
 	if billingUnitForModelPtr(record.Model) == modelBillingUnitRequest {
 		if record.Failed {

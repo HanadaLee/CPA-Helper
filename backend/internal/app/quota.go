@@ -204,7 +204,7 @@ func (a *App) applyQuotaCharge(ctx context.Context, record UsageRecord) error {
 	}
 
 	var existing int
-	err = a.db.QueryRowContext(ctx, `SELECT id FROM user_quota_charges WHERE usage_record_id = ?`, record.ID).Scan(&existing)
+	err = a.db.QueryRowContext(ctx, `SELECT id FROM user_quota_charges WHERE usage_dedupe_key = ?`, record.DedupeKey).Scan(&existing)
 	if err == nil {
 		return nil
 	}
@@ -212,11 +212,7 @@ func (a *App) applyQuotaCharge(ctx context.Context, record UsageRecord) error {
 		return err
 	}
 
-	prices, err := a.priceMap(ctx)
-	if err != nil {
-		return err
-	}
-	amount, unpriced := recordCost(record, prices)
+	amount, unpriced := recordCost(record, nil)
 	amount = mathRound(amount, 8)
 	dailyDeducted, weeklyDeducted, monthlyDeducted, lifetimeDeducted := 0.0, 0.0, 0.0, 0.0
 	remaining := amount
@@ -264,11 +260,11 @@ func (a *App) applyQuotaCharge(ctx context.Context, record UsageRecord) error {
 	}()
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO user_quota_charges (
-			usage_record_id, user_id, usage_username, amount_usd,
+			usage_record_id, usage_dedupe_key, usage_timestamp, user_id, usage_username, amount_usd,
 			daily_deducted_usd, weekly_deducted_usd, monthly_deducted_usd, lifetime_deducted_usd, unpriced,
 			quota_day, quota_week, quota_month, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, record.ID, user.ID, user.Username, amount, dailyDeducted, weeklyDeducted, monthlyDeducted,
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, record.ID, record.DedupeKey, dbTime(record.Timestamp), user.ID, user.Username, amount, dailyDeducted, weeklyDeducted, monthlyDeducted,
 		lifetimeDeducted, unpriced, nonBlank(user.QuotaDay, quotaDay(record.Timestamp)),
 		nonBlank(user.QuotaWeek, quotaWeek(record.Timestamp)), nonBlank(user.QuotaMonth, quotaMonth(record.Timestamp)), now)
 	if err != nil {

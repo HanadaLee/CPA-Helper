@@ -277,6 +277,7 @@ type settingsUpdateRequest struct {
 	RetryIntervalSeconds       *float64                     `json:"retry_interval_seconds"`
 	AllowUserAccountStatus     *bool                        `json:"allow_user_account_status"`
 	AllowUserUsageHistory      *bool                        `json:"allow_user_usage_history"`
+	UsageDetailRetentionDays   *int                         `json:"usage_detail_retention_days"`
 }
 
 type modelRequestTestPayload struct {
@@ -381,6 +382,12 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) error {
 		if payload.AllowUserUsageHistory != nil {
 			cfg.AllowUserUsageHistory = *payload.AllowUserUsageHistory
 		}
+		if payload.UsageDetailRetentionDays != nil {
+			if *payload.UsageDetailRetentionDays < minimumUsageRetentionDays {
+				return validationError(fmt.Sprintf("用量明细保留天数不能少于 %d 天", minimumUsageRetentionDays))
+			}
+			cfg.UsageDetailRetentionDays = *payload.UsageDetailRetentionDays
+		}
 		if err := a.saveConfig(r.Context(), cfg); err != nil {
 			return err
 		}
@@ -407,6 +414,7 @@ func settingsResponse(cfg AppConfig) map[string]any {
 		"retry_interval_seconds":        collector.RetryIntervalSeconds,
 		"allow_user_account_status":     cfg.AllowUserAccountStatus,
 		"allow_user_usage_history":      cfg.AllowUserUsageHistory,
+		"usage_detail_retention_days":   cfg.UsageDetailRetentionDays,
 	}
 }
 

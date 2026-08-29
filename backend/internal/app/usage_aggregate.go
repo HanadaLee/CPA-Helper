@@ -34,6 +34,30 @@ type usageMetricTotals struct {
 	ttftCount int
 }
 
+type usageAggregateMetrics struct {
+	records     int
+	failed      int
+	input       int
+	output      int
+	cached      int
+	cacheRead   int
+	cacheCreate int
+	cacheHit    int
+	reasoning   int
+	tokens      int
+	cost        float64
+	unpriced    int
+	ttftTotal   float64
+	ttftCount   int
+	firstSeenAt time.Time
+	lastSeenAt  time.Time
+}
+
+type usageAggregateEntry struct {
+	record  UsageRecord
+	metrics usageAggregateMetrics
+}
+
 type usageMetricGroup struct {
 	key         string
 	label       string
@@ -81,48 +105,45 @@ func newUsageAggregateBuilder(filters UsageFilters, parts usageAggregateParts, u
 }
 
 func (b *usageAggregateBuilder) add(record UsageRecord, cost float64, unpriced bool) {
-	tokens := usageAggregateTotalTokens(record)
+	b.addMetrics(record, usageMetricsForRecord(record, cost, unpriced))
+}
+
+func (b *usageAggregateBuilder) addMetrics(record UsageRecord, metrics usageAggregateMetrics) {
 	if b.parts&usageAggregateSummary != 0 {
-		b.summary.records++
-		if record.Failed {
-			b.summary.failed++
-		}
-		b.summary.input += usageAggregateInputTokens(record)
-		b.summary.output += record.OutputTokens
-		b.summary.cached += record.CachedTokens
-		b.summary.cacheHit += usageCacheHitTokens(record)
-		b.summary.reasoning += record.ReasoningTokens
-		b.summary.tokens += tokens
-		b.summary.cost = mathRound(b.summary.cost+cost, 8)
-		if unpriced {
-			b.summary.unpriced++
-		}
-		if record.TTFTMS != nil && *record.TTFTMS > 0 {
-			b.summary.ttftTotal += *record.TTFTMS
-			b.summary.ttftCount++
-		}
+		b.summary.records += metrics.records
+		b.summary.failed += metrics.failed
+		b.summary.input += metrics.input
+		b.summary.output += metrics.output
+		b.summary.cached += metrics.cached
+		b.summary.cacheHit += metrics.cacheHit
+		b.summary.reasoning += metrics.reasoning
+		b.summary.tokens += metrics.tokens
+		b.summary.cost = mathRound(b.summary.cost+metrics.cost, 8)
+		b.summary.unpriced += metrics.unpriced
+		b.summary.ttftTotal += metrics.ttftTotal
+		b.summary.ttftCount += metrics.ttftCount
 	}
 	if b.parts&usageAggregateTrends != 0 {
 		bucket := usageTrendBucket(b.filters, record.Timestamp)
-		addUsageMetricGroup(b.trends, bucket, bucket, record, tokens, cost, nil, nil)
+		addUsageMetricGroup(b.trends, bucket, bucket, metrics, nil, nil)
 	}
 	if b.parts&usageAggregateRankings != 0 {
-		b.addRankings(record, tokens, cost)
+		b.addRankings(record, metrics)
 	}
 	if b.parts&usageAggregateDistributions != 0 {
 		provider := valueOr(record.Provider, "unknown")
 		model := valueOr(record.Model, "unknown")
 		endpoint := valueOr(record.Endpoint, "unknown")
-		addUsageMetricGroup(b.providers, provider, provider, record, tokens, cost, nil, nil)
-		addUsageMetricGroup(b.modelDistribution, model, model, record, tokens, cost, nil, nil)
-		addUsageMetricGroup(b.endpoints, endpoint, endpoint, record, tokens, cost, nil, nil)
+		addUsageMetricGroup(b.providers, provider, provider, metrics, nil, nil)
+		addUsageMetricGroup(b.modelDistribution, model, model, metrics, nil, nil)
+		addUsageMetricGroup(b.endpoints, endpoint, endpoint, metrics, nil, nil)
 	} else if b.parts&usageAggregateEndpoints != 0 {
 		endpoint := valueOr(record.Endpoint, "unknown")
-		addUsageMetricGroup(b.endpoints, endpoint, endpoint, record, tokens, cost, nil, nil)
+		addUsageMetricGroup(b.endpoints, endpoint, endpoint, metrics, nil, nil)
 	}
 }
 
-func (b *usageAggregateBuilder) addRankings(record UsageRecord, tokens int, cost float64) {
+func (b *usageAggregateBuilder) addRankings(record UsageRecord, metrics usageAggregateMetrics) {
 	description := ""
 	if record.APIKeyDescription != nil {
 		description = strings.TrimSpace(*record.APIKeyDescription)
@@ -137,12 +158,12 @@ func (b *usageAggregateBuilder) addRankings(record UsageRecord, tokens int, cost
 		value := description
 		descriptionPtr = &value
 	}
-	addUsageMetricGroup(b.apiKeys, apiKey, apiKeyLabel, record, tokens, cost, nil, descriptionPtr)
+	addUsageMetricGroup(b.apiKeys, apiKey, apiKeyLabel, metrics, nil, descriptionPtr)
 
 	provider := valueOr(record.Provider, "unknown")
 	model := valueOr(record.Model, "unknown")
 	modelKey := provider + "::" + model
-	addUsageMetricGroup(b.models, modelKey, provider+" / "+model, record, tokens, cost, nil, nil)
+	addUsageMetricGroup(b.models, modelKey, provider+" / "+model, metrics, nil, nil)
 
 	if record.UsageUsername == nil {
 		return
@@ -159,21 +180,19 @@ func (b *usageAggregateBuilder) addRankings(record UsageRecord, tokens int, cost
 		userKey = strconv.Itoa(id)
 		userLabel = info.Name
 	}
-	addUsageMetricGroup(b.usersByKey, userKey, userLabel, record, tokens, cost, userID, nil)
+	addUsageMetricGroup(b.usersByKey, userKey, userLabel, metrics, userID, nil)
 }
 
-func addUsageMetricGroup(groups map[string]*usageMetricGroup, key, label string, record UsageRecord, tokens int, cost float64, userID *int, description *string) {
+func addUsageMetricGroup(groups map[string]*usageMetricGroup, key, label string, metrics usageAggregateMetrics, userID *int, description *string) {
 	group := groups[key]
 	if group == nil {
 		group = &usageMetricGroup{key: key, label: label, userID: userID, description: description}
 		groups[key] = group
 	}
-	group.records++
-	if record.Failed {
-		group.failed++
-	}
-	group.tokens += tokens
-	group.cost = mathRound(group.cost+cost, 8)
+	group.records += metrics.records
+	group.failed += metrics.failed
+	group.tokens += metrics.tokens
+	group.cost = mathRound(group.cost+metrics.cost, 8)
 }
 
 func usageTrendBucket(filters UsageFilters, timestamp time.Time) string {
@@ -281,12 +300,136 @@ func (b *usageAggregateBuilder) distributionsResponse() map[string]any {
 	}
 }
 
-func (a *App) walkAggregateUsageRecords(ctx context.Context, filters UsageFilters, visit func(UsageRecord)) error {
+type usageAggregateQueryer interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
+func (a *App) walkAggregateUsageEntries(ctx context.Context, filters UsageFilters, visit func(usageAggregateEntry)) error {
+	fullStart, leftBoundary := usageFullHourStart(filters.Start)
+	fullEnd, rightBoundary := usageFullHourEnd(filters.End)
+	minimumCutoff := time.Now().In(appTimeLocation).AddDate(0, 0, -minimumUsageRetentionDays)
+	potentiallyExpired := (leftBoundary && filters.Start != nil && filters.Start.Before(minimumCutoff)) ||
+		(rightBoundary && fullEnd != nil && fullEnd.Before(minimumCutoff))
+	if potentiallyExpired {
+		cfg, err := a.loadConfig(ctx)
+		if err != nil {
+			return err
+		}
+		cutoff := time.Now().In(appTimeLocation).AddDate(0, 0, -cfg.UsageDetailRetentionDays)
+		leftExpired := leftBoundary && filters.Start != nil && filters.Start.Before(cutoff)
+		rightExpired := rightBoundary && fullEnd != nil && fullEnd.Before(cutoff)
+		if leftExpired || rightExpired {
+			return validationError("超出明细保留期的历史用量查询必须使用整点时间范围")
+		}
+	}
+	tx, err := a.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	if filters.RequestID != nil {
+		if err := walkRawAggregateUsageEntries(ctx, tx, filters, "", nil, visit); err != nil {
+			return err
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+		committed = true
+		return nil
+	}
+
+	var watermark int
+	if err := tx.QueryRowContext(ctx, `SELECT last_rolled_usage_id FROM usage_rollup_state WHERE id = 1`).Scan(&watermark); err != nil {
+		return err
+	}
+	if fullStart != nil && fullEnd != nil && !fullStart.Before(*fullEnd) {
+		if err := walkRawAggregateUsageEntries(ctx, tx, filters, "", nil, visit); err != nil {
+			return err
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+		committed = true
+		return nil
+	}
+
+	fullFilters := filters
+	fullFilters.Start = fullStart
+	fullFilters.End = fullEnd
+	if err := walkHourlyRollupEntries(ctx, tx, fullFilters, visit); err != nil {
+		return err
+	}
+	if err := walkRawAggregateUsageEntries(ctx, tx, fullFilters, "id > ?", []any{watermark}, visit); err != nil {
+		return err
+	}
+	if leftBoundary {
+		left := filters
+		left.End = fullStart
+		if filters.End != nil && left.End != nil && filters.End.Before(*left.End) {
+			left.End = filters.End
+		}
+		if err := walkRawAggregateUsageEntries(ctx, tx, left, "", nil, visit); err != nil {
+			return err
+		}
+	}
+	if rightBoundary {
+		right := filters
+		right.Start = fullEnd
+		if filters.Start != nil && right.Start != nil && filters.Start.After(*right.Start) {
+			right.Start = filters.Start
+		}
+		if err := walkRawAggregateUsageEntries(ctx, tx, right, "", nil, visit); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	committed = true
+	return nil
+}
+
+func usageFullHourStart(value *time.Time) (*time.Time, bool) {
+	if value == nil {
+		return nil, false
+	}
+	local := value.In(appTimeLocation)
+	floor := time.Date(local.Year(), local.Month(), local.Day(), local.Hour(), 0, 0, 0, appTimeLocation)
+	if local.Equal(floor) {
+		return value, false
+	}
+	ceil := floor.Add(time.Hour)
+	return &ceil, true
+}
+
+func usageFullHourEnd(value *time.Time) (*time.Time, bool) {
+	if value == nil {
+		return nil, false
+	}
+	local := value.In(appTimeLocation)
+	floor := time.Date(local.Year(), local.Month(), local.Day(), local.Hour(), 0, 0, 0, appTimeLocation)
+	if local.Equal(floor) {
+		return value, false
+	}
+	return &floor, true
+}
+
+func walkRawAggregateUsageEntries(ctx context.Context, queryer usageAggregateQueryer, filters UsageFilters, extra string, extraArgs []any, visit func(usageAggregateEntry)) error {
 	where, args := usageWhere(filters)
-	rows, err := a.db.QueryContext(ctx, `
+	if extra != "" {
+		where += " AND " + extra
+		args = append(args, extraArgs...)
+	}
+	rows, err := queryer.QueryContext(ctx, `
 		SELECT CAST(timestamp AS TEXT), usage_username, api_key_description, provider, model, endpoint,
 		       ttft_ms, failed, input_tokens, output_tokens, cached_tokens, cache_read_tokens,
-		       cache_creation_tokens, reasoning_tokens, total_tokens
+		       cache_creation_tokens, reasoning_tokens, total_tokens, cost_usd, unpriced
 		FROM usage_records `+where, args...)
 	if err != nil {
 		return err
@@ -298,7 +441,8 @@ func (a *App) walkAggregateUsageRecords(ctx context.Context, filters UsageFilter
 		var ttft sql.NullFloat64
 		if err := rows.Scan(&timestamp, &username, &description, &provider, &model, &endpoint, &ttft,
 			&record.Failed, &record.InputTokens, &record.OutputTokens, &record.CachedTokens,
-			&record.CacheReadTokens, &record.CacheCreationTokens, &record.ReasoningTokens, &record.TotalTokens); err != nil {
+			&record.CacheReadTokens, &record.CacheCreationTokens, &record.ReasoningTokens, &record.TotalTokens,
+			&record.CostUSD, &record.Unpriced); err != nil {
 			return err
 		}
 		if parsed, ok := parseDBTime(timestamp.String); ok {
@@ -310,16 +454,126 @@ func (a *App) walkAggregateUsageRecords(ctx context.Context, filters UsageFilter
 		record.Model = nullableString(model)
 		record.Endpoint = nullableString(endpoint)
 		record.TTFTMS = nullableFloat(ttft)
-		visit(record)
+		record.CostStored = true
+		cost, unpriced := recordCost(record, nil)
+		metrics := usageMetricsForRecord(record, cost, unpriced)
+		visit(usageAggregateEntry{record: record, metrics: metrics})
 	}
 	return rows.Err()
 }
 
-func (a *App) buildUsageAggregate(ctx context.Context, filters UsageFilters, parts usageAggregateParts, users map[string]userInfo, prices map[[2]string]ModelPrice) (*usageAggregateBuilder, error) {
+func walkHourlyRollupEntries(ctx context.Context, queryer usageAggregateQueryer, filters UsageFilters, visit func(usageAggregateEntry)) error {
+	where, args := usageRollupWhere(filters)
+	rows, err := queryer.QueryContext(ctx, `
+		SELECT CAST(bucket_start AS TEXT), usage_username, api_key_description, provider, model, endpoint, failed,
+		       record_count, failed_count, input_tokens, output_tokens, cached_tokens,
+		       cache_read_tokens, cache_creation_tokens, cache_hit_tokens,
+		       reasoning_tokens, total_tokens, cost_usd, unpriced_records, ttft_ms_sum, ttft_sample_count,
+		       CAST(first_timestamp AS TEXT), CAST(last_timestamp AS TEXT)
+		FROM usage_hourly_rollups `+where, args...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var record UsageRecord
+		var bucket, username, description, provider, model, endpoint, firstTimestamp, lastTimestamp string
+		var metrics usageAggregateMetrics
+		if err := rows.Scan(&bucket, &username, &description, &provider, &model, &endpoint, &record.Failed,
+			&metrics.records, &metrics.failed, &metrics.input, &metrics.output, &metrics.cached,
+			&metrics.cacheRead, &metrics.cacheCreate, &metrics.cacheHit,
+			&metrics.reasoning, &metrics.tokens, &metrics.cost, &metrics.unpriced, &metrics.ttftTotal, &metrics.ttftCount,
+			&firstTimestamp, &lastTimestamp); err != nil {
+			return err
+		}
+		if parsed, ok := parseDBTime(bucket); ok {
+			record.Timestamp = parsed
+		}
+		if parsed, ok := parseDBTime(firstTimestamp); ok {
+			metrics.firstSeenAt = parsed
+		}
+		if parsed, ok := parseDBTime(lastTimestamp); ok {
+			metrics.lastSeenAt = parsed
+		}
+		record.UsageUsername = nonEmptyStringPtr(username)
+		record.APIKeyDescription = nonEmptyStringPtr(description)
+		record.Provider = nonEmptyStringPtr(provider)
+		record.Model = nonEmptyStringPtr(model)
+		record.Endpoint = nonEmptyStringPtr(endpoint)
+		visit(usageAggregateEntry{record: record, metrics: metrics})
+	}
+	return rows.Err()
+}
+
+func usageRollupWhere(filters UsageFilters) (string, []any) {
+	clauses := []string{"1 = 1"}
+	args := []any{}
+	appendValue := func(column string, value *string) {
+		if value != nil {
+			clauses = append(clauses, column+" = ?")
+			args = append(args, *value)
+		}
+	}
+	if filters.Start != nil {
+		clauses = append(clauses, "bucket_start >= ?")
+		args = append(args, dbTime(*filters.Start))
+	}
+	if filters.End != nil {
+		clauses = append(clauses, "bucket_start < ?")
+		args = append(args, dbTime(*filters.End))
+	}
+	appendValue("usage_username", filters.UsageUsername)
+	appendValue("api_key_description", filters.APIKeyDescription)
+	appendValue("provider", filters.Provider)
+	appendValue("model", filters.Model)
+	appendValue("source_key", filters.SourceKey)
+	appendValue("endpoint", filters.Endpoint)
+	if filters.Failed != nil {
+		clauses = append(clauses, "failed = ?")
+		args = append(args, *filters.Failed)
+	}
+	return "WHERE " + strings.Join(clauses, " AND "), args
+}
+
+func nonEmptyStringPtr(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
+}
+
+func usageMetricsForRecord(record UsageRecord, cost float64, unpriced bool) usageAggregateMetrics {
+	metrics := usageAggregateMetrics{
+		records:     1,
+		input:       usageAggregateInputTokens(record),
+		output:      record.OutputTokens,
+		cached:      record.CachedTokens,
+		cacheRead:   record.CacheReadTokens,
+		cacheCreate: record.CacheCreationTokens,
+		cacheHit:    usageCacheHitTokens(record),
+		reasoning:   record.ReasoningTokens,
+		tokens:      usageAggregateTotalTokens(record),
+		cost:        cost,
+		firstSeenAt: record.Timestamp,
+		lastSeenAt:  record.Timestamp,
+	}
+	if record.Failed {
+		metrics.failed = 1
+	}
+	if unpriced {
+		metrics.unpriced = 1
+	}
+	if record.TTFTMS != nil && *record.TTFTMS > 0 {
+		metrics.ttftTotal = *record.TTFTMS
+		metrics.ttftCount = 1
+	}
+	return metrics
+}
+
+func (a *App) buildUsageAggregate(ctx context.Context, filters UsageFilters, parts usageAggregateParts, users map[string]userInfo) (*usageAggregateBuilder, error) {
 	builder := newUsageAggregateBuilder(filters, parts, users)
-	err := a.walkAggregateUsageRecords(ctx, filters, func(record UsageRecord) {
-		cost, unpriced := recordCost(record, prices)
-		builder.add(record, cost, unpriced)
+	err := a.walkAggregateUsageEntries(ctx, filters, func(entry usageAggregateEntry) {
+		builder.addMetrics(entry.record, entry.metrics)
 	})
 	if err != nil {
 		return nil, err
@@ -352,7 +606,7 @@ func usageRangeCoversObservedToday(current, today UsageFilters, now time.Time) b
 		!current.End.Before(now.Add(-2*time.Minute))
 }
 
-func (a *App) usageOverviewAggregates(ctx context.Context, scoped UsageFilters, scope usageAccessScope, prices map[[2]string]ModelPrice, users map[string]userInfo) (map[string]any, error) {
+func (a *App) usageOverviewAggregates(ctx context.Context, scoped UsageFilters, scope usageAccessScope, users map[string]userInfo) (map[string]any, error) {
 	now := time.Now().In(appTimeLocation)
 	todayStart, todayEnd := defaultTodayRange()
 	todayFilters := scoped
@@ -373,53 +627,52 @@ func (a *App) usageOverviewAggregates(ctx context.Context, scoped UsageFilters, 
 	today := newUsageAggregateBuilder(todayFilters, usageAggregateTrends, users)
 	realtime := newUsageAggregateBuilder(realtimeFilters, usageAggregateSummary, users)
 
-	addCurrent := func(record UsageRecord, cost float64, unpriced bool) {
+	addCurrent := func(record UsageRecord, metrics usageAggregateMetrics) {
 		if usageRecordInRange(record, scoped) {
 			if usageRecordMatchesFailure(record, scoped.Failed) {
-				current.add(record, cost, unpriced)
+				current.addMetrics(record, metrics)
 			}
 			if record.Failed {
-				failedAggregate.add(record, cost, unpriced)
+				failedAggregate.addMetrics(record, metrics)
 			}
 		}
 	}
-	addToday := func(record UsageRecord, cost float64, unpriced bool) {
+	addToday := func(record UsageRecord, metrics usageAggregateMetrics) {
 		if usageRecordInRange(record, todayFilters) && usageRecordMatchesFailure(record, scoped.Failed) {
-			today.add(record, cost, unpriced)
+			today.addMetrics(record, metrics)
 		}
 		if usageRecordInRange(record, realtimeFilters) && usageRecordMatchesFailure(record, scoped.Failed) {
-			realtime.add(record, cost, unpriced)
+			realtime.addMetrics(record, metrics)
 		}
 	}
-	addRecord := func(record UsageRecord, addToCurrent, addToToday bool) {
-		cost, unpriced := recordCost(record, prices)
+	addRecord := func(entry usageAggregateEntry, addToCurrent, addToToday bool) {
 		if addToCurrent {
-			addCurrent(record, cost, unpriced)
+			addCurrent(entry.record, entry.metrics)
 		}
 		if addToToday {
-			addToday(record, cost, unpriced)
+			addToday(entry.record, entry.metrics)
 		}
 	}
 	if usageRangeInside(scoped, todayFilters) {
-		if err := a.walkAggregateUsageRecords(ctx, todayBase, func(record UsageRecord) {
-			addRecord(record, true, true)
+		if err := a.walkAggregateUsageEntries(ctx, todayBase, func(entry usageAggregateEntry) {
+			addRecord(entry, true, true)
 		}); err != nil {
 			return nil, err
 		}
 	} else if usageRangeCoversObservedToday(scoped, todayFilters, now) {
-		if err := a.walkAggregateUsageRecords(ctx, currentBase, func(record UsageRecord) {
-			addRecord(record, true, true)
+		if err := a.walkAggregateUsageEntries(ctx, currentBase, func(entry usageAggregateEntry) {
+			addRecord(entry, true, true)
 		}); err != nil {
 			return nil, err
 		}
 	} else {
-		if err := a.walkAggregateUsageRecords(ctx, currentBase, func(record UsageRecord) {
-			addRecord(record, true, false)
+		if err := a.walkAggregateUsageEntries(ctx, currentBase, func(entry usageAggregateEntry) {
+			addRecord(entry, true, false)
 		}); err != nil {
 			return nil, err
 		}
-		if err := a.walkAggregateUsageRecords(ctx, todayBase, func(record UsageRecord) {
-			addRecord(record, false, true)
+		if err := a.walkAggregateUsageEntries(ctx, todayBase, func(entry usageAggregateEntry) {
+			addRecord(entry, false, true)
 		}); err != nil {
 			return nil, err
 		}

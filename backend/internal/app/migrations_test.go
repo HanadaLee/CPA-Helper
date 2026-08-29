@@ -43,6 +43,9 @@ func TestRunMigrationsCreatesGooseVersionAndFinalSchema(t *testing.T) {
 	if !testColumnExists(t, app.db, "usage_records", "source_key") {
 		t.Fatal("usage_records.source_key was not created")
 	}
+	if !testColumnExists(t, app.db, "usage_records", "cost_usd") || !testColumnExists(t, app.db, "usage_records", "unpriced") {
+		t.Fatal("usage_records stored cost columns were not created")
+	}
 	for _, index := range []string{
 		"ix_usage_records_source_key_timestamp",
 		"ix_usage_records_usage_username_timestamp",
@@ -100,6 +103,9 @@ func TestRunMigrationsCreatesGooseVersionAndFinalSchema(t *testing.T) {
 	if !testColumnExists(t, app.db, "app_settings", "allow_user_usage_history") {
 		t.Fatal("app_settings.allow_user_usage_history was not created")
 	}
+	if !testColumnExists(t, app.db, "app_settings", "usage_detail_retention_days") {
+		t.Fatal("app_settings.usage_detail_retention_days was not created")
+	}
 	var cpamcURL string
 	if err := app.db.QueryRow(`SELECT cpamc_url FROM app_settings WHERE id = 1`).Scan(&cpamcURL); err != nil {
 		t.Fatalf("query app_settings.cpamc_url: %v", err)
@@ -128,6 +134,13 @@ func TestRunMigrationsCreatesGooseVersionAndFinalSchema(t *testing.T) {
 			allowUserUsageHistory,
 		)
 	}
+	var retentionDays int
+	if err := app.db.QueryRow(`SELECT usage_detail_retention_days FROM app_settings WHERE id = 1`).Scan(&retentionDays); err != nil {
+		t.Fatalf("query usage detail retention: %v", err)
+	}
+	if retentionDays != 90 {
+		t.Fatalf("default usage detail retention = %d, want 90", retentionDays)
+	}
 	if !testColumnExists(t, app.db, "users", "quota_lifetime_usd") {
 		t.Fatal("users.quota_lifetime_usd was not created")
 	}
@@ -146,6 +159,9 @@ func TestRunMigrationsCreatesGooseVersionAndFinalSchema(t *testing.T) {
 	if !testTableExists(t, app.db, "user_quota_charges") {
 		t.Fatal("user_quota_charges was not created")
 	}
+	if !testTableExists(t, app.db, "usage_ingest_dedup") || !testTableExists(t, app.db, "usage_hourly_rollups") || !testTableExists(t, app.db, "usage_rollup_state") {
+		t.Fatal("usage retention tables were not created")
+	}
 	if !testTableExists(t, app.db, "user_card_shop_favorites") {
 		t.Fatal("user_card_shop_favorites was not created")
 	}
@@ -160,6 +176,9 @@ func TestRunMigrationsCreatesGooseVersionAndFinalSchema(t *testing.T) {
 	}
 	if !testColumnExists(t, app.db, "user_quota_charges", "daily_deducted_usd") {
 		t.Fatal("user_quota_charges.daily_deducted_usd was not created")
+	}
+	if !testColumnExists(t, app.db, "user_quota_charges", "usage_dedupe_key") {
+		t.Fatal("user_quota_charges.usage_dedupe_key was not created")
 	}
 	if !testColumnExists(t, app.db, "user_card_shop_favorites", "shop_key") {
 		t.Fatal("user_card_shop_favorites.shop_key was not created")

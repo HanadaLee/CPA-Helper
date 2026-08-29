@@ -48,6 +48,7 @@ export interface SettingsResponse {
   retry_interval_seconds: number
   allow_user_account_status: boolean
   allow_user_usage_history: boolean
+  usage_detail_retention_days: number
 }
 
 export interface SettingsUpdatePayload {
@@ -63,6 +64,7 @@ export interface SettingsUpdatePayload {
   retry_interval_seconds?: number
   allow_user_account_status?: boolean
   allow_user_usage_history?: boolean
+  usage_detail_retention_days?: number
 }
 
 export interface ModelRequestGuide {

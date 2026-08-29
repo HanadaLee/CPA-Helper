@@ -45,6 +45,7 @@ const settingsForm = reactive({
   retry_interval_seconds: 10,
   allow_user_account_status: false,
   allow_user_usage_history: false,
+  usage_detail_retention_days: 90,
 })
 
 const remoteStatusType = computed(() => {
@@ -96,6 +97,7 @@ async function refresh() {
     settingsForm.retry_interval_seconds = settings.retry_interval_seconds
     settingsForm.allow_user_account_status = settings.allow_user_account_status
     settingsForm.allow_user_usage_history = settings.allow_user_usage_history
+    settingsForm.usage_detail_retention_days = settings.usage_detail_retention_days
     collectorStatus.value = status
   } catch (error) {
     message.error(errorText(error, '加载设置失败', 'Failed to load settings'))
@@ -125,6 +127,7 @@ async function saveSettings() {
       retry_interval_seconds: settingsForm.retry_interval_seconds,
       allow_user_account_status: settingsForm.allow_user_account_status,
       allow_user_usage_history: settingsForm.allow_user_usage_history,
+      usage_detail_retention_days: settingsForm.usage_detail_retention_days,
     }
     const [saved] = await Promise.all([
       updateSettings(payload),
@@ -288,6 +291,12 @@ onMounted(refresh)
               </NFormItem>
               <NFormItem :label="t('重试间隔（秒）', 'Retry interval (seconds)')">
                 <NInputNumber v-model:value="settingsForm.retry_interval_seconds" :min="1" />
+              </NFormItem>
+              <NFormItem :label="t('用量明细保留天数', 'Usage detail retention days')">
+                <div class="field-stack">
+                  <NInputNumber v-model:value="settingsForm.usage_detail_retention_days" :min="31" :precision="0" />
+                  <div class="form-help">{{ t('最低 31 天。超过保留期的请求明细会在完成小时聚合后自动清理，历史表盘仍可查看。', 'Minimum 31 days. Expired request details are removed after hourly aggregation, while historical dashboards remain available.') }}</div>
+                </div>
               </NFormItem>
             </div>
           </NForm>

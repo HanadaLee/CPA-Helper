@@ -953,16 +953,14 @@ func emptyUserUsageSummary() userUsageSummary {
 }
 
 func (a *App) userUsageSummaries(ctx context.Context) (map[string]userUsageSummary, error) {
-	prices, err := a.priceMap(ctx)
-	if err != nil {
-		return nil, err
-	}
 	filters := UsageFilters{}
 	todayStart, todayEnd := defaultTodayRange()
 	result := map[string]userUsageSummary{}
 	providerSeen := map[string]map[string]bool{}
 	modelSeen := map[string]map[string]bool{}
-	err = a.walkAggregateUsageRecords(ctx, filters, func(record UsageRecord) {
+	err := a.walkAggregateUsageEntries(ctx, filters, func(entry usageAggregateEntry) {
+		record := entry.record
+		metrics := entry.metrics
 		if record.UsageUsername == nil || strings.TrimSpace(*record.UsageUsername) == "" {
 			return
 		}
@@ -973,19 +971,16 @@ func (a *App) userUsageSummaries(ctx context.Context) (map[string]userUsageSumma
 			providerSeen[username] = map[string]bool{}
 			modelSeen[username] = map[string]bool{}
 		}
-		summary.Records++
-		if record.Failed {
-			summary.FailedRecords++
-		} else {
-			summary.SuccessRecords++
-		}
-		summary.TotalTokens += usageAggregateTotalTokens(record)
-		if summary.FirstSeenAt == nil || record.Timestamp.Before(*summary.FirstSeenAt) {
-			t := record.Timestamp
+		summary.Records += metrics.records
+		summary.FailedRecords += metrics.failed
+		summary.SuccessRecords += metrics.records - metrics.failed
+		summary.TotalTokens += metrics.tokens
+		if summary.FirstSeenAt == nil || metrics.firstSeenAt.Before(*summary.FirstSeenAt) {
+			t := metrics.firstSeenAt
 			summary.FirstSeenAt = &t
 		}
-		if summary.LastSeenAt == nil || record.Timestamp.After(*summary.LastSeenAt) {
-			t := record.Timestamp
+		if summary.LastSeenAt == nil || metrics.lastSeenAt.After(*summary.LastSeenAt) {
+			t := metrics.lastSeenAt
 			summary.LastSeenAt = &t
 			summary.LastProvider = record.Provider
 			summary.LastModel = record.Model
@@ -993,22 +988,16 @@ func (a *App) userUsageSummaries(ctx context.Context) (map[string]userUsageSumma
 		appendUniqueString(&summary.Providers, providerSeen[username], record.Provider)
 		appendUniqueString(&summary.Models, modelSeen[username], record.Model)
 		if !record.Timestamp.Before(todayStart) && record.Timestamp.Before(todayEnd) {
-			amount, unpriced := recordCost(record, prices)
-			summary.TodayRecords++
-			if record.Failed {
-				summary.TodayFailedRecords++
-			} else {
-				summary.TodaySuccessRecords++
-			}
-			summary.TodayInputTokens += usageAggregateInputTokens(record)
-			summary.TodayOutputTokens += record.OutputTokens
-			summary.TodayCachedTokens += record.CachedTokens
-			summary.TodayReasoningTokens += record.ReasoningTokens
-			summary.TodayTotalTokens += usageAggregateTotalTokens(record)
-			summary.TodayEstimatedCostUSD = mathRound(summary.TodayEstimatedCostUSD+amount, 8)
-			if unpriced {
-				summary.TodayUnpricedRecords++
-			}
+			summary.TodayRecords += metrics.records
+			summary.TodayFailedRecords += metrics.failed
+			summary.TodaySuccessRecords += metrics.records - metrics.failed
+			summary.TodayInputTokens += metrics.input
+			summary.TodayOutputTokens += metrics.output
+			summary.TodayCachedTokens += metrics.cached
+			summary.TodayReasoningTokens += metrics.reasoning
+			summary.TodayTotalTokens += metrics.tokens
+			summary.TodayEstimatedCostUSD = mathRound(summary.TodayEstimatedCostUSD+metrics.cost, 8)
+			summary.TodayUnpricedRecords += metrics.unpriced
 		}
 		result[username] = summary
 	})

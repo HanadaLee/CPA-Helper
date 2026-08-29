@@ -57,6 +57,9 @@ type UsageRecord struct {
 	CacheCreationTokens int
 	ReasoningTokens     int
 	TotalTokens         int
+	CostUSD             float64
+	Unpriced            bool
+	CostStored          bool
 	DedupeKey           string
 	RawJSON             string
 }
@@ -264,11 +267,7 @@ func (a *App) usageSummary(w http.ResponseWriter, r *http.Request, filters Usage
 	if err != nil {
 		return err
 	}
-	prices, err := a.priceMap(r.Context())
-	if err != nil {
-		return err
-	}
-	aggregate, err := a.buildUsageAggregate(r.Context(), scoped, usageAggregateSummary, nil, prices)
+	aggregate, err := a.buildUsageAggregate(r.Context(), scoped, usageAggregateSummary, nil)
 	if err != nil {
 		return err
 	}
@@ -282,11 +281,7 @@ func (a *App) usageTrends(w http.ResponseWriter, r *http.Request, filters UsageF
 	if err != nil {
 		return err
 	}
-	prices, err := a.priceMap(r.Context())
-	if err != nil {
-		return err
-	}
-	aggregate, err := a.buildUsageAggregate(r.Context(), scoped, usageAggregateTrends, nil, prices)
+	aggregate, err := a.buildUsageAggregate(r.Context(), scoped, usageAggregateTrends, nil)
 	if err != nil {
 		return err
 	}
@@ -311,15 +306,11 @@ func (a *App) usageRankings(w http.ResponseWriter, r *http.Request, filters Usag
 	if err != nil {
 		return err
 	}
-	prices, err := a.priceMap(r.Context())
-	if err != nil {
-		return err
-	}
 	users, err := a.userLookup(r.Context(), scope)
 	if err != nil {
 		return err
 	}
-	aggregate, err := a.buildUsageAggregate(r.Context(), scoped, usageAggregateRankings, users, prices)
+	aggregate, err := a.buildUsageAggregate(r.Context(), scoped, usageAggregateRankings, users)
 	if err != nil {
 		return err
 	}
@@ -339,11 +330,7 @@ func (a *App) usageDistributions(w http.ResponseWriter, r *http.Request, filters
 	if err != nil {
 		return err
 	}
-	prices, err := a.priceMap(r.Context())
-	if err != nil {
-		return err
-	}
-	aggregate, err := a.buildUsageAggregate(r.Context(), scoped, usageAggregateDistributions, nil, prices)
+	aggregate, err := a.buildUsageAggregate(r.Context(), scoped, usageAggregateDistributions, nil)
 	if err != nil {
 		return err
 	}
@@ -357,15 +344,11 @@ func (a *App) usageOverview(w http.ResponseWriter, r *http.Request, filters Usag
 	if err != nil {
 		return err
 	}
-	prices, err := a.priceMap(r.Context())
-	if err != nil {
-		return err
-	}
 	users, err := a.userLookup(r.Context(), scope)
 	if err != nil {
 		return err
 	}
-	response, err := a.usageOverviewAggregates(r.Context(), scoped, scope, prices, users)
+	response, err := a.usageOverviewAggregates(r.Context(), scoped, scope, users)
 	if err != nil {
 		return err
 	}
@@ -420,14 +403,10 @@ func (a *App) usageRecords(w http.ResponseWriter, r *http.Request, filters Usage
 	if err != nil {
 		return err
 	}
-	prices, err := a.priceMap(r.Context())
-	if err != nil {
-		return err
-	}
 	items := make([]map[string]any, 0, len(records))
 	redaction := usageRedactionOptions{MaskAuthIndex: !scope.IsAdmin}
 	for _, record := range records {
-		items = append(items, listItemFromRecord(record, users, prices, redaction))
+		items = append(items, listItemFromRecord(record, users, redaction))
 	}
 	response := map[string]any{
 		"items":     items,
@@ -456,12 +435,8 @@ func (a *App) usageRecordDetail(w http.ResponseWriter, r *http.Request, recordID
 	if err != nil {
 		return err
 	}
-	prices, err := a.priceMap(r.Context())
-	if err != nil {
-		return err
-	}
 	redaction := usageRedactionOptions{MaskSource: !scope.IsAdmin, MaskAuthIndex: !scope.IsAdmin}
-	item := listItemFromRecord(record, users, prices, redaction)
+	item := listItemFromRecord(record, users, redaction)
 	item["raw_json"] = redactedRawJSON(record.RawJSON, usageRecordAuth(record), redaction)
 	writeJSON(w, http.StatusOK, item)
 	return nil
@@ -500,11 +475,11 @@ func (a *App) loadUsageOptionsResponse(ctx context.Context, scope usageAccessSco
 	where, args := usageWhere(scoped)
 	users := []map[string]any{}
 	distinctStrings := func(column string) ([]string, error) {
+		valueSet := map[string]bool{}
 		rows, err := a.db.QueryContext(ctx, fmt.Sprintf(`SELECT DISTINCT %s FROM usage_records %s AND %s IS NOT NULL`, column, where, column), args...)
 		if err != nil {
 			return nil, err
 		}
-		defer rows.Close()
 		var values []string
 		for rows.Next() {
 			var value sql.NullString
@@ -512,31 +487,54 @@ func (a *App) loadUsageOptionsResponse(ctx context.Context, scope usageAccessSco
 				return nil, err
 			}
 			if value.Valid && strings.TrimSpace(value.String) != "" {
-				values = append(values, value.String)
+				valueSet[value.String] = true
 			}
 		}
-		sort.Strings(values)
-		return values, rows.Err()
-	}
-	distinctSourceOptions := func() ([]map[string]string, error) {
-		rows, err := a.db.QueryContext(ctx, `SELECT DISTINCT source_key, source, auth FROM usage_records `+where+` AND source_key IS NOT NULL AND source IS NOT NULL`, args...)
+		if err := rows.Err(); err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+		if err := rows.Close(); err != nil {
+			return nil, err
+		}
+		rollupFilters := scoped
+		rollupFilters.Start, _ = usageFullHourStart(scoped.Start)
+		rollupFilters.End, _ = usageFullHourEnd(scoped.End)
+		rollupWhere, rollupArgs := usageRollupWhere(rollupFilters)
+		rollupRows, err := a.db.QueryContext(ctx, fmt.Sprintf(`SELECT DISTINCT %s FROM usage_hourly_rollups %s AND %s <> ''`, column, rollupWhere, column), rollupArgs...)
 		if err != nil {
 			return nil, err
 		}
-		defer rows.Close()
+		defer rollupRows.Close()
+		for rollupRows.Next() {
+			var value string
+			if err := rollupRows.Scan(&value); err != nil {
+				return nil, err
+			}
+			if strings.TrimSpace(value) != "" {
+				valueSet[value] = true
+			}
+		}
+		if err := rollupRows.Err(); err != nil {
+			return nil, err
+		}
+		values = values[:0]
+		for value := range valueSet {
+			values = append(values, value)
+		}
+		sort.Strings(values)
+		return values, nil
+	}
+	distinctSourceOptions := func() ([]map[string]string, error) {
 		type sourceOption struct {
 			Key   string
 			Label string
 		}
 		values := map[string]sourceOption{}
-		for rows.Next() {
-			var sourceKey, source, auth sql.NullString
-			if err := rows.Scan(&sourceKey, &source, &auth); err != nil {
-				return nil, err
-			}
+		addSource := func(sourceKey, source, auth sql.NullString) {
 			sourceValue := strings.TrimSpace(source.String)
 			if !source.Valid || sourceValue == "" {
-				continue
+				return
 			}
 			record := UsageRecord{Source: &sourceValue}
 			if auth.Valid {
@@ -545,13 +543,62 @@ func (a *App) loadUsageOptionsResponse(ctx context.Context, scope usageAccessSco
 			displaySource := redactedUsageSource(record.Source, usageRecordAuth(record), usageRedactionOptions{})
 			key := strings.TrimSpace(sourceKey.String)
 			if displaySource == nil || !sourceKey.Valid || key == "" {
-				continue
+				return
 			}
 			existing, ok := values[key]
 			if !ok || (existing.Label == sourceValue && *displaySource != sourceValue) {
 				values[key] = sourceOption{Key: key, Label: *displaySource}
 			}
 		}
+
+		rows, err := a.db.QueryContext(ctx, `SELECT DISTINCT source_key, source, auth FROM usage_records `+where+` AND source_key IS NOT NULL AND source IS NOT NULL`, args...)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var sourceKey, source, auth sql.NullString
+			if err := rows.Scan(&sourceKey, &source, &auth); err != nil {
+				_ = rows.Close()
+				return nil, err
+			}
+			addSource(sourceKey, source, auth)
+		}
+		if err := rows.Err(); err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+		if err := rows.Close(); err != nil {
+			return nil, err
+		}
+
+		rollupFilters := scoped
+		rollupFilters.Start, _ = usageFullHourStart(scoped.Start)
+		rollupFilters.End, _ = usageFullHourEnd(scoped.End)
+		rollupWhere, rollupArgs := usageRollupWhere(rollupFilters)
+		rollupRows, err := a.db.QueryContext(ctx, `SELECT DISTINCT source_key, source, auth FROM usage_hourly_rollups `+rollupWhere+` AND source_key <> '' AND source <> ''`, rollupArgs...)
+		if err != nil {
+			return nil, err
+		}
+		for rollupRows.Next() {
+			var sourceKey, source, auth string
+			if err := rollupRows.Scan(&sourceKey, &source, &auth); err != nil {
+				_ = rollupRows.Close()
+				return nil, err
+			}
+			addSource(
+				sql.NullString{String: sourceKey, Valid: true},
+				sql.NullString{String: source, Valid: true},
+				sql.NullString{String: auth, Valid: auth != ""},
+			)
+		}
+		if err := rollupRows.Err(); err != nil {
+			_ = rollupRows.Close()
+			return nil, err
+		}
+		if err := rollupRows.Close(); err != nil {
+			return nil, err
+		}
+
 		options := make([]sourceOption, 0, len(values))
 		for _, option := range values {
 			options = append(options, option)
@@ -569,7 +616,7 @@ func (a *App) loadUsageOptionsResponse(ctx context.Context, scope usageAccessSco
 				"label": option.Label,
 			})
 		}
-		return sources, rows.Err()
+		return sources, nil
 	}
 	if scope.IsAdmin {
 		usernames, err := distinctStrings("usage_username")
@@ -645,7 +692,7 @@ func (a *App) pagedUsageRecords(ctx context.Context, filters UsageFilters, page,
 	args = append(args, pageSize, (page-1)*pageSize)
 	rows, err := a.db.QueryContext(ctx, `SELECT id, CAST(timestamp AS TEXT), usage_username, api_key_description, provider, model, reasoning_effort, endpoint, source,
 		NULL, request_id, auth, auth_index, latency_ms, ttft_ms, failed, input_tokens, output_tokens, cached_tokens,
-		cache_read_tokens, cache_creation_tokens, reasoning_tokens, total_tokens, '', '' FROM usage_records `+where+` ORDER BY timestamp DESC LIMIT ? OFFSET ?`, args...)
+		cache_read_tokens, cache_creation_tokens, reasoning_tokens, total_tokens, cost_usd, unpriced, '', '' FROM usage_records `+where+` ORDER BY timestamp DESC LIMIT ? OFFSET ?`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -656,7 +703,7 @@ func (a *App) pagedUsageRecords(ctx context.Context, filters UsageFilters, page,
 func (a *App) getUsageRecord(ctx context.Context, id int) (UsageRecord, error) {
 	rows, err := a.db.QueryContext(ctx, `SELECT id, CAST(timestamp AS TEXT), usage_username, api_key_description, provider, model, reasoning_effort, endpoint, source,
 		source_account, request_id, auth, auth_index, latency_ms, ttft_ms, failed, input_tokens, output_tokens, cached_tokens,
-		cache_read_tokens, cache_creation_tokens, reasoning_tokens, total_tokens, dedupe_key, raw_json FROM usage_records WHERE id = ?`, id)
+		cache_read_tokens, cache_creation_tokens, reasoning_tokens, total_tokens, cost_usd, unpriced, dedupe_key, raw_json FROM usage_records WHERE id = ?`, id)
 	if err != nil {
 		return UsageRecord{}, err
 	}
@@ -723,7 +770,7 @@ func scanUsageRecords(rows *sql.Rows) ([]UsageRecord, error) {
 		var record UsageRecord
 		var timestamp, usageUsername, description, provider, model, reasoningEffort, endpoint, source, sourceAccount, requestID, auth, authIndex, latency sql.NullString
 		var latencyFloat, ttftFloat sql.NullFloat64
-		if err := rows.Scan(&record.ID, &timestamp, &usageUsername, &description, &provider, &model, &reasoningEffort, &endpoint, &source, &sourceAccount, &requestID, &auth, &authIndex, &latencyFloat, &ttftFloat, &record.Failed, &record.InputTokens, &record.OutputTokens, &record.CachedTokens, &record.CacheReadTokens, &record.CacheCreationTokens, &record.ReasoningTokens, &record.TotalTokens, &record.DedupeKey, &record.RawJSON); err != nil {
+		if err := rows.Scan(&record.ID, &timestamp, &usageUsername, &description, &provider, &model, &reasoningEffort, &endpoint, &source, &sourceAccount, &requestID, &auth, &authIndex, &latencyFloat, &ttftFloat, &record.Failed, &record.InputTokens, &record.OutputTokens, &record.CachedTokens, &record.CacheReadTokens, &record.CacheCreationTokens, &record.ReasoningTokens, &record.TotalTokens, &record.CostUSD, &record.Unpriced, &record.DedupeKey, &record.RawJSON); err != nil {
 			return nil, err
 		}
 		_ = latency
@@ -743,6 +790,7 @@ func scanUsageRecords(rows *sql.Rows) ([]UsageRecord, error) {
 		record.AuthIndex = nullableString(authIndex)
 		record.LatencyMS = nullableFloat(latencyFloat)
 		record.TTFTMS = nullableFloat(ttftFloat)
+		record.CostStored = true
 		records = append(records, record)
 	}
 	return records, rows.Err()
@@ -779,8 +827,8 @@ func (a *App) loadAdminUserLookup(ctx context.Context) (map[string]userInfo, err
 	return lookup, nil
 }
 
-func listItemFromRecord(record UsageRecord, users map[string]userInfo, prices map[[2]string]ModelPrice, redaction usageRedactionOptions) map[string]any {
-	amount, unpriced := recordCost(record, prices)
+func listItemFromRecord(record UsageRecord, users map[string]userInfo, redaction usageRedactionOptions) map[string]any {
+	amount, unpriced := recordCost(record, nil)
 	userID := (*int)(nil)
 	userLabel := "未绑定"
 	if record.UsageUsername != nil {
@@ -1239,21 +1287,70 @@ func (a *App) saveUsageMessage(ctx context.Context, raw []byte) (UsageRecord, bo
 	}
 	now := dbTime(time.Now())
 	sourceKey := usageSourceKey(normalized.Source)
-	result, err := a.db.ExecContext(ctx, `
+	prices, err := a.priceMap(ctx)
+	if err != nil {
+		return UsageRecord{}, false, err
+	}
+	costUSD, unpriced := calculateRecordCost(usageRecordFromNormalized(normalized), prices)
+	tx, err := a.db.BeginTx(ctx, nil)
+	if err != nil {
+		return UsageRecord{}, false, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+	dedupResult, err := tx.ExecContext(ctx, `
+		INSERT OR IGNORE INTO usage_ingest_dedup (dedupe_key, usage_timestamp, first_seen_at)
+		VALUES (?, ?, ?)
+	`, normalized.DedupeKey, dbTime(normalized.Timestamp), now)
+	if err != nil {
+		return UsageRecord{}, false, err
+	}
+	dedupInserted, err := dedupResult.RowsAffected()
+	if err != nil {
+		return UsageRecord{}, false, err
+	}
+	if dedupInserted == 0 {
+		if err := tx.Commit(); err != nil {
+			return UsageRecord{}, false, err
+		}
+		committed = true
+		record, getErr := a.usageRecordByDedupe(ctx, normalized.DedupeKey)
+		if getErr != nil {
+			var appErr *AppError
+			if errors.As(getErr, &appErr) && appErr.Code == "not_found" {
+				return UsageRecord{}, false, nil
+			}
+			return UsageRecord{}, false, getErr
+		}
+		if err := a.applyQuotaCharge(ctx, record); err != nil {
+			return UsageRecord{}, false, err
+		}
+		return record, false, nil
+	}
+
+	result, err := tx.ExecContext(ctx, `
 		INSERT INTO usage_records (
 			created_at, timestamp, usage_username, api_key_description, provider, model, endpoint,
 			reasoning_effort, source, source_key, source_account, request_id, auth, auth_index, latency_ms, ttft_ms, failed, input_tokens, output_tokens,
-			cached_tokens, cache_read_tokens, cache_creation_tokens, reasoning_tokens, total_tokens, dedupe_key, raw_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, now, dbTime(normalized.Timestamp), usageUsername, description, normalized.Provider, normalized.Model, normalized.Endpoint, normalized.ReasoningEffort, normalized.Source, sourceKey, normalized.SourceAccount, normalized.RequestID, normalized.Auth, normalized.AuthIndex, normalized.LatencyMS, normalized.TTFTMS, normalized.Failed, normalized.InputTokens, normalized.OutputTokens, normalized.CachedTokens, normalized.CacheReadTokens, normalized.CacheCreationTokens, normalized.ReasoningTokens, normalized.TotalTokens, normalized.DedupeKey, normalized.RawJSON)
+			cached_tokens, cache_read_tokens, cache_creation_tokens, reasoning_tokens, total_tokens,
+			cost_usd, unpriced, dedupe_key, raw_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, now, dbTime(normalized.Timestamp), usageUsername, description, normalized.Provider, normalized.Model, normalized.Endpoint, normalized.ReasoningEffort, normalized.Source, sourceKey, normalized.SourceAccount, normalized.RequestID, normalized.Auth, normalized.AuthIndex, normalized.LatencyMS, normalized.TTFTMS, normalized.Failed, normalized.InputTokens, normalized.OutputTokens, normalized.CachedTokens, normalized.CacheReadTokens, normalized.CacheCreationTokens, normalized.ReasoningTokens, normalized.TotalTokens, costUSD, unpriced, normalized.DedupeKey, normalized.RawJSON)
 	if err != nil {
-		if strings.Contains(strings.ToLower(err.Error()), "unique") {
-			record, getErr := a.usageRecordByDedupe(ctx, normalized.DedupeKey)
-			return record, false, getErr
-		}
 		return UsageRecord{}, false, err
 	}
 	id, _ := result.LastInsertId()
+	if _, err := tx.ExecContext(ctx, `UPDATE usage_ingest_dedup SET usage_record_id = ? WHERE dedupe_key = ?`, id, normalized.DedupeKey); err != nil {
+		return UsageRecord{}, false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return UsageRecord{}, false, err
+	}
+	committed = true
 	a.invalidateUsageOptions()
 	record, err := a.getUsageRecord(ctx, int(id))
 	if err != nil {
@@ -1268,7 +1365,7 @@ func (a *App) saveUsageMessage(ctx context.Context, raw []byte) (UsageRecord, bo
 func (a *App) usageRecordByDedupe(ctx context.Context, dedupeKey string) (UsageRecord, error) {
 	rows, err := a.db.QueryContext(ctx, `SELECT id, CAST(timestamp AS TEXT), usage_username, api_key_description, provider, model, reasoning_effort, endpoint, source,
 		source_account, request_id, auth, auth_index, latency_ms, ttft_ms, failed, input_tokens, output_tokens, cached_tokens,
-		cache_read_tokens, cache_creation_tokens, reasoning_tokens, total_tokens, dedupe_key, raw_json FROM usage_records WHERE dedupe_key = ?`, dedupeKey)
+		cache_read_tokens, cache_creation_tokens, reasoning_tokens, total_tokens, cost_usd, unpriced, dedupe_key, raw_json FROM usage_records WHERE dedupe_key = ?`, dedupeKey)
 	if err != nil {
 		return UsageRecord{}, err
 	}
@@ -1307,6 +1404,22 @@ type normalizedUsage struct {
 	TotalTokens         int
 	DedupeKey           string
 	RawJSON             string
+}
+
+func usageRecordFromNormalized(normalized normalizedUsage) UsageRecord {
+	return UsageRecord{
+		Timestamp:           normalized.Timestamp,
+		Provider:            normalized.Provider,
+		Model:               normalized.Model,
+		Failed:              normalized.Failed,
+		InputTokens:         normalized.InputTokens,
+		OutputTokens:        normalized.OutputTokens,
+		CachedTokens:        normalized.CachedTokens,
+		CacheReadTokens:     normalized.CacheReadTokens,
+		CacheCreationTokens: normalized.CacheCreationTokens,
+		ReasoningTokens:     normalized.ReasoningTokens,
+		TotalTokens:         normalized.TotalTokens,
+	}
 }
 
 func normalizeUsage(raw []byte) (normalizedUsage, error) {

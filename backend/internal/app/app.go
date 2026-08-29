@@ -32,8 +32,10 @@ import (
 )
 
 const (
-	defaultCPAURL   = "http://127.0.0.1:8317"
-	defaultCPAMCURL = "/management.html"
+	defaultCPAURL             = "http://127.0.0.1:8317"
+	defaultCPAMCURL           = "/management.html"
+	defaultUsageRetentionDays = 90
+	minimumUsageRetentionDays = 31
 )
 
 var appTimeLocation = time.FixedZone("Asia/Shanghai", 8*60*60)
@@ -57,6 +59,7 @@ type App struct {
 	frontendEnv      bool
 	collector        *CollectorRunner
 	keeper           *KeeperRunner
+	usageMaintenance *UsageMaintenanceRunner
 	keeperUsageCache keeperWindowUsageCache
 	usageCache       usageQueryCache
 }
@@ -155,9 +158,11 @@ func NewWithOptions(ctx context.Context, options NewOptions) (*App, error) {
 func (a *App) startBackground(ctx context.Context) {
 	a.collector = NewCollectorRunner(a)
 	a.keeper = NewKeeperRunner(a)
+	a.usageMaintenance = NewUsageMaintenanceRunner(a)
 	a.collector.Start()
 	a.keeper.LoadPersistedState(ctx)
 	a.keeper.StartAutoIfConfigured()
+	a.usageMaintenance.Start()
 }
 
 func (a *App) Close() {
@@ -166,6 +171,9 @@ func (a *App) Close() {
 	}
 	if a.keeper != nil {
 		a.keeper.Stop()
+	}
+	if a.usageMaintenance != nil {
+		a.usageMaintenance.Stop()
 	}
 	if a.db != nil {
 		a.db.Close()
@@ -505,6 +513,7 @@ type AppConfig struct {
 	CPAMCURL                   string                      `json:"cpamc_url"`
 	AllowUserAccountStatus     bool                        `json:"allow_user_account_status"`
 	AllowUserUsageHistory      bool                        `json:"allow_user_usage_history"`
+	UsageDetailRetentionDays   int                         `json:"usage_detail_retention_days"`
 	SessionSecret              string                      `json:"session_secret"`
 }
 
@@ -544,6 +553,7 @@ func defaultConfig() (AppConfig, error) {
 		ModelRequestURL:            defaultCPAURL,
 		ModelRequestExtraEndpoints: []ModelRequestExtraEndpoint{},
 		CPAMCURL:                   defaultCPAMCURL,
+		UsageDetailRetentionDays:   defaultUsageRetentionDays,
 		SessionSecret:              secret,
 	}, nil
 }
@@ -564,14 +574,14 @@ func (a *App) loadConfig(ctx context.Context) (AppConfig, error) {
 		       poll_interval_seconds, retry_interval_seconds, codex_keeper_settings,
 		       codex_keeper_priority_rules, litellm_proxy_enabled, litellm_proxy_url,
 		       model_request_url, model_request_extra_endpoints, cpamc_url, allow_user_account_status,
-		       allow_user_usage_history, session_secret
+		       allow_user_usage_history, usage_detail_retention_days, session_secret
 		FROM app_settings WHERE id = 1
 	`)
 	var collectorEnabled, litellmProxyEnabled, allowUserAccountStatus, allowUserUsageHistory bool
 	var cliaproxyURL, managementKey, queueName, keeperJSON, rulesJSON, litellmProxyURL, modelRequestURL, modelRequestExtraEndpointsJSON, cpamcURL, sessionSecret string
-	var batchSize int
+	var batchSize, usageDetailRetentionDays int
 	var pollInterval, retryInterval float64
-	if err := row.Scan(&collectorEnabled, &cliaproxyURL, &managementKey, &queueName, &batchSize, &pollInterval, &retryInterval, &keeperJSON, &rulesJSON, &litellmProxyEnabled, &litellmProxyURL, &modelRequestURL, &modelRequestExtraEndpointsJSON, &cpamcURL, &allowUserAccountStatus, &allowUserUsageHistory, &sessionSecret); err != nil {
+	if err := row.Scan(&collectorEnabled, &cliaproxyURL, &managementKey, &queueName, &batchSize, &pollInterval, &retryInterval, &keeperJSON, &rulesJSON, &litellmProxyEnabled, &litellmProxyURL, &modelRequestURL, &modelRequestExtraEndpointsJSON, &cpamcURL, &allowUserAccountStatus, &allowUserUsageHistory, &usageDetailRetentionDays, &sessionSecret); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return AppConfig{}, fmt.Errorf("%w: app_settings id=1 is missing; run `cpa-helper migrate`", ErrAppSettingsMissing)
 		}
@@ -619,6 +629,7 @@ func (a *App) loadConfig(ctx context.Context) (AppConfig, error) {
 	cfg.CPAMCURL = nonBlank(strings.TrimSpace(cpamcURL), defaultCPAMCURL)
 	cfg.AllowUserAccountStatus = allowUserAccountStatus
 	cfg.AllowUserUsageHistory = allowUserUsageHistory
+	cfg.UsageDetailRetentionDays = maxInt(usageDetailRetentionDays, minimumUsageRetentionDays, defaultUsageRetentionDays)
 	return cfg, nil
 }
 
@@ -682,9 +693,9 @@ func (a *App) saveConfig(ctx context.Context, cfg AppConfig) error {
 		    codex_keeper_settings = ?, codex_keeper_priority_rules = ?,
 		    litellm_proxy_enabled = ?, litellm_proxy_url = ?,
 		    model_request_url = ?, model_request_extra_endpoints = ?, cpamc_url = ?, allow_user_account_status = ?,
-		    allow_user_usage_history = ?, session_secret = ?, updated_at = ?
+		    allow_user_usage_history = ?, usage_detail_retention_days = ?, session_secret = ?, updated_at = ?
 		WHERE id = 1
-	`, cfg.Collector.Enabled, strings.TrimRight(strings.TrimSpace(cfg.Collector.CLIProxyURL), "/"), strings.TrimSpace(cfg.Collector.ManagementKey), strings.TrimSpace(cfg.Collector.QueueName), cfg.Collector.BatchSize, cfg.Collector.PollIntervalSeconds, cfg.Collector.RetryIntervalSeconds, string(keeperBytes), string(rulesBytes), cfg.LiteLLMProxy.Enabled, strings.TrimSpace(cfg.LiteLLMProxy.ProxyURL), strings.TrimRight(strings.TrimSpace(cfg.ModelRequestURL), "/"), string(extraEndpointBytes), strings.TrimSpace(cfg.CPAMCURL), cfg.AllowUserAccountStatus, cfg.AllowUserUsageHistory, cfg.SessionSecret, dbTime(time.Now()))
+	`, cfg.Collector.Enabled, strings.TrimRight(strings.TrimSpace(cfg.Collector.CLIProxyURL), "/"), strings.TrimSpace(cfg.Collector.ManagementKey), strings.TrimSpace(cfg.Collector.QueueName), cfg.Collector.BatchSize, cfg.Collector.PollIntervalSeconds, cfg.Collector.RetryIntervalSeconds, string(keeperBytes), string(rulesBytes), cfg.LiteLLMProxy.Enabled, strings.TrimSpace(cfg.LiteLLMProxy.ProxyURL), strings.TrimRight(strings.TrimSpace(cfg.ModelRequestURL), "/"), string(extraEndpointBytes), strings.TrimSpace(cfg.CPAMCURL), cfg.AllowUserAccountStatus, cfg.AllowUserUsageHistory, cfg.UsageDetailRetentionDays, cfg.SessionSecret, dbTime(time.Now()))
 	return err
 }
 

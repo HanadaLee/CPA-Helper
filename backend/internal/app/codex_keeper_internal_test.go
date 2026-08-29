@@ -1930,15 +1930,27 @@ func insertKeeperWindowUsageRecord(t *testing.T, app *App, seed keeperWindowUsag
 	inputTokens := seed.InputTokens
 	outputTokens := seed.OutputTokens
 	totalTokens := inputTokens + outputTokens
-	_, err := app.db.Exec(`
+	prices, err := app.priceMap(context.Background())
+	if err != nil {
+		t.Fatalf("load usage prices: %v", err)
+	}
+	costUSD, unpriced := calculateRecordCost(UsageRecord{
+		Provider:     stringPtr("codex"),
+		Model:        stringPtr("gpt-test"),
+		Failed:       seed.Failed,
+		InputTokens:  inputTokens,
+		OutputTokens: outputTokens,
+		TotalTokens:  totalTokens,
+	}, prices)
+	_, err = app.db.Exec(`
 		INSERT INTO usage_records (
 			created_at, timestamp, usage_username, api_key_description, provider,
 			model, endpoint, source, source_account, request_id, auth, auth_index, latency_ms,
 			failed, input_tokens, output_tokens, cached_tokens, reasoning_tokens,
-			total_tokens, dedupe_key, raw_json
+			total_tokens, cost_usd, unpriced, dedupe_key, raw_json
 		) VALUES (?, ?, NULL, NULL, 'codex', 'gpt-test', '/v1/responses',
-			?, ?, ?, 'api_key', ?, 10, ?, ?, ?, 0, 0, ?, ?, ?)
-	`, now, dbTime(seed.Timestamp), source, nullableTestString(sourceAccount), seed.Dedupe, nullableBlankTestString(authIndex), seed.Failed, inputTokens, outputTokens, totalTokens, "quota-"+seed.Dedupe, rawJSON)
+			?, ?, ?, 'api_key', ?, 10, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?)
+	`, now, dbTime(seed.Timestamp), source, nullableTestString(sourceAccount), seed.Dedupe, nullableBlankTestString(authIndex), seed.Failed, inputTokens, outputTokens, totalTokens, costUSD, unpriced, "quota-"+seed.Dedupe, rawJSON)
 	if err != nil {
 		t.Fatalf("insert quota usage record %s: %v", seed.Dedupe, err)
 	}
