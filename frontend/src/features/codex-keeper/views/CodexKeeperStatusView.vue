@@ -1045,13 +1045,6 @@ function latestActionText(account: CodexKeeperAccount): string {
   return text ? serverText(text, '账号状态', 'Account status') : '-'
 }
 
-function disabledStatusCodeText(account: CodexKeeperAccount): string | null {
-  if (!account.disabled || account.last_status_code == null) {
-    return null
-  }
-  return `${account.last_status_code}`
-}
-
 function renderQuotaCell(account: CodexKeeperAccount) {
   const items = quotaWindowItems(account)
   if (items.length === 0) {
@@ -1168,8 +1161,19 @@ function renderQuotaPredictionCell(account: CodexKeeperAccount) {
 
 function renderAccountIdentityCell(account: CodexKeeperAccount) {
   const primary = account.email ?? account.name
-  const statusCode = disabledStatusCodeText(account)
-  const statusLabel = `${account.disabled ? t('已禁用', 'Disabled') : t('启用中', 'Enabled')}${statusCode ? ` ${statusCode}` : ''}`
+  const statusTags = [
+    {
+      label: account.disabled ? t('已禁用', 'Disabled') : t('启用中', 'Enabled'),
+      tone: account.disabled ? 'is-warning' : 'is-success',
+    },
+    account.last_status_code === 401
+      ? { label: t('401报错', '401 Error'), tone: 'is-danger' }
+      : null,
+    isQuotaExhaustedAccount(account)
+      ? { label: t('额度耗尽', 'Quota Exhausted'), tone: 'is-purple' }
+      : null,
+  ].filter((item): item is { label: string; tone: string } => item !== null)
+  const statusLabel = statusTags.map((item) => item.label).join(' / ')
   return h(
     'div',
     {
@@ -1179,13 +1183,13 @@ function renderAccountIdentityCell(account: CodexKeeperAccount) {
     [
       h('span', { class: 'account-table-email' }, primary),
       h('span', { class: 'account-table-name' }, account.name),
-      h('span', { class: 'account-table-meta' }, [
-        h(
-          'span',
-          { class: ['account-table-chip', account.disabled ? 'is-warning' : 'is-success'] },
-          statusLabel,
+      h(
+        'span',
+        { class: 'account-table-meta' },
+        statusTags.map((item) =>
+          h('span', { class: ['account-table-chip', item.tone] }, item.label),
         ),
-      ]),
+      ),
     ],
   )
 }
@@ -3819,6 +3823,18 @@ onBeforeUnmount(() => {
   color: var(--cpa-warning);
   background: var(--cpa-warning-weak);
   border-color: color-mix(in srgb, var(--cpa-warning) 26%, transparent);
+}
+
+:global(.account-table-chip.is-danger) {
+  color: var(--cpa-danger);
+  background: var(--cpa-danger-weak);
+  border-color: color-mix(in srgb, var(--cpa-danger) 26%, transparent);
+}
+
+:global(.account-table-chip.is-purple) {
+  color: var(--cpa-accent-purple);
+  background: var(--cpa-accent-purple-weak);
+  border-color: color-mix(in srgb, var(--cpa-accent-purple) 26%, transparent);
 }
 
 :global(.account-table-chip.is-priority) {
