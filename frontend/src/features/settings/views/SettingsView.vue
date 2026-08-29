@@ -214,7 +214,7 @@ onMounted(refresh)
                 <div class="extra-endpoints-heading">
                   <div>
                     <div class="field-label">{{ t('额外 API Endpoint', 'Additional API endpoints') }}</div>
-                    <div class="form-help">{{ t('仅展示在 API 密钥页，不参与请求测试。每个 Endpoint 可以填写独立说明。', 'Shown only on the API keys page and never used for request tests. Each endpoint can have its own description.') }}</div>
+                    <div class="form-help">{{ t('仅展示在 API 密钥页，不参与请求测试。填写基础地址和独立说明后，将生成基础、聊天补全、Responses、Claude 四类 URL。', 'Shown only on the API keys page and never used for request tests. Enter a base URL and description to generate Base, Chat Completions, Responses, and Claude URLs.') }}</div>
                   </div>
                   <NButton
                     size="small"
@@ -237,7 +237,7 @@ onMounted(refresh)
                   >
                     <NInput
                       v-model:value="endpoint.url"
-                      :placeholder="t('Endpoint URL，例如：https://api.example.com/v1', 'Endpoint URL, for example: https://api.example.com/v1')"
+                      :placeholder="t('Endpoint 基础 URL，例如：https://api.example.com/v1', 'Endpoint base URL, for example: https://api.example.com/v1')"
                     />
                     <NInput
                       v-model:value="endpoint.description"

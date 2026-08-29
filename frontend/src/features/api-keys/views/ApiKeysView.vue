@@ -68,6 +68,8 @@ const editorVisible = ref(false)
 const requestTestVisible = ref(false)
 const requestTestApiKey = ref<UserApiKeySummary | null>(null)
 const requestEndpoint = ref<ModelRequestEndpoint>('chat_completions')
+type PublicRequestURLType = 'base' | ModelRequestEndpoint
+const publicRequestURLType = ref<PublicRequestURLType>('base')
 const requestTestModel = ref<string | null>(null)
 const requestTestMessageDefaults = {
   zh: '请用一句中文回复：连接测试成功。',
@@ -96,7 +98,13 @@ interface RequestEndpointOption {
 interface PublicRequestEndpoint {
   key: string
   label: string
-  url: string
+  baseURL: string
+}
+
+interface PublicRequestURLTypeOption {
+  label: string
+  value: PublicRequestURLType
+  path: string
 }
 
 const chatCompletionsEndpointOption = computed<RequestEndpointOption>(() => ({
@@ -185,26 +193,48 @@ const apiKeyMetrics = computed<ApiKeyMetricCard[]>(() => {
 const canCreateApiKey = computed(() => quotaStatus.value?.can_create_keys ?? true)
 
 const requestBaseURL = computed(() => modelRequestGuide.value?.openai_base_url ?? requestLoadingText.value)
+const publicRequestURLTypeOptions = computed<PublicRequestURLTypeOption[]>(() => [
+  {
+    label: t('基础 URL', 'Base URL'),
+    value: 'base',
+    path: '',
+  },
+  ...requestEndpointOptions.value.map((option) => ({
+    label: option.label,
+    value: option.value,
+    path: option.path,
+  })),
+])
+const publicRequestURLTypeMeta = computed(
+  () =>
+    publicRequestURLTypeOptions.value.find((option) => option.value === publicRequestURLType.value) ??
+    publicRequestURLTypeOptions.value[0],
+)
 const publicRequestEndpoints = computed<PublicRequestEndpoint[]>(() => {
-  const baseURL = modelRequestGuide.value?.openai_base_url?.replace(/\/$/, '')
+  const defaultBaseURL = modelRequestGuide.value?.openai_base_url
   const extraEndpoints = modelRequestGuide.value?.extra_endpoints ?? []
   return [
     {
-      key: 'base',
-      label: t('基础 URL', 'Base URL'),
-      url: baseURL || requestLoadingText.value,
+      key: 'default',
+      label: t('默认 Endpoint', 'Default endpoint'),
+      baseURL: defaultBaseURL || requestLoadingText.value,
     },
-    ...requestEndpointOptions.value.map((option) => ({
-      key: option.value,
-      label: option.urlLabel,
-      url: baseURL ? `${baseURL}${option.path}` : requestLoadingText.value,
-    })),
     ...extraEndpoints.map((endpoint, index) => ({
       key: `extra-${index}`,
       label: endpoint.description,
-      url: endpoint.url,
+      baseURL: modelRequestOpenAIBaseURL(endpoint.url),
     })),
   ]
+})
+const publicRequestEndpointRows = computed(() => {
+  const path = publicRequestURLTypeMeta.value?.path ?? ''
+  return publicRequestEndpoints.value.map((endpoint) => ({
+    ...endpoint,
+    url:
+      endpoint.baseURL === requestLoadingText.value
+        ? endpoint.baseURL
+        : `${endpoint.baseURL.replace(/\/$/, '')}${path}`,
+  }))
 })
 const requestEndpointMeta = computed(
   () =>
@@ -318,6 +348,14 @@ function requestBodyForEndpoint(
 
 function quoteForCurl(value: string): string {
   return "'" + value.replace(/'/g, "'\"'\"'") + "'"
+}
+
+function modelRequestOpenAIBaseURL(value: string): string {
+  const normalized = value.trim().replace(/\/+$/, '')
+  if (!normalized) {
+    return requestLoadingText.value
+  }
+  return /\/v1$/i.test(normalized) ? normalized : `${normalized}/v1`
 }
 
 function quotaValueText(quota: UserQuotaStatus | null): string {
@@ -795,8 +833,20 @@ onMounted(refresh)
       <section class="panel api-endpoint-panel-shell">
         <div class="panel-inner api-endpoint-panel">
           <h2 class="section-title">API Endpoint</h2>
+          <div class="request-endpoint-switch">
+            <span class="request-endpoint-label">{{ t('URL 类型', 'URL type') }}</span>
+            <NRadioGroup v-model:value="publicRequestURLType" class="api-endpoint-type-options" size="small">
+              <NRadioButton
+                v-for="option in publicRequestURLTypeOptions"
+                :key="option.value"
+                :value="option.value"
+              >
+                {{ option.label }}
+              </NRadioButton>
+            </NRadioGroup>
+          </div>
           <div class="request-guide-list">
-            <div v-for="endpoint in publicRequestEndpoints" :key="endpoint.key" class="request-guide-row">
+            <div v-for="endpoint in publicRequestEndpointRows" :key="endpoint.key" class="request-guide-row">
               <div>
                 <div class="request-guide-label">{{ endpoint.label }}</div>
                 <code class="request-guide-value">{{ endpoint.url }}</code>
@@ -1006,6 +1056,12 @@ onMounted(refresh)
 
 .api-endpoint-panel .section-title {
   margin-bottom: 0;
+}
+
+.api-endpoint-type-options {
+  display: flex;
+  max-width: 100%;
+  flex-wrap: wrap;
 }
 
 .api-key-metrics {
