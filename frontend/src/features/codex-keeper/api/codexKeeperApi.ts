@@ -8,6 +8,8 @@ import type {
   CodexKeeperCronPreviewPayload,
   CodexKeeperCronPreviewResponse,
   CodexKeeperAccountsResponse,
+  CodexKeeperOAuthStartResponse,
+  CodexKeeperOAuthStatusResponse,
   CodexKeeperRefreshPayload,
   CodexKeeperSettings,
   CodexKeeperSettingsUpdatePayload,
@@ -18,6 +20,18 @@ export function uploadCodexKeeperAuthFiles(files: File[]): Promise<CodexKeeperAu
   const form = new FormData()
   files.forEach((file) => form.append('file', file, file.name))
   return apiClient.postForm<CodexKeeperAuthFileUploadResponse>('/codex-keeper/auth-files', form)
+}
+
+export function startCodexKeeperOAuth(): Promise<CodexKeeperOAuthStartResponse> {
+  return apiClient.post<CodexKeeperOAuthStartResponse>('/codex-keeper/oauth/start')
+}
+
+export function getCodexKeeperOAuthStatus(state: string): Promise<CodexKeeperOAuthStatusResponse> {
+  return apiClient.get<CodexKeeperOAuthStatusResponse>('/codex-keeper/oauth/status', { state })
+}
+
+export function submitCodexKeeperOAuthCallback(redirectUrl: string): Promise<void> {
+  return apiClient.post<void>('/codex-keeper/oauth/callback', { redirect_url: redirectUrl })
 }
 
 export function getCodexKeeperAuthFile(name: string): Promise<CodexKeeperAuthFileDetail> {

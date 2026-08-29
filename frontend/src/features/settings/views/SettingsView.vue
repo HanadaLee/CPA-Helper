@@ -16,6 +16,7 @@ import {
 } from 'naive-ui'
 import { Activity, Database, Power, Server } from 'lucide-vue-next'
 
+import CodexKeeperSettingsPanel from '@/features/codex-keeper/components/CodexKeeperSettingsPanel.vue'
 import {
   getCollectorStatus,
   getSettings,
@@ -126,7 +127,7 @@ onMounted(refresh)
     <div class="page-header">
       <div>
         <h1 class="page-title">{{ t('系统设置', 'System Settings') }}</h1>
-        <p class="page-subtitle">{{ t('集中管理系统与采集配置', 'Manage system and collection settings in one place') }}</p>
+        <p class="page-subtitle">{{ t('集中管理系统、采集与账号巡检配置', 'Manage system, collection, and account inspection settings in one place') }}</p>
       </div>
       <NSpace>
         <NButton secondary :loading="isLoading" @click="refresh">{{ t('刷新', 'Refresh') }}</NButton>
@@ -267,6 +268,8 @@ onMounted(refresh)
         </div>
       </section>
     </div>
+
+    <CodexKeeperSettingsPanel />
   </section>
 </template>
 

@@ -33,6 +33,8 @@ const (
 	keeperMaxInMemoryLogs          = 300
 	keeperQuotaWindowUsageCacheTTL = 30 * time.Second
 	keeperMaxAuthFileSize          = 10 << 20
+	keeperMaxOAuthStateLength      = 4 << 10
+	keeperMaxOAuthURLLength        = 32 << 10
 	keeperFiveHourWindowSeconds    = 5 * 60 * 60
 	keeperWeekWindowSeconds        = 7 * 24 * 60 * 60
 	keeperMonthWindowSeconds       = 30 * 24 * 60 * 60
@@ -113,6 +115,20 @@ type keeperRefreshAccountsRequest struct {
 
 type keeperPriorityUpdateRequest struct {
 	Priority int `json:"priority"`
+}
+
+type keeperOAuthStartResponse struct {
+	URL   string `json:"url"`
+	State string `json:"state"`
+}
+
+type keeperOAuthStatusResponse struct {
+	Status string `json:"status"`
+	Error  string `json:"error,omitempty"`
+}
+
+type keeperOAuthCallbackRequest struct {
+	RedirectURL string `json:"redirect_url"`
 }
 
 type keeperAccount struct {
@@ -922,6 +938,21 @@ func (a *App) handleCodexKeeper(w http.ResponseWriter, r *http.Request) error {
 			"priority_rules": sortedPriorityRules(cfg.CodexKeeperPriorityRule),
 		})
 		return nil
+	case len(parts) == 2 && parts[0] == "oauth" && parts[1] == "start":
+		if err := requireMethod(r, http.MethodPost); err != nil {
+			return err
+		}
+		return a.startKeeperOAuth(w, r)
+	case len(parts) == 2 && parts[0] == "oauth" && parts[1] == "status":
+		if err := requireMethod(r, http.MethodGet); err != nil {
+			return err
+		}
+		return a.getKeeperOAuthStatus(w, r)
+	case len(parts) == 2 && parts[0] == "oauth" && parts[1] == "callback":
+		if err := requireMethod(r, http.MethodPost); err != nil {
+			return err
+		}
+		return a.submitKeeperOAuthCallback(w, r)
 	case len(parts) == 1 && parts[0] == "auth-files":
 		if err := requireMethod(r, http.MethodPost); err != nil {
 			return err
@@ -2762,6 +2793,131 @@ type keeperAuthFileEditorDetail struct {
 	JSON          map[string]any `json:"json"`
 	RawText       string         `json:"raw_text,omitempty"`
 	InvalidReason string         `json:"invalid_reason,omitempty"`
+}
+
+func (a *App) startKeeperOAuth(w http.ResponseWriter, r *http.Request) error {
+	cfg, err := a.loadConfig(r.Context())
+	if err != nil {
+		return err
+	}
+	query := url.Values{"is_webui": []string{"true"}}
+	_, payload, err := a.keeperRequest(
+		r.Context(),
+		cfg,
+		http.MethodGet,
+		"/v0/management/codex-auth-url",
+		query,
+		nil,
+		time.Duration(cfg.CodexKeeper.CPATimeoutSeconds)*time.Second,
+	)
+	if err != nil {
+		return err
+	}
+	response := keeperOAuthStartResponse{}
+	if err := json.Unmarshal(payload, &response); err != nil {
+		return validationError("启动 Codex OAuth 失败：响应不是有效 JSON")
+	}
+	response.URL = strings.TrimSpace(response.URL)
+	response.State = strings.TrimSpace(response.State)
+	if err := validateKeeperOAuthURL(response.URL, "Codex OAuth 授权地址"); err != nil {
+		return err
+	}
+	if err := validateKeeperOAuthState(response.State); err != nil {
+		return validationError("启动 Codex OAuth 失败：" + err.Error())
+	}
+	writeJSON(w, http.StatusOK, response)
+	return nil
+}
+
+func (a *App) getKeeperOAuthStatus(w http.ResponseWriter, r *http.Request) error {
+	state := strings.TrimSpace(r.URL.Query().Get("state"))
+	if err := validateKeeperOAuthState(state); err != nil {
+		return err
+	}
+	cfg, err := a.loadConfig(r.Context())
+	if err != nil {
+		return err
+	}
+	query := url.Values{"state": []string{state}}
+	_, payload, err := a.keeperRequest(
+		r.Context(),
+		cfg,
+		http.MethodGet,
+		"/v0/management/get-auth-status",
+		query,
+		nil,
+		time.Duration(cfg.CodexKeeper.CPATimeoutSeconds)*time.Second,
+	)
+	if err != nil {
+		return err
+	}
+	response := keeperOAuthStatusResponse{}
+	if err := json.Unmarshal(payload, &response); err != nil {
+		return validationError("查询 Codex OAuth 状态失败：响应不是有效 JSON")
+	}
+	response.Status = strings.TrimSpace(response.Status)
+	response.Error = strings.TrimSpace(response.Error)
+	if response.Status == "" {
+		return validationError("查询 Codex OAuth 状态失败：响应缺少 status")
+	}
+	writeJSON(w, http.StatusOK, response)
+	return nil
+}
+
+func (a *App) submitKeeperOAuthCallback(w http.ResponseWriter, r *http.Request) error {
+	request := keeperOAuthCallbackRequest{}
+	if err := decodeJSON(r, &request); err != nil {
+		return err
+	}
+	request.RedirectURL = strings.TrimSpace(request.RedirectURL)
+	if err := validateKeeperOAuthURL(request.RedirectURL, "回调 URL"); err != nil {
+		return err
+	}
+	cfg, err := a.loadConfig(r.Context())
+	if err != nil {
+		return err
+	}
+	_, _, err = a.keeperRequest(
+		r.Context(),
+		cfg,
+		http.MethodPost,
+		"/v0/management/oauth-callback",
+		nil,
+		map[string]string{
+			"provider":     "codex",
+			"redirect_url": request.RedirectURL,
+		},
+		time.Duration(cfg.CodexKeeper.CPATimeoutSeconds)*time.Second,
+	)
+	if err != nil {
+		return err
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "submitted"})
+	return nil
+}
+
+func validateKeeperOAuthState(state string) error {
+	if state == "" {
+		return validationError("Codex OAuth state 不能为空")
+	}
+	if len(state) > keeperMaxOAuthStateLength {
+		return validationError("Codex OAuth state 过长")
+	}
+	return nil
+}
+
+func validateKeeperOAuthURL(rawURL, fieldName string) error {
+	if rawURL == "" {
+		return validationError(fieldName + "不能为空")
+	}
+	if len(rawURL) > keeperMaxOAuthURLLength {
+		return validationError(fieldName + "过长")
+	}
+	parsed, err := url.ParseRequestURI(rawURL)
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return validationError(fieldName + "无效")
+	}
+	return nil
 }
 
 func (a *App) uploadKeeperAuthFiles(w http.ResponseWriter, r *http.Request) error {

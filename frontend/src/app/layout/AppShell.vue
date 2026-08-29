@@ -17,7 +17,6 @@ import {
   type MenuOption,
 } from 'naive-ui'
 import {
-  Activity,
   BarChart3,
   Cpu,
   DollarSign,
@@ -122,17 +121,9 @@ const adminMenuItems = computed<MenuOption[]>(() => [
   { label: t('请求明细', 'Request Records'), key: '/admin/records', icon: renderIcon(List) },
   { label: t('用户管理', 'Users'), key: '/admin/users', icon: renderIcon(Users) },
   { label: t('模型价格', 'Model Prices'), key: '/admin/pricing', icon: renderIcon(DollarSign) },
+  { label: t('账号管理', 'Account Management'), key: '/admin/account-mgmt', icon: renderIcon(ListChecks) },
   { label: 'CPAMC', key: '/admin/cpamc', icon: renderIcon(Monitor) },
   { label: t('系统设置', 'System Settings'), key: '/admin/settings', icon: renderIcon(Settings) },
-])
-
-const accountInspectionMenuItems = computed<MenuOption[]>(() => [
-  {
-    label: t('巡检设置', 'Inspection Settings'),
-    key: '/admin/account-inspection',
-    icon: renderIcon(Activity),
-  },
-  { label: t('账号管理', 'Account Management'), key: '/admin/account-mgmt', icon: renderIcon(ListChecks) },
 ])
 
 const showAccountStatusForUser = computed(
@@ -191,13 +182,6 @@ const menuOptions = computed<MenuOption[]>(() => {
       icon: renderIcon(Shield),
       children: adminMenuItems.value,
     })
-    groups.push({
-      type: 'group',
-      label: t('账号巡检', 'Account Inspection'),
-      key: 'account-inspection-group',
-      icon: renderIcon(Activity),
-      children: accountInspectionMenuItems.value,
-    })
   }
   groups.push({
     type: 'group',
@@ -211,7 +195,7 @@ const menuOptions = computed<MenuOption[]>(() => {
 
 const leafMenuOptions = computed(() =>
   isAdmin.value
-    ? [...adminMenuItems.value, ...accountInspectionMenuItems.value, ...accountMenuItems.value]
+    ? [...adminMenuItems.value, ...accountMenuItems.value]
     : accountMenuItems.value,
 )
 

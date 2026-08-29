@@ -51,6 +51,16 @@ type keeperAccountsResponse struct {
 	} `json:"priority_rules"`
 }
 
+type keeperOAuthStartResponse struct {
+	URL   string `json:"url"`
+	State string `json:"state"`
+}
+
+type keeperOAuthStatusResponse struct {
+	Status string `json:"status"`
+	Error  string `json:"error"`
+}
+
 type accountStatusAccessSettingsResponse struct {
 	AllowUserAccountStatus bool `json:"allow_user_account_status"`
 }
@@ -255,6 +265,11 @@ func TestKeeperAccountStatusCanBeSharedReadOnly(t *testing.T) {
 	requestJSONExpectStatus(t, handler, http.MethodGet, "/api/codex-keeper/settings", nil, memberCookies, http.StatusForbidden)
 	requestJSONExpectStatus(t, handler, http.MethodGet, "/api/codex-keeper/auth-files/member.json", nil, memberCookies, http.StatusForbidden)
 	requestJSONExpectStatus(t, handler, http.MethodPost, "/api/codex-keeper/auth-files", nil, memberCookies, http.StatusForbidden)
+	requestJSONExpectStatus(t, handler, http.MethodPost, "/api/codex-keeper/oauth/start", nil, memberCookies, http.StatusForbidden)
+	requestJSONExpectStatus(t, handler, http.MethodGet, "/api/codex-keeper/oauth/status?state=member-state", nil, memberCookies, http.StatusForbidden)
+	requestJSONExpectStatus(t, handler, http.MethodPost, "/api/codex-keeper/oauth/callback", map[string]any{
+		"redirect_url": "http://localhost:1455/auth/callback?code=test",
+	}, memberCookies, http.StatusForbidden)
 	requestJSONExpectStatus(t, handler, http.MethodPost, "/api/codex-keeper/accounts/refresh", map[string]any{
 		"auth_names": []string{"member.json"},
 	}, memberCookies, http.StatusForbidden)
@@ -263,6 +278,101 @@ func TestKeeperAccountStatusCanBeSharedReadOnly(t *testing.T) {
 		"priority": 10,
 	}, memberCookies, http.StatusForbidden)
 	requestJSONExpectStatus(t, handler, http.MethodDelete, "/api/codex-keeper/accounts/member.json", nil, memberCookies, http.StatusForbidden)
+}
+
+func TestKeeperOAuthProxyUsesManagementAuthAndCodexProvider(t *testing.T) {
+	t.Setenv("CPA_HELPER_DATA_DIR", t.TempDir())
+
+	startCalls := 0
+	statusState := ""
+	callbackBody := map[string]string{}
+	managementAuthFailures := 0
+	cpa := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer test-management-key" {
+			managementAuthFailures++
+			http.Error(w, "missing management authorization", http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v0/management/codex-auth-url":
+			startCalls++
+			if r.URL.Query().Get("is_webui") != "true" {
+				http.Error(w, "missing is_webui query", http.StatusBadRequest)
+				return
+			}
+			if startCalls == 1 {
+				_ = json.NewEncoder(w).Encode(map[string]string{
+					"url":   "https://auth.example.com/authorize?client=codex",
+					"state": "state+with/chars",
+				})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"url":   "https://auth.example.com/authorize?client=codex",
+				"state": "",
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v0/management/get-auth-status":
+			statusState = r.URL.Query().Get("state")
+			_ = json.NewEncoder(w).Encode(map[string]string{"status": "pending"})
+		case r.Method == http.MethodPost && r.URL.Path == "/v0/management/oauth-callback":
+			if err := json.NewDecoder(r.Body).Decode(&callbackBody); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer cpa.Close()
+
+	app, err := backendApp.New()
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	defer app.Close()
+
+	handler := app.Routes()
+	cookies := requestJSON(t, handler, http.MethodPost, "/api/auth/setup", map[string]any{
+		"username": "admin",
+		"password": "test-password",
+		"nickname": "Admin",
+	}, nil, nil)
+	requestJSON(t, handler, http.MethodPut, "/api/settings", map[string]any{
+		"cliaproxy_url":     cpa.URL,
+		"management_key":    "test-management-key",
+		"collector_enabled": false,
+	}, cookies, nil)
+
+	started := keeperOAuthStartResponse{}
+	requestJSON(t, handler, http.MethodPost, "/api/codex-keeper/oauth/start", nil, cookies, &started)
+	if started.URL != "https://auth.example.com/authorize?client=codex" || started.State != "state+with/chars" {
+		t.Fatalf("OAuth start response = %#v", started)
+	}
+
+	status := keeperOAuthStatusResponse{}
+	requestJSON(t, handler, http.MethodGet, "/api/codex-keeper/oauth/status?state=state%2Bwith%2Fchars", nil, cookies, &status)
+	if status.Status != "pending" || statusState != "state+with/chars" {
+		t.Fatalf("OAuth status = %#v, upstream state = %q", status, statusState)
+	}
+
+	redirectURL := "http://localhost:1455/auth/callback?code=oauth-code&state=state%2Bwith%2Fchars"
+	requestJSON(t, handler, http.MethodPost, "/api/codex-keeper/oauth/callback", map[string]any{
+		"redirect_url": redirectURL,
+	}, cookies, nil)
+	if len(callbackBody) != 2 || callbackBody["provider"] != "codex" || callbackBody["redirect_url"] != redirectURL {
+		t.Fatalf("OAuth callback body = %#v", callbackBody)
+	}
+	if managementAuthFailures != 0 {
+		t.Fatalf("management authorization failures = %d, want 0", managementAuthFailures)
+	}
+
+	requestJSONExpectStatus(t, handler, http.MethodPost, "/api/codex-keeper/oauth/start", nil, cookies, http.StatusUnprocessableEntity)
+	requestJSONExpectStatus(t, handler, http.MethodGet, "/api/codex-keeper/oauth/status", nil, cookies, http.StatusUnprocessableEntity)
+	requestJSONExpectStatus(t, handler, http.MethodPost, "/api/codex-keeper/oauth/callback", map[string]any{
+		"redirect_url": "not-a-url",
+	}, cookies, http.StatusUnprocessableEntity)
 }
 
 func TestKeeperAuthFileManagementUsesMultipartAndSupportsInvalidPreview(t *testing.T) {

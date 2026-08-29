@@ -24,7 +24,10 @@ import {
 import {
   Activity,
   ArrowLeft,
+  Copy,
+  ExternalLink,
   Gauge,
+  LogIn,
   PauseCircle,
   Pencil,
   RefreshCw,
@@ -41,13 +44,18 @@ import {
   disableCodexKeeperAccount,
   enableCodexKeeperAccount,
   getCodexKeeperAuthFile,
+  getCodexKeeperOAuthStatus,
   getCodexKeeperStatus,
   listCodexKeeperAccounts,
   refreshCodexKeeperAccounts,
+  runCodexKeeperOnce,
+  startCodexKeeperOAuth,
+  submitCodexKeeperOAuthCallback,
   updateCodexKeeperAuthFile,
   updateCodexKeeperPriority,
   uploadCodexKeeperAuthFiles,
 } from '@/features/codex-keeper/api/codexKeeperApi'
+import CodexKeeperLogsPanel from '@/features/codex-keeper/components/CodexKeeperLogsPanel.vue'
 import { useCurrentUser } from '@/features/auth/state/currentUser'
 import type {
   CodexKeeperAccount,
@@ -57,6 +65,7 @@ import type {
   CodexKeeperStatus,
 } from '@/shared/types/api'
 import { useI18n } from '@/shared/i18n'
+import { copyToClipboard } from '@/shared/utils/clipboard'
 import {
   BEIJING_TIME_ZONE,
   formatCompact,
@@ -70,12 +79,13 @@ type FixedPriorityFilter = 'all' | 'high' | 'minusOne' | 'low'
 type PriorityTypeFilter = `type:${string}`
 type PriorityFilter = FixedPriorityFilter | PriorityTypeFilter
 type AccountStatusFilter = 'all' | 'enabled' | 'disabled' | 'unauthorized' | 'quotaExhausted'
-type AccountDisplaySize = 50 | 100 | 150 | 200 | 'all'
+type AccountDisplaySize = 50 | 100 | 150 | 200
 type AccountSortKey = 'quotaDay' | 'quotaWeek' | 'accountType' | 'status' | 'priority' | 'lastCheckedAt'
 type SortDirection = 'asc' | 'desc'
 type PriorityMode = 'low' | 'high' | 'default'
 type AccountAction = 'toggle' | 'priority' | 'delete' | 'refresh'
 type AccountConfirmType = 'default' | 'warning' | 'error' | 'primary'
+type OAuthDialogStatus = 'idle' | 'waiting' | 'success' | 'error'
 type QuotaWindowItem = {
   label: string
   usedPercent: number
@@ -114,9 +124,6 @@ type AuthFileEditorState = {
 
 const ACCOUNT_STATUS_PREFERENCE_STORAGE_KEY = 'cpa-helper-codex-keeper-status-preferences'
 const AUTH_FILE_MAX_SIZE = 10 * 1024 * 1024
-const ACCOUNT_TABLE_MIN_ROW_HEIGHT = 52
-const ACCOUNT_TABLE_MAX_HEIGHT = 'min(620px, max(320px, calc(100dvh - 430px)))'
-const ACCOUNT_TABLE_VIRTUAL_THRESHOLD = 200
 const CODEX_FIVE_HOUR_WINDOW_SECONDS = 5 * 60 * 60
 const CODEX_WEEK_WINDOW_SECONDS = 7 * 24 * 60 * 60
 const CODEX_MONTH_WINDOW_SECONDS = 30 * 24 * 60 * 60
@@ -124,6 +131,7 @@ const accountManageTableScrollX = 1622
 const accountReadOnlyTableScrollX = 1426
 const KEEPER_STATUS_POLL_INTERVAL_MS = 3000
 const REFRESH_STATUS_POLL_INTERVAL_MS = 1500
+const OAUTH_STATUS_POLL_INTERVAL_MS = 3000
 const message = useMessage()
 const { currentLanguage, errorText, keeperStatusText, serverText, t } = useI18n()
 const { currentUser } = useCurrentUser()
@@ -165,6 +173,13 @@ const detailOpen = ref(false)
 const authFileInput = ref<HTMLInputElement | null>(null)
 const isUploadingAuthFiles = ref(false)
 const authFileEditor = ref<AuthFileEditorState | null>(null)
+const oauthDialogOpen = ref(false)
+const oauthDialogStatus = ref<OAuthDialogStatus>('idle')
+const oauthAuthURL = ref('')
+const oauthCallbackURL = ref('')
+const oauthError = ref('')
+const isStartingOAuth = ref(false)
+const isSubmittingOAuthCallback = ref(false)
 const accountDisplaySize = ref<AccountDisplaySize>(50)
 const accountListPage = ref(1)
 const relativeTimeNow = ref(Date.now())
@@ -198,6 +213,32 @@ const priorityDialog = reactive({
 })
 let refreshPollToken = 0
 let keeperStatusTimer: number | undefined
+let oauthPollToken = 0
+
+const oauthStatusType = computed(() => {
+  switch (oauthDialogStatus.value) {
+    case 'waiting':
+      return 'warning'
+    case 'success':
+      return 'success'
+    case 'error':
+      return 'error'
+    default:
+      return 'default'
+  }
+})
+const oauthStatusText = computed(() => {
+  switch (oauthDialogStatus.value) {
+    case 'waiting':
+      return t('等待认证中', 'Waiting for authentication')
+    case 'success':
+      return t('认证成功', 'Authentication successful')
+    case 'error':
+      return t('认证失败', 'Authentication failed')
+    default:
+      return t('尚未开始', 'Not started')
+  }
+})
 
 const priorityRuleMap = computed(() =>
   Object.fromEntries(priorityRules.value.map((rule) => [rule.account_type, rule.priority])),
@@ -225,7 +266,6 @@ const accountDisplaySizeOptions = computed<Array<{ label: string; value: Account
   { label: '100', value: 100 },
   { label: '150', value: 150 },
   { label: '200', value: 200 },
-  { label: t('全部', 'All'), value: 'all' },
 ])
 const quotaSortOptions = computed(() => [
   { label: t('天', 'Day'), key: 'quotaDay' },
@@ -312,13 +352,6 @@ const activeFilterCount = computed(
     Number(filters.priority !== 'all') +
     Number(filters.status !== 'all'),
 )
-const isDisplayAllAccounts = computed(() => accountDisplaySize.value === 'all')
-const accountTableDisplayOptions = computed(() =>
-  accountTableDisplayProps(visibleListAccounts.value.length),
-)
-const accountPaginationPageSize = computed(() =>
-  accountDisplaySize.value === 'all' ? 1 : accountDisplaySize.value,
-)
 const accountListPageCount = computed(() => accountPageCount(sortedListAccounts.value.length))
 const showAccountPagination = computed(() =>
   shouldShowAccountPagination(sortedListAccounts.value.length),
@@ -326,18 +359,18 @@ const showAccountPagination = computed(() =>
 const visibleListAccounts = computed(() =>
   pagedAccounts(sortedListAccounts.value, accountListPage.value),
 )
-const accountSectionDisplayText = computed(() =>
-  accountDisplayText(
-    visibleListAccounts.value.length,
+const accountRangeStart = computed(() => {
+  if (sortedListAccounts.value.length === 0) {
+    return 0
+  }
+  const page = clampPage(accountListPage.value, accountListPageCount.value)
+  return (page - 1) * accountDisplaySize.value + 1
+})
+const accountRangeEnd = computed(() =>
+  Math.min(
+    clampPage(accountListPage.value, accountListPageCount.value) * accountDisplaySize.value,
     sortedListAccounts.value.length,
-    accountListPage.value,
-    accountListPageCount.value,
   ),
-)
-const displaySizeHelpText = computed(() =>
-  isDisplayAllAccounts.value
-    ? t('当前筛选结果全部展示，账号较多时自动使用虚拟滚动。', 'All filtered results are shown. Virtual scrolling is used automatically for large account sets.')
-    : t(`统一列表每页显示 ${accountDisplaySize.value} 个账号。`, `${accountDisplaySize.value} accounts per page in the unified list.`),
 )
 const activeQuotaSortLabel = computed(() => {
   if (accountSort.key === 'quotaDay') {
@@ -350,51 +383,18 @@ const activeQuotaSortLabel = computed(() => {
 })
 const sortDirectionMark = computed(() => (accountSort.direction === 'asc' ? '↑' : '↓'))
 
-function accountTableDisplayProps(rowCount: number) {
-  return isDisplayAllAccounts.value && rowCount > ACCOUNT_TABLE_VIRTUAL_THRESHOLD
-    ? {
-        virtualScroll: true,
-        maxHeight: ACCOUNT_TABLE_MAX_HEIGHT,
-        minRowHeight: ACCOUNT_TABLE_MIN_ROW_HEIGHT,
-      }
-    : {
-        virtualScroll: false,
-      }
-}
-
 function accountPageCount(rowCount: number): number {
-  if (accountDisplaySize.value === 'all') {
-    return 1
-  }
   return Math.max(1, Math.ceil(rowCount / accountDisplaySize.value))
 }
 
 function shouldShowAccountPagination(rowCount: number): boolean {
-  return accountDisplaySize.value !== 'all' && rowCount > accountDisplaySize.value
+  return rowCount > accountDisplaySize.value
 }
 
 function pagedAccounts(source: CodexKeeperAccount[], page: number): CodexKeeperAccount[] {
-  if (accountDisplaySize.value === 'all') {
-    return source
-  }
   const safePage = clampPage(page, accountPageCount(source.length))
   const start = (safePage - 1) * accountDisplaySize.value
   return source.slice(start, start + accountDisplaySize.value)
-}
-
-function accountDisplayText(
-  visibleCount: number,
-  totalCount: number,
-  page: number,
-  pageCount: number,
-): string {
-  if (isDisplayAllAccounts.value) {
-    return t(`显示 ${visibleCount} / ${totalCount} 个账号`, `Showing ${visibleCount} / ${totalCount} accounts`)
-  }
-  return t(
-    `第 ${clampPage(page, pageCount)} / ${pageCount} 页，显示 ${visibleCount} / ${totalCount} 个账号`,
-    `Page ${clampPage(page, pageCount)} / ${pageCount}, showing ${visibleCount} / ${totalCount} accounts`,
-  )
 }
 
 function clampPage(page: number, pageCount: number): number {
@@ -410,7 +410,7 @@ function clampAccountPages() {
 }
 
 function isAccountDisplaySize(value: unknown): value is AccountDisplaySize {
-  return value === 50 || value === 100 || value === 150 || value === 200 || value === 'all'
+  return value === 50 || value === 100 || value === 150 || value === 200
 }
 
 function isAccountSortKey(value: unknown): value is AccountSortKey {
@@ -1591,6 +1591,140 @@ async function copyAuthFileEditorText() {
   }
 }
 
+function resetCodexOAuthDialog() {
+  oauthPollToken += 1
+  oauthDialogStatus.value = 'idle'
+  oauthAuthURL.value = ''
+  oauthCallbackURL.value = ''
+  oauthError.value = ''
+  isStartingOAuth.value = false
+  isSubmittingOAuthCallback.value = false
+}
+
+function openCodexOAuthDialog() {
+  if (!canManageAccounts.value) {
+    return
+  }
+  resetCodexOAuthDialog()
+  oauthDialogOpen.value = true
+}
+
+function closeCodexOAuthDialog() {
+  resetCodexOAuthDialog()
+  oauthDialogOpen.value = false
+}
+
+async function reloadAccountsAfterOAuth() {
+  try {
+    await runCodexKeeperOnce()
+    void pollRefreshUntilIdle()
+  } catch {
+    await loadAccounts()
+  }
+}
+
+async function pollCodexOAuthStatus(state: string, token: number) {
+  for (;;) {
+    await sleep(OAUTH_STATUS_POLL_INTERVAL_MS)
+    if (token !== oauthPollToken || !oauthDialogOpen.value) {
+      return
+    }
+    try {
+      const response = await getCodexKeeperOAuthStatus(state)
+      if (token !== oauthPollToken || !oauthDialogOpen.value) {
+        return
+      }
+      const status = response.status.trim().toLowerCase()
+      if (status === 'ok') {
+        oauthDialogStatus.value = 'success'
+        oauthError.value = ''
+        oauthPollToken += 1
+        message.success(t('Codex OAuth 认证成功', 'Codex OAuth authentication successful'))
+        void reloadAccountsAfterOAuth()
+        return
+      }
+      if (status === 'error') {
+        oauthDialogStatus.value = 'error'
+        oauthError.value = response.error?.trim() || t('Codex OAuth 认证失败', 'Codex OAuth authentication failed')
+        oauthPollToken += 1
+        return
+      }
+      oauthError.value = ''
+    } catch (error) {
+      if (token !== oauthPollToken || !oauthDialogOpen.value) {
+        return
+      }
+      oauthError.value = errorText(
+        error,
+        '暂时无法查询认证状态，将继续重试',
+        'Unable to check authentication status; retrying',
+      )
+    }
+  }
+}
+
+async function startCodexOAuth() {
+  if (isStartingOAuth.value) {
+    return
+  }
+  const token = ++oauthPollToken
+  oauthDialogStatus.value = 'idle'
+  oauthAuthURL.value = ''
+  oauthCallbackURL.value = ''
+  oauthError.value = ''
+  isStartingOAuth.value = true
+  try {
+    const response = await startCodexKeeperOAuth()
+    if (token !== oauthPollToken || !oauthDialogOpen.value) {
+      return
+    }
+    oauthAuthURL.value = response.url
+    oauthDialogStatus.value = 'waiting'
+    void pollCodexOAuthStatus(response.state, token)
+  } catch (error) {
+    if (token !== oauthPollToken || !oauthDialogOpen.value) {
+      return
+    }
+    oauthDialogStatus.value = 'error'
+    oauthError.value = errorText(error, '启动 Codex OAuth 失败', 'Failed to start Codex OAuth')
+  } finally {
+    if (token === oauthPollToken) {
+      isStartingOAuth.value = false
+    }
+  }
+}
+
+function openCodexOAuthURL() {
+  if (oauthAuthURL.value) {
+    window.open(oauthAuthURL.value, '_blank', 'noopener,noreferrer')
+  }
+}
+
+async function copyCodexOAuthURL() {
+  try {
+    await copyToClipboard(oauthAuthURL.value)
+    message.success(t('授权链接已复制', 'Authorization link copied'))
+  } catch (error) {
+    message.error(errorText(error, '复制授权链接失败', 'Failed to copy authorization link'))
+  }
+}
+
+async function submitCodexOAuthCallbackURL() {
+  const redirectURL = oauthCallbackURL.value.trim()
+  if (!redirectURL || oauthDialogStatus.value !== 'waiting' || isSubmittingOAuthCallback.value) {
+    return
+  }
+  isSubmittingOAuthCallback.value = true
+  try {
+    await submitCodexKeeperOAuthCallback(redirectURL)
+    message.success(t('回调 URL 已提交，正在等待认证结果', 'Callback URL submitted; waiting for authentication'))
+  } catch (error) {
+    message.error(errorText(error, '提交回调 URL 失败', 'Failed to submit callback URL'))
+  } finally {
+    isSubmittingOAuthCallback.value = false
+  }
+}
+
 function triggerAuthFileUpload() {
   if (canManageAccounts.value && !isUploadingAuthFiles.value) {
     authFileInput.value?.click()
@@ -2213,6 +2347,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   refreshPollToken += 1
+  oauthPollToken += 1
   if (keeperStatusTimer !== undefined) {
     window.clearInterval(keeperStatusTimer)
   }
@@ -2223,38 +2358,47 @@ onBeforeUnmount(() => {
   <section class="page account-status-page">
     <div class="page-header account-page-header">
       <div class="account-header-copy">
-        <div class="account-header-title-row">
-          <h1 class="page-title">{{ accountPageTitle }}</h1>
-          <div class="header-actions">
-            <NButton
-              v-if="canManageAccounts"
-              type="primary"
-              secondary
-              :loading="isUploadingAuthFiles"
-              @click="triggerAuthFileUpload"
-            >
-              <template #icon>
-                <NIcon :component="Upload" />
-              </template>
-              {{ t('上传文件', 'Upload File') }}
-            </NButton>
-            <NButton secondary :loading="isLoading" @click="loadAccounts">
-              <template #icon>
-                <NIcon :component="RefreshCw" />
-              </template>
-              {{ t('重新加载', 'Reload') }}
-            </NButton>
-            <input
-              ref="authFileInput"
-              class="auth-file-input"
-              type="file"
-              accept=".json,application/json"
-              multiple
-              @change="handleAuthFileUpload"
-            >
-          </div>
-        </div>
+        <h1 class="page-title">{{ accountPageTitle }}</h1>
         <p class="page-subtitle">{{ accountPageSubtitle }}</p>
+      </div>
+      <div class="header-actions">
+        <NButton
+          v-if="canManageAccounts"
+          type="primary"
+          secondary
+          @click="openCodexOAuthDialog"
+        >
+          <template #icon>
+            <NIcon :component="LogIn" />
+          </template>
+          {{ t('OAuth 登录', 'OAuth Login') }}
+        </NButton>
+        <NButton
+          v-if="canManageAccounts"
+          type="primary"
+          secondary
+          :loading="isUploadingAuthFiles"
+          @click="triggerAuthFileUpload"
+        >
+          <template #icon>
+            <NIcon :component="Upload" />
+          </template>
+          {{ t('上传文件', 'Upload File') }}
+        </NButton>
+        <NButton secondary :loading="isLoading" @click="loadAccounts">
+          <template #icon>
+            <NIcon :component="RefreshCw" />
+          </template>
+          {{ t('重新加载', 'Reload') }}
+        </NButton>
+        <input
+          ref="authFileInput"
+          class="auth-file-input"
+          type="file"
+          accept=".json,application/json"
+          multiple
+          @change="handleAuthFileUpload"
+        >
       </div>
     </div>
 
@@ -2367,67 +2511,60 @@ onBeforeUnmount(() => {
             :options="priorityFilterOptions"
           />
         </div>
-        <div class="list-control-row">
-          <div class="sort-control-row" :aria-label="t('账号排序', 'Account Sorting')">
-            <span class="sort-control-label">{{ t('排序', 'Sort') }}</span>
-            <NDropdown trigger="click" :options="quotaSortOptions" @select="handleQuotaSortSelect">
-              <NButton
-                secondary
-                size="small"
-                :type="accountSort.key === 'quotaDay' || accountSort.key === 'quotaWeek' ? 'primary' : 'default'"
-              >
-                {{ activeQuotaSortLabel ? t(`额度窗口：${activeQuotaSortLabel} ${sortDirectionMark}`, `Quota Window: ${activeQuotaSortLabel} ${sortDirectionMark}`) : t('额度窗口', 'Quota Window') }}
-              </NButton>
-            </NDropdown>
-            <NButton
-              secondary
-              size="small"
-              :type="isAccountSortActive('accountType') ? 'primary' : 'default'"
-              @click="toggleAccountSort('accountType')"
-            >
-              {{ t('类型', 'Type') }} {{ accountSortMark('accountType') }}
-            </NButton>
-            <NButton
-              secondary
-              size="small"
-              :type="isAccountSortActive('status') ? 'primary' : 'default'"
-              @click="toggleAccountSort('status')"
-            >
-              {{ t('状态', 'Status') }} {{ accountSortMark('status') }}
-            </NButton>
-            <NButton
-              secondary
-              size="small"
-              :type="isAccountSortActive('priority') ? 'primary' : 'default'"
-              @click="toggleAccountSort('priority')"
-            >
-              {{ t('优先级', 'Priority') }} {{ accountSortMark('priority') }}
-            </NButton>
-            <NButton
-              secondary
-              size="small"
-              :type="isAccountSortActive('lastCheckedAt') ? 'primary' : 'default'"
-              @click="toggleAccountSort('lastCheckedAt')"
-            >
-              {{ t('最近巡检', 'Last Inspection') }} {{ accountSortMark('lastCheckedAt') }}
-            </NButton>
-          </div>
-        </div>
       </div>
 
       <div class="account-sections">
         <section class="account-section">
-          <div class="account-section-header">
-            <div class="account-section-title-group">
-              <h3 class="account-section-title">{{ t('全部账号', 'All Accounts') }}</h3>
-              <p class="account-section-subtitle">
-                {{ accountSectionDisplayText }}
-              </p>
+          <div class="account-section-actions-row">
+            <div class="sort-control-row" :aria-label="t('账号排序', 'Account Sorting')">
+              <span class="sort-control-label">{{ t('排序', 'Sort') }}</span>
+              <NDropdown trigger="click" :options="quotaSortOptions" @select="handleQuotaSortSelect">
+                <NButton
+                  secondary
+                  size="small"
+                  :type="accountSort.key === 'quotaDay' || accountSort.key === 'quotaWeek' ? 'primary' : 'default'"
+                >
+                  {{ activeQuotaSortLabel ? t(`额度窗口：${activeQuotaSortLabel} ${sortDirectionMark}`, `Quota Window: ${activeQuotaSortLabel} ${sortDirectionMark}`) : t('额度窗口', 'Quota Window') }}
+                </NButton>
+              </NDropdown>
+              <NButton
+                secondary
+                size="small"
+                :type="isAccountSortActive('accountType') ? 'primary' : 'default'"
+                @click="toggleAccountSort('accountType')"
+              >
+                {{ t('类型', 'Type') }} {{ accountSortMark('accountType') }}
+              </NButton>
+              <NButton
+                secondary
+                size="small"
+                :type="isAccountSortActive('status') ? 'primary' : 'default'"
+                @click="toggleAccountSort('status')"
+              >
+                {{ t('状态', 'Status') }} {{ accountSortMark('status') }}
+              </NButton>
+              <NButton
+                secondary
+                size="small"
+                :type="isAccountSortActive('priority') ? 'primary' : 'default'"
+                @click="toggleAccountSort('priority')"
+              >
+                {{ t('优先级', 'Priority') }} {{ accountSortMark('priority') }}
+              </NButton>
+              <NButton
+                secondary
+                size="small"
+                :type="isAccountSortActive('lastCheckedAt') ? 'primary' : 'default'"
+                @click="toggleAccountSort('lastCheckedAt')"
+              >
+                {{ t('最近巡检', 'Last Inspection') }} {{ accountSortMark('lastCheckedAt') }}
+              </NButton>
             </div>
             <div v-if="canManageAccounts" class="account-section-actions">
               <NButton
                 secondary
                 type="primary"
+                size="small"
                 :disabled="!canBulkEnable"
                 :loading="bulkToggleAction === 'enable'"
                 @click="confirmToggleSelectedAccounts('enable')"
@@ -2440,6 +2577,7 @@ onBeforeUnmount(() => {
               <NButton
                 secondary
                 type="warning"
+                size="small"
                 :disabled="!canBulkDisable"
                 :loading="bulkToggleAction === 'disable'"
                 @click="confirmToggleSelectedAccounts('disable')"
@@ -2452,6 +2590,7 @@ onBeforeUnmount(() => {
               <NButton
                 secondary
                 type="primary"
+                size="small"
                 :disabled="!canRefreshSelected"
                 :loading="isBulkRefreshing"
                 @click="refreshSelectedAccounts"
@@ -2464,6 +2603,7 @@ onBeforeUnmount(() => {
               <NButton
                 secondary
                 type="error"
+                size="small"
                 :disabled="!canBulkDelete"
                 :loading="isBulkDeleting"
                 @click="openBulkDeleteDialog"
@@ -2484,7 +2624,6 @@ onBeforeUnmount(() => {
             :row-key="accountRowKey"
             :checked-row-keys="selectedAccountKeys"
             :pagination="false"
-            v-bind="accountTableDisplayOptions"
             table-layout="fixed"
             :scroll-x="accountTableScrollX"
             @update:checked-row-keys="handleAccountSelectionUpdate"
@@ -2495,30 +2634,42 @@ onBeforeUnmount(() => {
               </div>
             </template>
           </NDataTable>
-          <div v-if="showAccountPagination" class="account-pagination-row">
-            <NPagination
-              v-model:page="accountListPage"
-              size="small"
-              :page-size="accountPaginationPageSize"
-              :item-count="sortedListAccounts.length"
-            />
-          </div>
         </section>
       </div>
 
-      <div class="display-control-row">
-        <div class="display-control-copy">
-          <span class="display-control-label">{{ t('每页数量', 'Items Per Page') }}</span>
-          <span class="display-control-help">{{ displaySizeHelpText }}</span>
+      <div class="account-table-footer">
+        <div class="account-range-controls">
+          <span class="account-range-text">
+            {{ t(`第 ${accountRangeStart} 到第 ${accountRangeEnd} 条，总共`, `Items ${accountRangeStart} to ${accountRangeEnd},`) }}
+            <strong>{{ sortedListAccounts.length }}</strong>
+            {{ t('条', 'items total') }}
+          </span>
+          <div class="page-size-control">
+            <span>{{ t('每页显示', 'Show') }}</span>
+            <NSelect
+              v-model:value="accountDisplaySize"
+              class="display-size-select"
+              size="small"
+              :options="accountDisplaySizeOptions"
+            />
+            <span>{{ t('条', 'per page') }}</span>
+          </div>
         </div>
-        <NSelect
-          v-model:value="accountDisplaySize"
-          class="display-size-select"
+        <NPagination
+          v-if="showAccountPagination"
+          v-model:page="accountListPage"
           size="small"
-          :options="accountDisplaySizeOptions"
+          :page-size="accountDisplaySize"
+          :item-count="sortedListAccounts.length"
         />
       </div>
     </section>
+
+    <CodexKeeperLogsPanel
+      v-if="canManageAccounts"
+      :logs="keeperStatus?.logs ?? []"
+      @refresh="loadKeeperStatus"
+    />
 
     <NDrawer v-model:show="detailOpen" placement="right" :width="420">
       <NDrawerContent>
@@ -2634,6 +2785,105 @@ onBeforeUnmount(() => {
         </div>
       </NDrawerContent>
     </NDrawer>
+
+    <NModal
+      v-if="canManageAccounts"
+      :show="oauthDialogOpen"
+      preset="card"
+      :style="{ width: 'min(640px, calc(100vw - 32px))' }"
+      :title="t('Codex OAuth', 'Codex OAuth')"
+      :mask-closable="!isStartingOAuth && !isSubmittingOAuthCallback"
+      @update:show="(show) => { if (!show) closeCodexOAuthDialog() }"
+    >
+      <div class="oauth-dialog">
+        <p class="oauth-dialog-description">
+          {{ t('通过 Codex OAuth 登录，认证成功后生成的 auth file 会自动加入账号管理。', 'Sign in with Codex OAuth. The generated auth file will be added to account management automatically.') }}
+        </p>
+        <div class="oauth-status-row">
+          <span>{{ t('认证状态', 'Authentication status') }}</span>
+          <NTag :type="oauthStatusType" size="small" :bordered="false">
+            {{ oauthStatusText }}
+          </NTag>
+        </div>
+        <p
+          v-if="oauthError"
+          class="oauth-dialog-message"
+          :class="oauthDialogStatus === 'error' ? 'is-error' : 'is-warning'"
+        >
+          {{ oauthError }}
+        </p>
+        <NButton
+          v-if="oauthDialogStatus === 'idle'"
+          type="primary"
+          :loading="isStartingOAuth"
+          @click="startCodexOAuth"
+        >
+          {{ t('开始 Codex 登录', 'Start Codex Login') }}
+        </NButton>
+        <div v-if="oauthAuthURL" class="oauth-dialog-section">
+          <label>{{ t('授权链接', 'Authorization link') }}</label>
+          <NInput
+            type="textarea"
+            readonly
+            :value="oauthAuthURL"
+            :autosize="{ minRows: 2, maxRows: 4 }"
+          />
+          <NSpace>
+            <NButton type="primary" secondary @click="openCodexOAuthURL">
+              <template #icon>
+                <NIcon :component="ExternalLink" />
+              </template>
+              {{ t('打开链接', 'Open Link') }}
+            </NButton>
+            <NButton secondary @click="copyCodexOAuthURL">
+              <template #icon>
+                <NIcon :component="Copy" />
+              </template>
+              {{ t('复制链接', 'Copy Link') }}
+            </NButton>
+          </NSpace>
+        </div>
+        <div v-if="oauthDialogStatus === 'waiting'" class="oauth-dialog-section">
+          <label>{{ t('回调 URL', 'Callback URL') }}</label>
+          <p class="oauth-dialog-hint">
+            {{ t('如果当前浏览器无法访问 localhost 回调地址，请复制浏览器最终跳转后的完整 URL 并粘贴到这里。', 'If this browser cannot reach the localhost callback, paste the complete URL from the browser after its final redirect here.') }}
+          </p>
+          <NInput
+            v-model:value="oauthCallbackURL"
+            type="textarea"
+            :autosize="{ minRows: 3, maxRows: 5 }"
+            :placeholder="t('粘贴完整回调 URL', 'Paste the complete callback URL')"
+          />
+          <NButton
+            type="primary"
+            secondary
+            :disabled="!oauthCallbackURL.trim()"
+            :loading="isSubmittingOAuthCallback"
+            @click="submitCodexOAuthCallbackURL"
+          >
+            {{ t('提交回调 URL', 'Submit Callback URL') }}
+          </NButton>
+        </div>
+        <NButton
+          v-if="oauthDialogStatus === 'success' || oauthDialogStatus === 'error'"
+          secondary
+          :loading="isStartingOAuth"
+          @click="startCodexOAuth"
+        >
+          {{ t('登录另一个账号', 'Sign in to another account') }}
+        </NButton>
+      </div>
+      <template #footer>
+        <NSpace justify="end">
+          <NButton
+            :disabled="isStartingOAuth || isSubmittingOAuthCallback"
+            @click="closeCodexOAuthDialog"
+          >
+            {{ t('关闭', 'Close') }}
+          </NButton>
+        </NSpace>
+      </template>
+    </NModal>
 
     <NModal
       v-if="canManageAccounts"
@@ -2848,29 +3098,15 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 
-.account-page-header {
-  align-items: flex-start;
-}
-
 .account-header-copy {
   flex: 1;
   min-width: 0;
 }
 
-.account-header-title-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-width: 0;
-}
-
-.account-header-title-row .page-title {
-  min-width: 0;
-}
-
 .header-actions {
+  align-items: center;
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   flex-shrink: 0;
   justify-content: flex-end;
@@ -2987,20 +3223,11 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 
-.list-control-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  min-width: 0;
-}
-
 .sort-control-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 8px;
   min-width: 0;
 }
@@ -3018,7 +3245,7 @@ onBeforeUnmount(() => {
   padding: 14px;
 }
 
-.display-control-row {
+.account-table-footer {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -3029,30 +3256,36 @@ onBeforeUnmount(() => {
   background: var(--cpa-surface-raised);
 }
 
-.display-control-copy {
+.account-range-controls {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px 10px;
+  gap: 8px 14px;
   min-width: 0;
 }
 
-.display-control-label {
+.account-range-text,
+.page-size-control {
   color: var(--cpa-text-muted);
   font-size: 12px;
   font-weight: 600;
-  white-space: nowrap;
 }
 
-.display-control-help {
-  min-width: 0;
-  color: var(--cpa-text-muted);
-  font-size: 12px;
+.account-range-text strong {
+  color: var(--cpa-text);
+  font-size: 13px;
+}
+
+.page-size-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
 }
 
 .display-size-select {
   flex-shrink: 0;
-  width: 112px;
+  width: 82px;
 }
 
 .account-section {
@@ -3060,35 +3293,13 @@ onBeforeUnmount(() => {
   gap: 10px;
 }
 
-.account-section + .account-section {
-  padding-top: 12px;
-  border-top: 1px solid var(--cpa-border);
-}
-
-.account-section-header {
+.account-section-actions-row {
   display: flex;
-  align-items: flex-start;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px 14px;
   min-width: 0;
-}
-
-.account-section-title-group {
-  min-width: 0;
-}
-
-.account-section-title {
-  margin: 0;
-  color: var(--cpa-text);
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 1.25;
-}
-
-.account-section-subtitle {
-  margin: 3px 0 0;
-  color: var(--cpa-text-muted);
-  font-size: 12px;
 }
 
 .account-section-actions {
@@ -3100,13 +3311,7 @@ onBeforeUnmount(() => {
   gap: 8px;
 }
 
-.account-pagination-row {
-  display: flex;
-  justify-content: flex-end;
-  min-width: 0;
-}
-
-.account-pagination-row :deep(.n-pagination) {
+.account-table-footer :deep(.n-pagination) {
   flex-wrap: wrap;
   justify-content: flex-end;
 }
@@ -3137,6 +3342,62 @@ onBeforeUnmount(() => {
   font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.oauth-dialog {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.oauth-dialog-description,
+.oauth-dialog-message,
+.oauth-dialog-hint {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.oauth-dialog-description,
+.oauth-dialog-hint {
+  color: var(--cpa-text-muted);
+}
+
+.oauth-dialog-message.is-error {
+  color: var(--cpa-danger);
+}
+
+.oauth-dialog-message.is-warning {
+  color: var(--cpa-warning);
+}
+
+.oauth-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  color: var(--cpa-text);
+  font-size: 13px;
+  background: var(--cpa-surface-muted);
+  border: 1px solid var(--cpa-border);
+  border-radius: var(--cpa-radius-sm);
+}
+
+.oauth-dialog-section {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.oauth-dialog-section > label {
+  color: var(--cpa-text-muted);
+  font-size: 12px;
+}
+
+.oauth-dialog-section :deep(.n-input__textarea) {
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
 }
 
 .auth-file-editor {
@@ -3605,7 +3866,6 @@ onBeforeUnmount(() => {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .list-control-row,
   .sort-control-row {
     justify-content: flex-start;
   }
@@ -3616,21 +3876,12 @@ onBeforeUnmount(() => {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .account-page-header {
-    align-items: stretch;
-    flex-direction: row;
-  }
-
   .auth-file-editor-fields {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .account-header-title-row {
-    gap: 8px;
-  }
-
   .toolbar-heading,
-  .account-section-header {
+  .account-section-actions-row {
     align-items: flex-start;
     flex-direction: column;
   }
@@ -3640,11 +3891,7 @@ onBeforeUnmount(() => {
     justify-content: flex-start;
   }
 
-  .account-pagination-row {
-    justify-content: flex-start;
-  }
-
-  .display-control-row {
+  .account-table-footer {
     align-items: flex-start;
     flex-direction: column;
   }

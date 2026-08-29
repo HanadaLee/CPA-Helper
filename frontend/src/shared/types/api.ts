@@ -284,6 +284,16 @@ export interface CodexKeeperAuthFileUploadResponse {
   failed: CodexKeeperAuthFileUploadFailure[]
 }
 
+export interface CodexKeeperOAuthStartResponse {
+  url: string
+  state: string
+}
+
+export interface CodexKeeperOAuthStatusResponse {
+  status: string
+  error?: string
+}
+
 export interface CodexKeeperAccountsResponse {
   items: CodexKeeperAccount[]
   priority_rules: CodexKeeperPriorityRule[]
