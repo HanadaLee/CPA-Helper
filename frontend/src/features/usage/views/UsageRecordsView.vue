@@ -47,7 +47,7 @@ interface Props {
   scope: UsageScope
 }
 
-const AUTO_REFRESH_INTERVAL_MS = 5000
+const AUTO_REFRESH_INTERVAL_MS = 10_000
 const HOUR_MS = 60 * 60 * 1000
 const DAY_MS = 24 * HOUR_MS
 const ALL_RECORDS_START_PARAM = '0001-01-01T00:00:00+08:00'
@@ -308,7 +308,7 @@ const refreshStatusText = computed(() => {
   if (!lastRefreshTime) {
     return autoRefreshError.value
       ? t('自动刷新异常 · 尚无成功同步', 'Auto refresh error · no successful sync yet')
-      : t('每 5 秒自动刷新 · 等待首次同步', 'Auto refresh every 5 seconds · waiting for first sync')
+      : t('每 10 秒自动刷新 · 等待首次同步', 'Auto refresh every 10 seconds · waiting for first sync')
   }
   const lastRefreshText = new Intl.DateTimeFormat(currentLanguage.value === 'zh' ? 'zh-CN' : 'en-US', {
     hour: '2-digit',
@@ -318,7 +318,7 @@ const refreshStatusText = computed(() => {
   if (autoRefreshError.value) {
     return t(`自动刷新异常 · 最近成功 ${lastRefreshText}`, `Auto refresh error · last success ${lastRefreshText}`)
   }
-  return t(`每 5 秒自动刷新 · 最近 ${lastRefreshText}`, `Auto refresh every 5 seconds · latest ${lastRefreshText}`)
+  return t(`每 10 秒自动刷新 · 最近 ${lastRefreshText}`, `Auto refresh every 10 seconds · latest ${lastRefreshText}`)
 })
 
 function buildFilters(): UsageFilters {

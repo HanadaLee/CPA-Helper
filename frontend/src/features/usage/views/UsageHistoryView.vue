@@ -88,7 +88,7 @@ interface HourActivityItem {
   tokenStyle: Record<string, string>
 }
 
-const AUTO_REFRESH_INTERVAL_MS = 5000
+const AUTO_REFRESH_INTERVAL_MS = 30_000
 const HOUR_MS = 60 * 60 * 1000
 const DAY_MS = 24 * HOUR_MS
 const THIRTY_MINUTES_MS = 30 * 60 * 1000
@@ -348,7 +348,7 @@ const refreshStatusText = computed(() => {
   if (!lastRefreshTime) {
     return autoRefreshError.value
       ? t('自动刷新异常 · 尚无成功同步', 'Auto refresh error · no successful sync yet')
-      : t('每 5 秒自动刷新 · 等待首次同步', 'Auto refresh every 5 seconds · waiting for first sync')
+      : t('每 30 秒自动刷新 · 等待首次同步', 'Auto refresh every 30 seconds · waiting for first sync')
   }
   const lastRefreshText = new Intl.DateTimeFormat(currentLanguage.value === 'zh' ? 'zh-CN' : 'en-US', {
     hour: '2-digit',
@@ -361,7 +361,7 @@ const refreshStatusText = computed(() => {
   if (auxiliaryError.value) {
     return t(`已同步 ${lastRefreshText} · 辅助指标降级`, `Synced ${lastRefreshText} · auxiliary metrics degraded`)
   }
-  return t(`每 5 秒自动刷新 · 最近 ${lastRefreshText}`, `Auto refresh every 5 seconds · latest ${lastRefreshText}`)
+  return t(`每 30 秒自动刷新 · 最近 ${lastRefreshText}`, `Auto refresh every 30 seconds · latest ${lastRefreshText}`)
 })
 
 const dashboardRangeLabel = computed(() => {
