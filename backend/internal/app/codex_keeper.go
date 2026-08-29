@@ -3401,8 +3401,11 @@ func (a *App) getKeeperRemoteAuthFileEditorDetail(ctx context.Context, cfg AppCo
 	}
 	note := ""
 	for _, authFile := range authFiles {
-		if keeperString(authFile["name"]) == name {
-			note = keeperString(authFile["note"])
+		if keeperString(authFile["name"]) != name {
+			continue
+		}
+		if candidate := keeperString(authFile["note"]); candidate != "" {
+			note = candidate
 			break
 		}
 	}

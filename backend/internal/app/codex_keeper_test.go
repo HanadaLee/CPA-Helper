@@ -393,7 +393,8 @@ func TestKeeperAuthFileManagementUsesMultipartAndSupportsInvalidPreview(t *testi
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"files": []map[string]any{
-					{"name": "valid.json", "type": "codex", "note": remoteNote},
+					{"name": "valid.json", "type": "codex", "source": "file"},
+					{"name": "valid.json", "type": "codex", "runtime_only": true, "note": remoteNote},
 					{"name": "challenge.json", "type": "codex"},
 				},
 			})
