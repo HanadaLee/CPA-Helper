@@ -2435,7 +2435,7 @@ onBeforeUnmount(() => {
                 <template #icon>
                   <NIcon :component="ShieldCheck" />
                 </template>
-                {{ t('批量启用', 'Bulk Enable') }}
+                {{ t('启用', 'Enable') }}
               </NButton>
               <NButton
                 secondary
@@ -2447,7 +2447,7 @@ onBeforeUnmount(() => {
                 <template #icon>
                   <NIcon :component="PauseCircle" />
                 </template>
-                {{ t('批量禁用', 'Bulk Disable') }}
+                {{ t('禁用', 'Disable') }}
               </NButton>
               <NButton
                 secondary
@@ -2459,7 +2459,7 @@ onBeforeUnmount(() => {
                 <template #icon>
                   <NIcon :component="RefreshCw" />
                 </template>
-                {{ t('批量刷新', 'Bulk Refresh') }}
+                {{ t('刷新', 'Refresh') }}
               </NButton>
               <NButton
                 secondary
@@ -2471,7 +2471,7 @@ onBeforeUnmount(() => {
                 <template #icon>
                   <NIcon :component="Trash2" />
                 </template>
-                {{ t('批量删除', 'Bulk Delete') }}
+                {{ t('删除', 'Delete') }}
               </NButton>
             </div>
           </div>
