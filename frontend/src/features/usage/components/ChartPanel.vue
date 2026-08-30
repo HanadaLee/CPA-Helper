@@ -61,14 +61,14 @@ let chartThemeFrame: number | undefined
 function getChartTextColor(): string {
   return (
     getComputedStyle(document.documentElement).getPropertyValue('--cpa-text').trim() ||
-    (isDark.value ? '#dfe8ea' : '#172026')
+    (isDark.value ? '#dbe7f7' : '#334155')
   )
 }
 
 function getChartMutedColor(): string {
   return (
     getComputedStyle(document.documentElement).getPropertyValue('--cpa-text-muted').trim() ||
-    (isDark.value ? '#93a8ae' : '#667981')
+    (isDark.value ? '#94a3b8' : '#64748b')
   )
 }
 
@@ -80,12 +80,12 @@ function buildCurrentOption(): ChartOption {
       color: getChartTextColor(),
     },
     tooltip: {
-      backgroundColor: isDark.value ? 'rgba(22, 34, 39, 0.96)' : 'rgba(255, 255, 255, 0.96)',
-      borderColor: isDark.value ? 'rgba(160, 190, 196, 0.22)' : 'rgba(116, 146, 151, 0.22)',
+      backgroundColor: isDark.value ? 'rgba(17, 27, 45, 0.97)' : 'rgba(255, 255, 255, 0.97)',
+      borderColor: isDark.value ? 'rgba(148, 163, 184, 0.24)' : 'rgba(15, 23, 42, 0.14)',
       textStyle: {
         color: getChartTextColor(),
       },
-      extraCssText: 'box-shadow: 0 20px 42px rgba(26, 50, 57, 0.16); border-radius: 10px; padding: 10px 12px;',
+      extraCssText: 'box-shadow: 0 18px 40px rgba(15, 23, 42, 0.16); border-radius: 10px; padding: 10px 12px;',
     },
     ...props.option,
   }

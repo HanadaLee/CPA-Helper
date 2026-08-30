@@ -922,9 +922,9 @@ void loadUpstreams()
 .provider-panel__title { display: flex; align-items: center; gap: 10px; }
 .provider-panel__title h2 { margin: 0; font-size: 17px; }
 .provider-panel__title p { margin: 2px 0 0; color: var(--cpa-text-muted); font-size: 11px; }
-.provider-panel__toolbar { display: flex; min-width: 0; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--cpa-border); background: color-mix(in srgb, var(--cpa-surface-muted) 72%, transparent); }
+.provider-panel__toolbar { display: flex; min-width: 0; align-items: stretch; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--cpa-border); background: color-mix(in srgb, var(--cpa-surface-muted) 72%, transparent); }
 .provider-search { width: min(100%, 520px); height: 36px; min-width: 260px; }
-.provider-result-count { color: var(--cpa-text-muted); font-size: 12px; white-space: nowrap; }
+.provider-result-count { display: inline-flex; align-items: center; color: var(--cpa-text-muted); font-size: 12px; white-space: nowrap; }
 .provider-create-button { height: 36px; margin-left: auto; }
 .provider-table-shell { min-width: 0; padding: 16px; }
 :global(.upstream-row-actions) { width: 100%; justify-content: flex-end; }

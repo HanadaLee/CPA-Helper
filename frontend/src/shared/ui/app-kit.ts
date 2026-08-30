@@ -181,7 +181,7 @@ export const AppButton = defineComponent({
   },
   setup(props, { attrs, slots }) {
     return () => {
-      let variant: 'default' | 'outline' | 'secondary' | 'ghost' | 'destructive' | 'link' = 'secondary'
+      let variant: 'default' | 'outline' | 'secondary' | 'ghost' | 'destructive' | 'link' = 'outline'
       if (props.type === 'primary') variant = 'default'
       else if (props.type === 'error') variant = 'destructive'
       else if (props.text) variant = 'link'
@@ -449,7 +449,7 @@ export const AppSelect = defineComponent({
         attrs.class as HTMLAttributes['class'],
       )
       const triggerClass = cn(
-        'n-base-selection-label min-w-0 flex-1 justify-between rounded-[8px] bg-background font-medium',
+        'n-base-selection-label min-w-0 flex-1 justify-between rounded-lg bg-background font-normal',
         props.clearable && props.value !== null && props.value !== undefined && 'pr-14',
         props.size === 'small' && 'h-8 text-[0.8rem]',
         props.size === 'tiny' && 'h-7 text-xs',
@@ -757,7 +757,7 @@ export const AppForm = defineComponent({
     size: String,
   },
   setup(_, { attrs, slots }) {
-    return () => h('form', { ...attrs, class: cn('n-form', attrs.class as HTMLAttributes['class']) }, renderSlot(slots))
+    return () => h('form', { ...attrs, class: cn('n-form grid gap-5', attrs.class as HTMLAttributes['class']) }, renderSlot(slots))
   },
 })
 
@@ -773,7 +773,7 @@ export const AppFormItem = defineComponent({
   },
   setup(props, { attrs, slots }) {
     return () =>
-      h(Field, { ...attrs, class: cn('n-form-item', attrs.class as HTMLAttributes['class']) }, {
+      h(Field, { ...attrs, class: cn('n-form-item gap-2', attrs.class as HTMLAttributes['class']) }, {
         default: () => [
           props.showLabel && (props.label || slots.label)
             ? h(FieldLabel, { class: 'n-form-item-label' }, {
@@ -814,7 +814,7 @@ export const AppModal = defineComponent({
             DialogContent,
             {
               ...attrs,
-              class: cn('n-modal max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-none', attrs.class as HTMLAttributes['class']),
+              class: cn('n-modal max-h-[calc(100dvh-2rem)] gap-6 overflow-y-auto sm:max-w-none', attrs.class as HTMLAttributes['class']),
               showCloseButton: props.closable,
               onPointerDownOutside: (event: Event) => {
                 if (!props.maskClosable) event.preventDefault()
@@ -889,7 +889,7 @@ export const AppDrawerContent = defineComponent({
         SheetContent,
         {
           ...attrs,
-          class: cn('n-drawer n-drawer-content w-[var(--drawer-width,420px)] max-w-[100vw] sm:max-w-none', attrs.class as HTMLAttributes['class']),
+          class: cn('n-drawer n-drawer-content w-[var(--drawer-width,420px)] max-w-[100vw] gap-0 sm:max-w-none', attrs.class as HTMLAttributes['class']),
           side: drawer?.placement.value ?? 'right',
           showCloseButton: props.closable,
           style: [
@@ -907,7 +907,7 @@ export const AppDrawerContent = defineComponent({
         {
           default: () => [
             props.title || slots.header
-              ? h(SheetHeader, { class: 'n-drawer-header border-b px-6 py-5' }, { default: () => h(SheetTitle, {}, { default: () => slots.header?.() ?? props.title }) })
+              ? h(SheetHeader, { class: 'n-drawer-header border-b px-6 py-5' }, { default: () => h(SheetTitle, { class: 'text-lg font-semibold' }, { default: () => slots.header?.() ?? props.title }) })
               : null,
             h('div', { class: 'n-drawer-body min-h-0 flex-1 overflow-auto p-6', style: props.bodyContentStyle }, renderSlot(slots)),
             slots.footer ? h('div', { class: 'n-drawer-footer border-t bg-muted/30 p-5' }, renderSlot(slots, 'footer')) : null,
@@ -1030,7 +1030,7 @@ export const AppRadioGroup = defineComponent({
     return () =>
       h(RadioGroup, {
         ...attrs,
-        class: cn('n-radio-group flex w-fit flex-wrap gap-1 rounded-lg bg-muted p-1', attrs.class as HTMLAttributes['class']),
+        class: cn('n-radio-group flex w-fit flex-wrap gap-1 rounded-lg border border-border/60 bg-muted/60 p-1', attrs.class as HTMLAttributes['class']),
         modelValue: String(props.value ?? ''),
         'onUpdate:modelValue': (value: string) => emit('update:value', value),
       } as never, { default: () => renderSlot(slots) })
@@ -1044,7 +1044,7 @@ export const AppRadioButton = defineComponent({
   setup(props, { attrs, slots }) {
     const id = `radio-${Math.random().toString(36).slice(2)}`
     return () =>
-      h('label', { class: cn('n-radio-button inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-md border border-transparent px-3 py-1.5 text-sm font-medium text-muted-foreground transition-[color,background-color,box-shadow] hover:text-foreground has-[[data-state=checked]]:bg-background has-[[data-state=checked]]:text-primary has-[[data-state=checked]]:shadow-xs', props.disabled && 'cursor-not-allowed opacity-50', attrs.class as HTMLAttributes['class']) }, [
+      h('label', { class: cn('n-radio-button inline-flex min-h-8 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-transparent px-3 py-1.5 text-sm font-medium text-muted-foreground transition-[color,background-color,box-shadow] hover:bg-background/60 hover:text-foreground has-[[data-state=checked]]:bg-background has-[[data-state=checked]]:text-primary has-[[data-state=checked]]:shadow-xs', props.disabled && 'cursor-not-allowed opacity-50', attrs.class as HTMLAttributes['class']) }, [
         h(RadioGroupItem, { id, value: String(props.value), disabled: props.disabled, class: 'sr-only' } as never),
         renderSlot(slots),
       ])
@@ -1546,7 +1546,7 @@ export const AppDataTable = defineComponent({
         tableLayout: props.tableLayout as CSSProperties['tableLayout'],
       }
       return h('div', { ...attrs, class: cn('n-data-table relative min-w-0', props.flexHeight && 'flex h-full min-h-0 flex-col', !props.bordered && 'is-borderless', attrs.class as HTMLAttributes['class']) }, [
-        h('div', { class: cn('n-data-table-wrapper relative overflow-hidden rounded-xl border border-border bg-card shadow-xs', props.flexHeight && 'flex min-h-0 flex-1 flex-col') }, [
+        h('div', { class: cn('n-data-table-wrapper relative overflow-hidden rounded-xl border border-border/80 bg-card shadow-xs', props.flexHeight && 'flex min-h-0 flex-1 flex-col') }, [
           h('div', { class: cn('n-scrollbar-container', props.flexHeight && 'h-full min-h-0 flex-1'), style: wrapperStyle }, [
             h(Table, { class: 'n-data-table-base-table w-full border-collapse text-sm', style: tableStyle }, {
               default: () => [
@@ -1555,7 +1555,7 @@ export const AppDataTable = defineComponent({
                     default: () => props.columns.map((column, index) =>
                       h(TableHead, {
                         key: String(column.key ?? index),
-                        class: 'n-data-table-th h-10 bg-muted/80 px-3 text-left align-middle text-xs font-semibold tracking-[0.01em] text-foreground backdrop-blur-sm',
+                        class: 'n-data-table-th h-11 bg-muted/55 px-3 text-left align-middle text-xs font-semibold tracking-[0.01em] text-foreground backdrop-blur-sm',
                         style: {
                           ...cellStyle(column, index),
                           background: column.fixed ? 'var(--cpa-surface-muted)' : undefined,
@@ -1584,12 +1584,12 @@ export const AppDataTable = defineComponent({
                           return h(TableRow, {
                             ...rowAttrs,
                             key: getRowKey(row, rowIndex),
-                            class: cn('n-data-table-tr transition-colors hover:bg-accent/35', rowAttrs.class as HTMLAttributes['class']),
+                            class: cn('n-data-table-tr transition-colors hover:bg-accent/45', rowAttrs.class as HTMLAttributes['class']),
                           }, {
                             default: () => props.columns.map((column, columnIndex) =>
                               h(TableCell, {
                                 key: String(column.key ?? columnIndex),
-                                class: 'n-data-table-td px-3 py-2.5 align-middle text-foreground',
+                                class: 'n-data-table-td px-3 py-3 align-middle text-foreground',
                                 style: cellStyle(column, columnIndex),
                               }, { default: () => renderCell(column, row, rowIndex) as never }),
                             ),

@@ -329,7 +329,7 @@ interface PriceMetricCard {
   label: string
   value: string
   footnote: string
-  tone: 'teal' | 'blue' | 'purple' | 'orange'
+  tone: 'primary' | 'blue' | 'purple' | 'orange'
   icon: Component
 }
 
@@ -344,7 +344,7 @@ const priceMetrics = computed<PriceMetricCard[]>(() => [
           `Queryable keys ${formatInteger(catalog.value.queryable_api_key_count)} / ${formatInteger(catalog.value.api_key_count)}`,
         )
       : t('等待刷新', 'Waiting for refresh'),
-    tone: 'teal',
+    tone: 'primary',
     icon: Layers3,
   },
   {
@@ -989,9 +989,9 @@ onBeforeUnmount(() => {
 .proxy-hint {
   margin: 0;
   padding: 10px 12px;
-  border: 1px solid rgba(8, 145, 178, 0.22);
+  border: 1px solid color-mix(in srgb, var(--cpa-primary) 22%, var(--cpa-border));
   border-radius: var(--cpa-radius);
-  background: rgba(8, 145, 178, 0.08);
+  background: color-mix(in srgb, var(--cpa-primary-wash) 74%, var(--cpa-surface));
   color: var(--cpa-text-muted);
   font-size: 13px;
   line-height: 1.55;

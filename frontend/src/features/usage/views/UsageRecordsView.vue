@@ -1171,7 +1171,7 @@ onBeforeUnmount(() => {
 }
 
 .quick-ranges :deep(.quick-range-button[data-variant="default"]) {
-  box-shadow: 0 1px 2px rgb(0 82 87 / 16%);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--cpa-primary) 20%, transparent);
 }
 
 .status-actions {

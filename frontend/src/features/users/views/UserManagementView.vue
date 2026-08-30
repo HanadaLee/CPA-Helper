@@ -82,7 +82,7 @@ interface UserMetricCard {
   label: string
   value: string
   footnote: string
-  tone: 'teal' | 'blue' | 'purple' | 'green'
+  tone: 'primary' | 'blue' | 'purple' | 'green'
   icon: Component
 }
 
@@ -97,7 +97,7 @@ const userMetrics = computed<UserMetricCard[]>(() => {
       label: t('启用用户', 'Active users'),
       value: formatInteger(activeUsers),
       footnote: t(`共 ${formatInteger(users.value.length)} 个账号`, `${formatInteger(users.value.length)} accounts total`),
-      tone: 'teal',
+      tone: 'primary',
       icon: UserRound,
     },
     {

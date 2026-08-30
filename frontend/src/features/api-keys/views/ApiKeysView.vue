@@ -136,7 +136,7 @@ interface ApiKeyMetricCard {
   label: string
   value: string
   footnote: string
-  tone: 'teal' | 'blue' | 'purple' | 'green'
+  tone: 'primary' | 'blue' | 'purple' | 'green'
   icon: Component
 }
 
@@ -153,7 +153,7 @@ const apiKeyMetrics = computed<ApiKeyMetricCard[]>(() => {
       label: t('API 密钥', 'API keys'),
       value: formatInteger(apiKeys.value.length),
       footnote: t('当前账号', 'Current account'),
-      tone: 'teal',
+      tone: 'primary',
       icon: KeyRound,
     },
     {
@@ -1060,12 +1060,12 @@ onMounted(refresh)
 }
 
 .api-endpoint-type-options {
-  display: inline-flex;
+  display: grid;
+  grid-template-columns: repeat(2, max-content);
   width: auto;
   max-width: 100%;
   align-items: center;
   justify-content: flex-start;
-  flex-wrap: wrap;
 }
 
 .api-endpoint-type-options :deep(.n-radio-button) {
@@ -1099,9 +1099,7 @@ onMounted(refresh)
   padding: 16px;
   border: 1px solid var(--cpa-border);
   border-radius: var(--cpa-radius);
-  background:
-    linear-gradient(135deg, rgb(0 154 168 / 10%), rgb(29 141 255 / 7%)),
-    var(--cpa-primary-wash);
+  background: var(--cpa-primary-wash);
   box-shadow: var(--cpa-shadow-hairline);
 }
 

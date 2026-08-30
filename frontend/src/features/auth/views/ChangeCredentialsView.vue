@@ -119,7 +119,10 @@ async function handleSubmit() {
   align-items: center;
   overflow: hidden;
   padding: 72px 48px;
-  background: #030303;
+  background:
+    radial-gradient(circle at 18% 18%, rgb(255 255 255 / 24%), transparent 32%),
+    radial-gradient(circle at 82% 78%, rgb(191 219 254 / 30%), transparent 38%),
+    linear-gradient(145deg, #60a5fa 0%, #3b82f6 52%, #2563eb 100%);
 }
 
 .brand-stage {
@@ -142,13 +145,13 @@ async function handleSubmit() {
 
 .brand-word-cpa {
   justify-self: start;
-  color: #d6d6d6;
+  color: rgb(255 255 255 / 96%);
   font-size: 172px;
 }
 
 .brand-word-helper {
   justify-self: end;
-  color: #8d8d8d;
+  color: #dbeafe;
   font-size: 136px;
 }
 
@@ -171,7 +174,7 @@ async function handleSubmit() {
   border-radius: var(--cpa-radius);
   overflow: hidden;
   background: var(--cpa-surface-raised);
-  box-shadow: 0 22px 54px rgb(24 45 53 / 10%), var(--cpa-shadow-hairline);
+  box-shadow: var(--cpa-shadow);
 }
 
 .auth-card :deep(.n-card__content) {
@@ -193,7 +196,8 @@ async function handleSubmit() {
   border-radius: 18px;
   overflow: hidden;
   background: var(--cpa-surface-solid);
-  box-shadow: 0 18px 34px rgb(0 154 168 / 18%);
+  border: 1px solid color-mix(in srgb, var(--cpa-primary) 20%, var(--cpa-border));
+  box-shadow: 0 18px 34px rgb(37 99 235 / 18%);
 }
 
 .brand-mark img {
@@ -207,7 +211,7 @@ h1 {
   margin: 0;
   color: var(--cpa-text-strong);
   font-size: 24px;
-  font-weight: 800;
+  font-weight: 700;
   line-height: 1.18;
   text-wrap: pretty;
 }
@@ -227,7 +231,10 @@ p {
 }
 
 :global(:root.dark) .auth-brand-panel {
-  background: #020202;
+  background:
+    radial-gradient(circle at 18% 18%, rgb(96 165 250 / 24%), transparent 32%),
+    radial-gradient(circle at 82% 78%, rgb(37 99 235 / 22%), transparent 38%),
+    linear-gradient(145deg, #08152b 0%, #102a52 52%, #0a1830 100%);
 }
 
 @media (max-width: 1320px) {

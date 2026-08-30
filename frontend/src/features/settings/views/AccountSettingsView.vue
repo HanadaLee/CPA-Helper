@@ -68,7 +68,7 @@ onMounted(refresh)
     </div>
 
     <div class="metric-grid account-settings-metrics">
-      <div class="metric-card is-teal">
+      <div class="metric-card is-primary">
         <div class="metric-icon" aria-hidden="true">
           <UserRound :size="20" :stroke-width="2.2" />
         </div>
@@ -91,7 +91,7 @@ onMounted(refresh)
         <h2 class="section-title">{{ t('账号与密码', 'Account and Password') }}</h2>
         <AppForm :model="accountForm" label-placement="top">
           <div class="form-grid">
-            <AppFormItem :label="t('账号', 'Account')">
+            <AppFormItem class="account-field" :label="t('账号', 'Account')">
               <AppInput v-model:value="accountForm.username" autocomplete="username" disabled />
             </AppFormItem>
             <AppFormItem :label="t('当前密码', 'Current password')">
@@ -129,6 +129,10 @@ onMounted(refresh)
   gap: 8px 12px;
 }
 
+.account-field {
+  grid-column: 1 / -1;
+}
+
 @media (max-width: 720px) {
   .account-settings-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -138,6 +142,10 @@ onMounted(refresh)
 @media (max-width: 900px) {
   .form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .account-field {
+    grid-column: auto;
   }
 }
 </style>

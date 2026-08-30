@@ -2389,7 +2389,7 @@ onBeforeUnmount(() => {
       <div class="header-actions">
         <AppButton
           v-if="canManageAccounts"
-          type="primary"
+          secondary
           @click="openCodexOAuthDialog"
         >
           <template #icon>
@@ -2410,7 +2410,7 @@ onBeforeUnmount(() => {
         </AppButton>
         <AppButton
           v-if="canManageAccounts"
-          type="primary"
+          secondary
           :loading="isStartingAccountInspection || isAccountInspectionRunning"
           :disabled="isAccountInspectionBlocked"
           @click="startAccountInspection"

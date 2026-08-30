@@ -97,11 +97,11 @@ const RATE_WINDOW_MINUTES = 10
 const HOUR_MS = 60 * 60 * 1000
 const DAY_MS = 24 * HOUR_MS
 const DISTRIBUTION_CHART_COLORS = [
-  { token: '--cpa-chart-1', fallback: '#009aa8' },
-  { token: '--cpa-chart-2', fallback: '#1d8dff' },
-  { token: '--cpa-chart-3', fallback: '#7e66f2' },
-  { token: '--cpa-chart-4', fallback: '#f58a2f' },
-  { token: '--cpa-chart-5', fallback: '#18a058' },
+  { token: '--cpa-chart-1', fallback: '#2563eb' },
+  { token: '--cpa-chart-2', fallback: '#06b6d4' },
+  { token: '--cpa-chart-3', fallback: '#8b5cf6' },
+  { token: '--cpa-chart-4', fallback: '#f59e0b' },
+  { token: '--cpa-chart-5', fallback: '#16a34a' },
 ] as const
 
 const route = useRoute()
@@ -808,7 +808,7 @@ const metricCards = computed<MetricCardConfig[]>(() => {
       label: t('平均首字耗时', 'Avg TTFT'),
       value: formatLatency(currentSummary?.average_ttft_ms ?? null),
       icon: Timer,
-      tone: 'teal',
+      tone: 'primary',
       footnote: t(
         `零 Token ${formatInteger(currentSummary?.zero_token_records ?? 0)} 次`,
         `Zero-token ${formatInteger(currentSummary?.zero_token_records ?? 0)} requests`,
@@ -844,11 +844,11 @@ function toggleTrendSeries(key: TrendSeriesKey) {
 }
 
 const trendOption = computed<ChartOption>(() => {
-  const mutedColor = cssVar('--cpa-text-muted', '#6a7d87')
-  const gridColor = cssVar('--cpa-chart-grid', 'rgba(120, 146, 151, 0.18)')
-  const requestColor = cssVar('--cpa-accent-blue', '#1d8dff')
-  const tokenColor = cssVar('--cpa-primary', '#009aa8')
-  const dangerColor = cssVar('--cpa-danger', '#d34b4b')
+  const mutedColor = cssVar('--cpa-text-muted', '#64748b')
+  const gridColor = cssVar('--cpa-chart-grid', 'rgba(100, 116, 139, 0.16)')
+  const requestColor = cssVar('--cpa-accent-blue', '#0ea5e9')
+  const tokenColor = cssVar('--cpa-primary', '#2563eb')
+  const dangerColor = cssVar('--cpa-danger', '#dc2626')
   const requestLabel = t('请求数', 'Requests')
   const failedLabel = t('失败请求', 'Failed requests')
 
@@ -954,8 +954,8 @@ function breakdownPieOption(
   centerValue: string,
 ): ChartOption {
   const surfaceColor = cssVar('--cpa-surface', '#ffffff')
-  const textColor = cssVar('--cpa-text-strong', '#172026')
-  const mutedColor = cssVar('--cpa-text-muted', '#667981')
+  const textColor = cssVar('--cpa-text-strong', '#111827')
+  const mutedColor = cssVar('--cpa-text-muted', '#64748b')
 
   return {
     tooltip: {
@@ -984,7 +984,7 @@ function breakdownPieOption(
           scaleSize: 3,
           itemStyle: {
             shadowBlur: 10,
-            shadowColor: 'rgba(0, 154, 168, 0.18)',
+            shadowColor: 'rgba(37, 99, 235, 0.18)',
           },
         },
         data: items.map((item, index) => ({
@@ -1772,7 +1772,7 @@ onBeforeUnmount(() => {
 }
 
 .quick-ranges :deep(.quick-range-button[data-variant="default"]) {
-  box-shadow: 0 1px 2px rgb(0 82 87 / 16%);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--cpa-primary) 20%, transparent);
 }
 
 .status-actions {
@@ -2253,7 +2253,7 @@ onBeforeUnmount(() => {
 
 .heatmap-group.is-tokens {
   --heat-color-start: var(--cpa-primary);
-  --heat-color-end: var(--cpa-chart-3, #7e66f2);
+  --heat-color-end: var(--cpa-chart-3, #8b5cf6);
 }
 
 .heatmap-group-heading {
@@ -2310,7 +2310,7 @@ onBeforeUnmount(() => {
 
 .hour-heatmap.is-tokens {
   --heat-color-start: var(--cpa-primary);
-  --heat-color-end: var(--cpa-chart-3, #7e66f2);
+  --heat-color-end: var(--cpa-chart-3, #8b5cf6);
 }
 
 .hour-cell {

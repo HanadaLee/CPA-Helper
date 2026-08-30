@@ -11,6 +11,14 @@ const adminRoutes = [
   ['/admin/settings', /系统设置|System Settings/i],
 ] as const
 
+const accountRoutes = [
+  ['/account/usage', /我的用量|My Usage/i],
+  ['/account/records', /我的明细|My Records/i],
+  ['/account/keys', /API 密钥|API Keys/i],
+  ['/account/models', /可用模型|Available Models/i],
+  ['/account/settings', /账户设置|Account Settings/i],
+] as const
+
 async function setupOrLogin(page: Page) {
   await page.goto('/login')
   const inputs = page.locator('input')
@@ -63,6 +71,12 @@ test('all migrated routes render and core controls remain interactive', async ({
     await expect(page.locator('.desktop-location')).toHaveCSS('visibility', 'hidden')
   }
 
+  for (const [route, title] of accountRoutes) {
+    await page.goto(route)
+    await expect(page.locator('.desktop-location')).toContainText(title)
+    await expect(page.locator('[data-page-title]')).toBeVisible()
+  }
+
   await page.goto('/admin/account-mgmt')
   const accountTypeFilter = page.getByRole('combobox', { name: /账号类型|Account Type/ })
   await accountTypeFilter.click()
@@ -95,12 +109,20 @@ test('all migrated routes render and core controls remain interactive', async ({
   await expect(upstreamSearch.locator('..')).toHaveAttribute('data-slot', 'input-group')
   await expect(upstreamSearch.locator('..').locator('svg.lucide-search')).toBeVisible()
   const upstreamCreateButton = page.getByRole('button', { name: /新建|New/ })
-  const upstreamSearchBox = await upstreamSearch.locator('..').boundingBox()
-  const upstreamCreateBox = await upstreamCreateButton.boundingBox()
-  expect(upstreamSearchBox).not.toBeNull()
-  expect(upstreamCreateBox).not.toBeNull()
-  expect(Math.abs((upstreamSearchBox?.y ?? 0) - (upstreamCreateBox?.y ?? 0))).toBeLessThanOrEqual(1)
-  expect(Math.abs((upstreamSearchBox?.height ?? 0) - (upstreamCreateBox?.height ?? 0))).toBeLessThanOrEqual(1)
+  const upstreamAlignment = await page.locator('.provider-panel__toolbar').evaluate((toolbar) => {
+    const search = toolbar.querySelector<HTMLElement>('[data-slot="input-group"]')
+    const create = toolbar.querySelector<HTMLElement>('.provider-create-button')
+    if (!search || !create) return null
+    const searchBox = search.getBoundingClientRect()
+    const createBox = create.getBoundingClientRect()
+    return {
+      yDifference: Math.abs(searchBox.y - createBox.y),
+      heightDifference: Math.abs(searchBox.height - createBox.height),
+    }
+  })
+  expect(upstreamAlignment).not.toBeNull()
+  expect(upstreamAlignment?.yDifference).toBeLessThanOrEqual(1)
+  expect(upstreamAlignment?.heightDifference).toBeLessThanOrEqual(1)
   await expect(upstreamCreateButton).toHaveCSS('cursor', 'pointer')
   await upstreamCreateButton.click()
   const upstreamDrawer = page.locator('[data-slot="sheet-content"]')
@@ -185,6 +207,10 @@ test('all migrated routes render and core controls remain interactive', async ({
 
 test('theme and mobile navigation survive the migration', async ({ page }) => {
   await setupOrLogin(page)
+  await expect.poll(() =>
+    page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--cpa-primary').trim()),
+  ).toBe('#2563eb')
+  await expect(page.getByRole('button', { name: /用量分析|Usage Analytics/ })).toHaveCSS('cursor', 'pointer')
   await expect(page.locator('a[href*="github.com/walkingddd/CPA-Helper"]')).toHaveCount(0)
   await page.getByRole('button', { name: /admin.*管理员|admin.*Admin/i }).click()
   await expect(page.getByRole('menuitem', { name: /退出登录|Sign out/ })).toBeVisible()
@@ -196,6 +222,9 @@ test('theme and mobile navigation survive the migration', async ({ page }) => {
   await page.getByRole('button', { name: /切换主题|Switch theme/ }).first().click()
   await page.getByRole('button', { name: /切换主题|Switch theme/ }).first().click()
   await expect(page.locator('html')).toHaveClass(/dark/)
+  await expect.poll(() =>
+    page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--cpa-primary').trim()),
+  ).toBe('#60a5fa')
 
   await page.setViewportSize({ width: 390, height: 844 })
   await page.reload()

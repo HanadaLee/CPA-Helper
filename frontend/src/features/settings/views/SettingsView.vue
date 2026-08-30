@@ -195,7 +195,7 @@ onMounted(refresh)
         <div class="metric-value">{{ collectorEnabledText }}</div>
         <div class="metric-footnote">{{ t('系统开关', 'System switch') }}</div>
       </div>
-      <div class="metric-card" :class="collectorStatus?.running ? 'is-teal' : 'is-blue'">
+      <div class="metric-card" :class="collectorStatus?.running ? 'is-primary' : 'is-blue'">
         <div class="metric-icon" aria-hidden="true">
           <Activity :size="20" :stroke-width="2.2" />
         </div>

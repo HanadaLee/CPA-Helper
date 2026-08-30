@@ -155,7 +155,7 @@ const metricItems = computed(() => [
     value: formatInteger(shops.value.length),
     footnote: t('公开店铺快照', 'Public shop snapshot'),
     icon: Store,
-    tone: 'is-teal',
+    tone: 'is-primary',
   },
   {
     key: 'products',

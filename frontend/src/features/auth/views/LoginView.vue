@@ -144,9 +144,9 @@ async function handleSubmit() {
   overflow: hidden;
   padding: 72px 48px;
   background:
-    radial-gradient(circle at 18% 18%, rgb(34 193 200 / 26%), transparent 32%),
-    radial-gradient(circle at 82% 78%, rgb(0 154 168 / 22%), transparent 38%),
-    linear-gradient(145deg, #061c20 0%, #083b3f 52%, #071a1e 100%);
+    radial-gradient(circle at 18% 18%, rgb(255 255 255 / 24%), transparent 32%),
+    radial-gradient(circle at 82% 78%, rgb(191 219 254 / 30%), transparent 38%),
+    linear-gradient(145deg, #60a5fa 0%, #3b82f6 52%, #2563eb 100%);
 }
 
 .auth-brand-panel::before {
@@ -188,7 +188,7 @@ async function handleSubmit() {
 
 .brand-word-helper {
   justify-self: end;
-  color: #6fe0dc;
+  color: #dbeafe;
   font-size: 116px;
 }
 
@@ -233,7 +233,7 @@ async function handleSubmit() {
   overflow: hidden;
   background: var(--cpa-surface-solid);
   border: 1px solid color-mix(in srgb, var(--cpa-primary) 20%, var(--cpa-border));
-  box-shadow: 0 12px 28px -18px rgb(0 112 118 / 58%), 0 1px 2px rgb(24 45 53 / 8%);
+  box-shadow: 0 12px 28px -18px rgb(37 99 235 / 48%), 0 1px 2px rgb(15 23 42 / 8%);
 }
 
 .brand-mark img {
@@ -247,7 +247,7 @@ h1 {
   margin: 0;
   color: var(--cpa-text-strong);
   font-size: 24px;
-  font-weight: 800;
+  font-weight: 700;
   line-height: 1.18;
   text-wrap: pretty;
 }
@@ -264,6 +264,13 @@ p {
 
 .auth-card :deep(.n-form-item-label) {
   font-weight: 650;
+}
+
+:global(:root.dark) .auth-brand-panel {
+  background:
+    radial-gradient(circle at 18% 18%, rgb(96 165 250 / 24%), transparent 32%),
+    radial-gradient(circle at 82% 78%, rgb(37 99 235 / 22%), transparent 38%),
+    linear-gradient(145deg, #08152b 0%, #102a52 52%, #0a1830 100%);
 }
 
 @media (max-width: 1320px) {

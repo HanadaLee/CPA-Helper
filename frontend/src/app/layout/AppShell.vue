@@ -356,7 +356,7 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
 
 <template>
   <SidebarProvider class="app-shell" :default-open="true">
-    <Sidebar class="app-sidebar" variant="inset" collapsible="icon">
+    <Sidebar class="app-sidebar" collapsible="icon">
       <SidebarHeader class="sidebar-brand-header">
         <SidebarMenu>
           <SidebarMenuItem>
@@ -522,11 +522,11 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
   height: 32px;
   flex: 0 0 32px;
   place-items: center;
-  border: 1px solid color-mix(in srgb, var(--cpa-primary) 16%, var(--cpa-border));
+  border: 1px solid var(--cpa-border);
   border-radius: 10px;
   overflow: hidden;
   background: var(--cpa-surface-solid);
-  box-shadow: 0 1px 2px rgb(23 54 57 / 8%);
+  box-shadow: 0 1px 2px rgb(15 23 42 / 6%);
 }
 
 .brand-mark img {
@@ -610,7 +610,7 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
   min-height: 0;
   min-width: 0;
   overflow: hidden;
-  border: 1px solid var(--cpa-border);
+  border: 0;
   background: var(--cpa-canvas);
   box-shadow: var(--cpa-shadow-shell);
 }
@@ -658,7 +658,7 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
   left: 0;
   height: 2px;
   overflow: hidden;
-  background: rgb(0 154 168 / 12%);
+  background: color-mix(in srgb, var(--cpa-primary) 12%, transparent);
   pointer-events: none;
 }
 
@@ -765,10 +765,10 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
 }
 
 .app-sidebar :deep([data-sidebar="sidebar"]) {
-  border: 1px solid color-mix(in srgb, var(--cpa-border) 82%, transparent);
-  border-radius: calc(var(--cpa-radius) + 2px);
+  border: 0;
+  border-radius: 0;
   background: var(--sidebar);
-  box-shadow: var(--cpa-shadow-card);
+  box-shadow: none;
 }
 
 .sidebar-brand-header {
@@ -814,11 +814,9 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
 
 .app-sidebar :deep([data-sidebar="menu-button"][data-active="true"]) {
   color: var(--cpa-primary);
-  background:
-    linear-gradient(90deg, color-mix(in srgb, var(--cpa-primary) 10%, transparent), transparent),
-    var(--cpa-primary-wash);
-  border-color: color-mix(in srgb, var(--cpa-primary) 18%, var(--cpa-border));
-  box-shadow: 0 1px 2px rgb(20 76 76 / 5%);
+  background: var(--cpa-primary-wash);
+  border-color: color-mix(in srgb, var(--cpa-primary) 14%, var(--cpa-border));
+  box-shadow: none;
 }
 
 .sidebar-user-footer {
@@ -898,8 +896,8 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
   height: 56px;
   padding: 0 20px;
   border-bottom: 1px solid var(--cpa-border);
-  background: color-mix(in srgb, var(--cpa-canvas) 90%, transparent);
-  backdrop-filter: blur(18px);
+  background: color-mix(in srgb, var(--cpa-canvas) 94%, transparent);
+  backdrop-filter: blur(12px);
 }
 
 .navigation-trigger {
@@ -962,11 +960,17 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
   min-width: 0;
   min-height: 0;
   overflow: auto;
-  padding: 26px 30px 32px;
+  padding: 28px 32px 36px;
   scrollbar-gutter: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--content-scrollbar-thumb) transparent;
   background: var(--cpa-canvas);
+}
+
+.content-scroll :deep(.page) {
+  width: 100%;
+  max-width: 1920px;
+  margin-inline: auto;
 }
 
 .content-scroll::-webkit-scrollbar {
