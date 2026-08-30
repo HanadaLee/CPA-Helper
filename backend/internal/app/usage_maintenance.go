@@ -226,9 +226,9 @@ func (a *App) rollupUsageBatch(ctx context.Context, limit int) (processed int, e
 				bucket_start, usage_username, api_key_description, provider, model, source_key, source, auth, endpoint, failed,
 				record_count, failed_count, input_tokens, output_tokens, cached_tokens,
 				cache_read_tokens, cache_creation_tokens, cache_hit_tokens,
-				reasoning_tokens, total_tokens, cost_usd, unpriced_records, ttft_ms_sum, ttft_sample_count,
+				reasoning_tokens, total_tokens, zero_token_records, cost_usd, unpriced_records, ttft_ms_sum, ttft_sample_count,
 				first_timestamp, last_timestamp, updated_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(bucket_start, usage_username, api_key_description, provider, model, source_key, source, auth, endpoint, failed)
 			DO UPDATE SET
 				record_count = record_count + excluded.record_count,
@@ -241,6 +241,7 @@ func (a *App) rollupUsageBatch(ctx context.Context, limit int) (processed int, e
 				cache_hit_tokens = cache_hit_tokens + excluded.cache_hit_tokens,
 				reasoning_tokens = reasoning_tokens + excluded.reasoning_tokens,
 				total_tokens = total_tokens + excluded.total_tokens,
+				zero_token_records = zero_token_records + excluded.zero_token_records,
 				cost_usd = ROUND(cost_usd + excluded.cost_usd, 8),
 				unpriced_records = unpriced_records + excluded.unpriced_records,
 				ttft_ms_sum = ttft_ms_sum + excluded.ttft_ms_sum,
@@ -251,7 +252,7 @@ func (a *App) rollupUsageBatch(ctx context.Context, limit int) (processed int, e
 		`, key.bucketStart, key.usageUsername, key.apiKeyDescription, key.provider, key.model, key.sourceKey, key.source, key.auth, key.endpoint, key.failed,
 			metrics.records, metrics.failed, metrics.input, metrics.output, metrics.cached,
 			metrics.cacheRead, metrics.cacheCreate, metrics.cacheHit,
-			metrics.reasoning, metrics.tokens, mathRound(metrics.cost, 8), metrics.unpriced, metrics.ttftTotal, metrics.ttftCount,
+			metrics.reasoning, metrics.tokens, metrics.zeroToken, mathRound(metrics.cost, 8), metrics.unpriced, metrics.ttftTotal, metrics.ttftCount,
 			dbTime(metrics.firstSeenAt), dbTime(metrics.lastSeenAt), now); err != nil {
 			return 0, err
 		}
@@ -292,6 +293,7 @@ func mergeUsageAggregateMetrics(target *usageAggregateMetrics, value usageAggreg
 	target.cacheHit += value.cacheHit
 	target.reasoning += value.reasoning
 	target.tokens += value.tokens
+	target.zeroToken += value.zeroToken
 	target.cost = mathRound(target.cost+value.cost, 8)
 	target.unpriced += value.unpriced
 	target.ttftTotal += value.ttftTotal

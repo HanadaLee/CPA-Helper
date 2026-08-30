@@ -208,6 +208,7 @@ func requireSchemaShape(ctx context.Context, db *sql.DB) error {
 		{"usage_ingest_dedup", "dedupe_key"},
 		{"usage_hourly_rollups", "cost_usd"},
 		{"usage_hourly_rollups", "cache_creation_tokens"},
+		{"usage_hourly_rollups", "zero_token_records"},
 		{"usage_rollup_state", "last_rolled_usage_id"},
 		{"app_settings", "usage_detail_retention_days"},
 		{"model_prices", "request_usd"},

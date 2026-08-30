@@ -41,9 +41,10 @@ type usageRecordDetailResponse struct {
 }
 
 type usageSummaryResponse struct {
-	Start         string   `json:"start"`
-	End           string   `json:"end"`
-	AverageTTFTMS *float64 `json:"average_ttft_ms"`
+	Start            string   `json:"start"`
+	End              string   `json:"end"`
+	AverageTTFTMS    *float64 `json:"average_ttft_ms"`
+	ZeroTokenRecords int      `json:"zero_token_records"`
 }
 
 type usageOverviewDistributionsResponse struct {
@@ -192,9 +193,9 @@ func TestUsageRecordsExposeReasoningEffortTTFTAndSummaryAverage(t *testing.T) {
 		DedupeKey:    "ttft-2",
 		RawJSON:      `{"request_id":"req-ttft-2"}`,
 		TTFTMS:       &secondTTFT,
-		InputTokens:  10,
-		OutputTokens: 2,
-		TotalTokens:  12,
+		InputTokens:  0,
+		OutputTokens: 0,
+		TotalTokens:  0,
 	})
 	seedUsageRecordWithValues(t, dataDir, usageRecordSeed{
 		Timestamp:    "2026-05-16T16:39:00+08:00",
@@ -247,6 +248,9 @@ func TestUsageRecordsExposeReasoningEffortTTFTAndSummaryAverage(t *testing.T) {
 	requestJSON(t, handler, http.MethodGet, "/api/usage/summary?scope=admin&start=2026-05-16T00:00:00&end=2026-05-17T00:00:00", nil, cookies, &summary)
 	if summary.AverageTTFTMS == nil || *summary.AverageTTFTMS != 500 {
 		t.Fatalf("average_ttft_ms = %#v, want 500", summary.AverageTTFTMS)
+	}
+	if summary.ZeroTokenRecords != 1 {
+		t.Fatalf("zero_token_records = %d, want 1", summary.ZeroTokenRecords)
 	}
 
 	overview := usageOverviewDistributionsResponse{}

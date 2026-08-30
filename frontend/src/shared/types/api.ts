@@ -354,6 +354,7 @@ export interface UsageSummary {
   cache_hit_tokens: number
   reasoning_tokens: number
   total_tokens: number
+  zero_token_records: number
   average_ttft_ms: number | null
   estimated_cost_usd: number
   unpriced_records: number

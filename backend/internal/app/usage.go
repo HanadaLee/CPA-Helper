@@ -882,6 +882,7 @@ func usageSummaryFromRecords(filters UsageFilters, records []UsageRecord, prices
 	failed := 0
 	input, output, cached, reasoning, total := 0, 0, 0, 0, 0
 	cacheHit := 0
+	zeroToken := 0
 	estimated := 0.0
 	unpriced := 0
 	ttftTotal := 0.0
@@ -895,7 +896,11 @@ func usageSummaryFromRecords(filters UsageFilters, records []UsageRecord, prices
 		cached += record.CachedTokens
 		cacheHit += usageCacheHitTokens(record)
 		reasoning += record.ReasoningTokens
-		total += usageAggregateTotalTokens(record)
+		recordTotal := usageAggregateTotalTokens(record)
+		total += recordTotal
+		if recordTotal == 0 {
+			zeroToken++
+		}
 		amount, isUnpriced := recordCost(record, prices)
 		estimated = mathRound(estimated+amount, 8)
 		if isUnpriced {
@@ -923,6 +928,7 @@ func usageSummaryFromRecords(filters UsageFilters, records []UsageRecord, prices
 		"cache_hit_tokens":   cacheHit,
 		"reasoning_tokens":   reasoning,
 		"total_tokens":       total,
+		"zero_token_records": zeroToken,
 		"estimated_cost_usd": estimated,
 		"unpriced_records":   unpriced,
 		"average_ttft_ms":    averageTTFTMS(ttftTotal, ttftCount),

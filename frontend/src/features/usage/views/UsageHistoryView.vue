@@ -6,8 +6,6 @@ import {
   CircleDollarSign,
   ClipboardList,
   Gauge,
-  Layers3,
-  ShieldCheck,
   Timer,
   Zap,
 } from 'lucide-vue-next'
@@ -89,6 +87,7 @@ interface HourActivityItem {
 }
 
 const AUTO_REFRESH_INTERVAL_MS = 10_000
+const RATE_WINDOW_MINUTES = 30
 const HOUR_MS = 60 * 60 * 1000
 const DAY_MS = 24 * HOUR_MS
 const DISTRIBUTION_CHART_COLORS = [
@@ -382,9 +381,7 @@ const dashboardRangeLabel = computed(() => {
   return `${formatMetricRangeTime(range[0])} - ${formatMetricRangeTime(range[1])}`
 })
 
-const rateRangeLabel = computed(() =>
-  activeQuickRange.value === 'today' ? t('近 30 分钟', 'Last 30 minutes') : dashboardRangeLabel.value,
-)
+const rateRangeLabel = computed(() => t('近 30 分钟', 'Last 30 minutes'))
 
 function formatMetricRangeTime(value: number): string {
   return new Intl.DateTimeFormat(currentLanguage.value === 'zh' ? 'zh-CN' : 'en-US', {
@@ -686,23 +683,6 @@ function formatLatency(value: number | null | undefined): string {
   return `${formatInteger(Math.round(value))} ms`
 }
 
-function parseAPITime(value: string | null | undefined): number | null {
-  if (!value) {
-    return null
-  }
-  const parsed = new Date(value).getTime()
-  return Number.isNaN(parsed) ? null : parsed
-}
-
-function summaryDurationMinutes(value: UsageSummary | null): number {
-  const start = parseAPITime(value?.start)
-  const end = parseAPITime(value?.end)
-  if (start === null || end === null || end <= start) {
-    return 1
-  }
-  return Math.max(1, (end - start) / 60_000)
-}
-
 const successRate = computed(() => {
   const currentSummary = summary.value
   if (!currentSummary || currentSummary.total_records === 0) {
@@ -719,9 +699,7 @@ const failedRate = computed(() => {
   return currentSummary.failed_records / currentSummary.total_records
 })
 
-const rateSummary = computed(() =>
-  activeQuickRange.value === 'today' && realtimeSummary.value ? realtimeSummary.value : summary.value,
-)
+const rateSummary = computed(() => realtimeSummary.value)
 
 // 缓存命中率 = provider-aware cache-hit tokens / aggregated input tokens,
 // capped at 100% (contract pinned in the task #30 thread).
@@ -737,7 +715,12 @@ const cacheHitRate = computed(() => {
 
 const requestsPerMinute = computed(() => {
   const currentSummary = rateSummary.value
-  return (currentSummary?.total_records ?? 0) / summaryDurationMinutes(currentSummary)
+  return (currentSummary?.total_records ?? 0) / RATE_WINDOW_MINUTES
+})
+
+const tokensPerMinute = computed(() => {
+  const currentSummary = rateSummary.value
+  return (currentSummary?.total_tokens ?? 0) / RATE_WINDOW_MINUTES
 })
 
 function quotaValueText(quota: UserQuotaStatus | null): string {
@@ -790,36 +773,9 @@ const metricCards = computed<MetricCardConfig[]>(() => {
       value: formatInteger(currentSummary?.total_records ?? 0),
       icon: ClipboardList,
       tone: 'blue',
-      footnote: dashboardRangeLabel.value,
-    },
-    {
-      key: 'success',
-      label: t('成功率', 'Success rate'),
-      value: formatPercent(successRate.value),
-      icon: ShieldCheck,
-      tone: 'green',
       footnote: t(
-        `${formatInteger(currentSummary?.success_records ?? 0)} 成功 / ${formatInteger(
-          currentSummary?.total_records ?? 0,
-        )} 请求`,
-        `${formatInteger(currentSummary?.success_records ?? 0)} succeeded / ${formatInteger(
-          currentSummary?.total_records ?? 0,
-        )} requests`,
-      ),
-    },
-    {
-      key: 'total_tokens',
-      label: t('总 Token', 'Total tokens'),
-      value: formatCompact(currentSummary?.total_tokens ?? 0),
-      icon: Layers3,
-      tone: 'purple',
-      footnote: t(
-        `输入 ${formatCompact(currentSummary?.input_tokens ?? 0)} / 输出 ${formatCompact(
-          currentSummary?.output_tokens ?? 0,
-        )}`,
-        `Input ${formatCompact(currentSummary?.input_tokens ?? 0)} / output ${formatCompact(
-          currentSummary?.output_tokens ?? 0,
-        )}`,
+        `失败数 ${formatInteger(currentSummary?.failed_records ?? 0)}  成功率 ${formatPercent(successRate.value)}`,
+        `Failed ${formatInteger(currentSummary?.failed_records ?? 0)}  success rate ${formatPercent(successRate.value)}`,
       ),
     },
     {
@@ -828,7 +784,10 @@ const metricCards = computed<MetricCardConfig[]>(() => {
       value: formatPercent(cacheHitRate.value),
       icon: Zap,
       tone: 'purple',
-      footnote: dashboardRangeLabel.value,
+      footnote: t(
+        `缓存 Token ${formatCompact(currentSummary?.cache_hit_tokens ?? 0)}`,
+        `Cached tokens ${formatCompact(currentSummary?.cache_hit_tokens ?? 0)}`,
+      ),
     },
     {
       key: 'rpm',
@@ -839,26 +798,34 @@ const metricCards = computed<MetricCardConfig[]>(() => {
       footnote: rateRangeLabel.value,
     },
     {
+      key: 'tpm',
+      label: 'TPM',
+      value: formatRate(tokensPerMinute.value),
+      icon: Gauge,
+      tone: 'purple',
+      footnote: rateRangeLabel.value,
+    },
+    {
       key: 'average_ttft',
       label: t('平均首字耗时', 'Avg TTFT'),
       value: formatLatency(currentSummary?.average_ttft_ms ?? null),
       icon: Timer,
       tone: 'teal',
-      footnote: dashboardRangeLabel.value,
+      footnote: t(
+        `零 Token ${formatInteger(currentSummary?.zero_token_records ?? 0)} 次`,
+        `Zero-token ${formatInteger(currentSummary?.zero_token_records ?? 0)} requests`,
+      ),
     },
     {
       key: 'cost',
-      label: t('估算费用', 'Estimated cost'),
+      label: t('费用', 'Cost'),
       value: formatUsd(currentSummary?.estimated_cost_usd ?? 0),
       icon: CircleDollarSign,
       tone: 'green',
-      footnote:
-        (currentSummary?.unpriced_records ?? 0) > 0
-          ? t(
-              `未计价 ${formatInteger(currentSummary?.unpriced_records ?? 0)} 条`,
-              `${formatInteger(currentSummary?.unpriced_records ?? 0)} unpriced records`,
-            )
-          : t('按当前价格估算', 'Estimated at current prices'),
+      footnote: t(
+        `总 Token ${formatCompact(currentSummary?.total_tokens ?? 0)}`,
+        `Total tokens ${formatCompact(currentSummary?.total_tokens ?? 0)}`,
+      ),
     },
   ]
 })
@@ -1854,8 +1821,7 @@ onBeforeUnmount(() => {
 }
 
 .dashboard-metric-grid {
-  /* 7 cards since the cache-hit-rate metric: share one row on wide screens
-     and wrap naturally below instead of the global 6-column grid. */
+  /* Keep the six usage metrics on one row where space allows. */
   grid-template-columns: repeat(auto-fit, minmax(138px, 1fr));
   gap: 8px;
 }

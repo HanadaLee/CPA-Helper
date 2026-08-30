@@ -30,6 +30,10 @@ func TestUsageAggregateBuilderMatchesLegacyResponses(t *testing.T) {
 			Timestamp: start.Add(12 * time.Hour), UsageUsername: &admin, APIKeyDescription: &desktop,
 			Provider: &openAI, Model: &gpt, Endpoint: &chat, InputTokens: 4, OutputTokens: 1, TotalTokens: 5,
 		},
+		{
+			Timestamp: start.Add(13 * time.Hour), UsageUsername: &admin, APIKeyDescription: &desktop,
+			Provider: &openAI, Model: &gpt, Endpoint: &chat,
+		},
 	}
 	prices := map[[2]string]ModelPrice{
 		priceKey(openAI, gpt):    {Provider: openAI, Model: gpt, InputUSDPerMillion: 1, OutputUSDPerMillion: 2, CacheReadUSDPerMillion: 0.5},

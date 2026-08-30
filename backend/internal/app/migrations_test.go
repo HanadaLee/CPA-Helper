@@ -168,6 +168,9 @@ func TestRunMigrationsCreatesGooseVersionAndFinalSchema(t *testing.T) {
 	if !testTableExists(t, app.db, "usage_ingest_dedup") || !testTableExists(t, app.db, "usage_hourly_rollups") || !testTableExists(t, app.db, "usage_rollup_state") {
 		t.Fatal("usage retention tables were not created")
 	}
+	if !testColumnExists(t, app.db, "usage_hourly_rollups", "zero_token_records") {
+		t.Fatal("usage_hourly_rollups.zero_token_records was not created")
+	}
 	if !testTableExists(t, app.db, "user_card_shop_favorites") {
 		t.Fatal("user_card_shop_favorites was not created")
 	}

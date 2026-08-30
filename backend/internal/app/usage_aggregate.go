@@ -28,6 +28,7 @@ type usageMetricTotals struct {
 	cacheHit  int
 	reasoning int
 	tokens    int
+	zeroToken int
 	cost      float64
 	unpriced  int
 	ttftTotal float64
@@ -45,6 +46,7 @@ type usageAggregateMetrics struct {
 	cacheHit    int
 	reasoning   int
 	tokens      int
+	zeroToken   int
 	cost        float64
 	unpriced    int
 	ttftTotal   float64
@@ -118,6 +120,7 @@ func (b *usageAggregateBuilder) addMetrics(record UsageRecord, metrics usageAggr
 		b.summary.cacheHit += metrics.cacheHit
 		b.summary.reasoning += metrics.reasoning
 		b.summary.tokens += metrics.tokens
+		b.summary.zeroToken += metrics.zeroToken
 		b.summary.cost = mathRound(b.summary.cost+metrics.cost, 8)
 		b.summary.unpriced += metrics.unpriced
 		b.summary.ttftTotal += metrics.ttftTotal
@@ -220,6 +223,7 @@ func (b *usageAggregateBuilder) summaryResponse() map[string]any {
 		"cache_hit_tokens":   b.summary.cacheHit,
 		"reasoning_tokens":   b.summary.reasoning,
 		"total_tokens":       b.summary.tokens,
+		"zero_token_records": b.summary.zeroToken,
 		"estimated_cost_usd": b.summary.cost,
 		"unpriced_records":   b.summary.unpriced,
 		"average_ttft_ms":    averageTTFTMS(b.summary.ttftTotal, b.summary.ttftCount),
@@ -468,7 +472,7 @@ func walkHourlyRollupEntries(ctx context.Context, queryer usageAggregateQueryer,
 		SELECT CAST(bucket_start AS TEXT), usage_username, api_key_description, provider, model, endpoint, failed,
 		       record_count, failed_count, input_tokens, output_tokens, cached_tokens,
 		       cache_read_tokens, cache_creation_tokens, cache_hit_tokens,
-		       reasoning_tokens, total_tokens, cost_usd, unpriced_records, ttft_ms_sum, ttft_sample_count,
+		       reasoning_tokens, total_tokens, zero_token_records, cost_usd, unpriced_records, ttft_ms_sum, ttft_sample_count,
 		       CAST(first_timestamp AS TEXT), CAST(last_timestamp AS TEXT)
 		FROM usage_hourly_rollups `+where, args...)
 	if err != nil {
@@ -482,7 +486,7 @@ func walkHourlyRollupEntries(ctx context.Context, queryer usageAggregateQueryer,
 		if err := rows.Scan(&bucket, &username, &description, &provider, &model, &endpoint, &record.Failed,
 			&metrics.records, &metrics.failed, &metrics.input, &metrics.output, &metrics.cached,
 			&metrics.cacheRead, &metrics.cacheCreate, &metrics.cacheHit,
-			&metrics.reasoning, &metrics.tokens, &metrics.cost, &metrics.unpriced, &metrics.ttftTotal, &metrics.ttftCount,
+			&metrics.reasoning, &metrics.tokens, &metrics.zeroToken, &metrics.cost, &metrics.unpriced, &metrics.ttftTotal, &metrics.ttftCount,
 			&firstTimestamp, &lastTimestamp); err != nil {
 			return err
 		}
@@ -562,6 +566,9 @@ func usageMetricsForRecord(record UsageRecord, cost float64, unpriced bool) usag
 	}
 	if unpriced {
 		metrics.unpriced = 1
+	}
+	if metrics.tokens == 0 {
+		metrics.zeroToken = 1
 	}
 	if record.TTFTMS != nil && *record.TTFTMS > 0 {
 		metrics.ttftTotal = *record.TTFTMS
