@@ -64,24 +64,20 @@ const ALL_RECORDS_START_PARAM = '0001-01-01T00:00:00+08:00'
 const ALL_RECORDS_END_PARAM = '9999-12-31T23:59:59+08:00'
 const RECORDS_TABLE_MIN_ROW_HEIGHT = 40
 const RECORDS_TABLE_COLUMN_WIDTHS = {
-  timestamp: 150,
-  user: 132,
-  apiKeyDescription: 118,
-  model: 132,
-  source: 190,
-  failed: 68,
-  ttft: 110,
-  latency: 110,
-  inputTokens: 100,
-  outputTokens: 145,
-  reasoningTokens: 100,
-  cachedTokens: 160,
-  totalTokens: 120,
-  estimatedCost: 110,
-  provider: 120,
-  endpoint: 190,
-  requestId: 150,
-  actions: 86,
+  timestamp: 138,
+  user: 118,
+  apiKeyDescription: 110,
+  model: 152,
+  failed: 72,
+  ttft: 92,
+  latency: 92,
+  inputTokens: 86,
+  outputTokens: 132,
+  cachedTokens: 106,
+  totalTokens: 108,
+  provider: 100,
+  requestId: 132,
+  actions: 72,
 } as const
 const ADMIN_RECORDS_TABLE_SCROLL_X = Object.values(RECORDS_TABLE_COLUMN_WIDTHS).reduce(
   (total, width) => total + width,
@@ -89,8 +85,7 @@ const ADMIN_RECORDS_TABLE_SCROLL_X = Object.values(RECORDS_TABLE_COLUMN_WIDTHS).
 )
 const ACCOUNT_RECORDS_TABLE_SCROLL_X =
   ADMIN_RECORDS_TABLE_SCROLL_X -
-  RECORDS_TABLE_COLUMN_WIDTHS.user -
-  RECORDS_TABLE_COLUMN_WIDTHS.source
+  RECORDS_TABLE_COLUMN_WIDTHS.user
 const RECORDS_TABLE_FALLBACK_MAX_HEIGHT = 'max(320px, calc(100dvh - 318px))'
 const desktopRecordsLayoutQuery = window.matchMedia('(min-width: 861px)')
 
@@ -803,16 +798,6 @@ const columns = computed<DataTableColumns<UsageRecordListItem>>(() => [
     ellipsis: { tooltip: true },
     render: (row) => formatModelWithReasoning(row),
   },
-  ...(isAccountScope.value
-    ? []
-    : [
-        {
-          title: t('来源', 'Source'),
-          key: 'source',
-          width: RECORDS_TABLE_COLUMN_WIDTHS.source,
-          ellipsis: { tooltip: true },
-        },
-      ]),
   {
     title: t('结果', 'Result'),
     key: 'failed',
@@ -849,12 +834,6 @@ const columns = computed<DataTableColumns<UsageRecordListItem>>(() => [
     render: renderOutputWithTps,
   },
   {
-    title: t('思考', 'Reasoning'),
-    key: 'reasoning_tokens',
-    width: RECORDS_TABLE_COLUMN_WIDTHS.reasoningTokens,
-    render: (row) => formatInteger(row.reasoning_tokens),
-  },
-  {
     title: t('缓存', 'Cache'),
     key: 'cached_tokens',
     width: RECORDS_TABLE_COLUMN_WIDTHS.cachedTokens,
@@ -867,21 +846,9 @@ const columns = computed<DataTableColumns<UsageRecordListItem>>(() => [
     render: (row) => formatInteger(row.total_tokens),
   },
   {
-    title: t('费用', 'Cost'),
-    key: 'estimated_cost_usd',
-    width: RECORDS_TABLE_COLUMN_WIDTHS.estimatedCost,
-    render: (row) => formatUsd(row.estimated_cost_usd),
-  },
-  {
     title: t('服务商', 'Provider'),
     key: 'provider',
     width: RECORDS_TABLE_COLUMN_WIDTHS.provider,
-    ellipsis: { tooltip: true },
-  },
-  {
-    title: t('接口', 'Endpoint'),
-    key: 'endpoint',
-    width: RECORDS_TABLE_COLUMN_WIDTHS.endpoint,
     ellipsis: { tooltip: true },
   },
   {

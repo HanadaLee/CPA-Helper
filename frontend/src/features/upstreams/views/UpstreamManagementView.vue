@@ -23,7 +23,8 @@ import {
   useMessage,
   type DataTableColumns,
 } from '@/shared/ui/app-kit'
-import { Activity, Clock3, Eye, Network, Pencil, Plus, RefreshCw, Search, ServerCog, Trash2 } from '@lucide/vue'
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from '@/components/ui/input-group'
+import { Activity, Clock3, Eye, Network, Pencil, Plus, RefreshCw, Search, ServerCog, Trash2, X } from '@lucide/vue'
 
 import {
   listUpstreamSections,
@@ -328,10 +329,6 @@ function iconButton(icon: typeof Eye, label: string, onClick: () => void, danger
     { text: true, type: danger ? 'error' : 'default', title: label, 'aria-label': label, onClick },
     { icon: () => h(AppIcon, { component: icon, size: 17 }) },
   )
-}
-
-function renderSearchIcon() {
-  return h(AppIcon, { component: Search })
 }
 
 function selectSection(name: UpstreamSection) {
@@ -665,9 +662,24 @@ void loadUpstreams()
               </div>
             </div>
             <div class="provider-panel__actions">
-              <AppInput v-model:value="searchText" clearable :placeholder="t('搜索密钥、地址或前缀', 'Search keys, URLs, or prefixes')">
-                <template #prefix><component :is="renderSearchIcon" /></template>
-              </AppInput>
+              <InputGroup class="provider-search">
+                <InputGroupAddon>
+                  <Search :size="16" aria-hidden="true" />
+                </InputGroupAddon>
+                <InputGroupInput
+                  v-model="searchText"
+                  :placeholder="t('搜索密钥、地址或前缀', 'Search keys, URLs, or prefixes')"
+                />
+                <InputGroupAddon v-if="searchText" align="inline-end">
+                  <InputGroupButton
+                    :aria-label="t('清空搜索', 'Clear search')"
+                    :title="t('清空搜索', 'Clear search')"
+                    @click="searchText = ''"
+                  >
+                    <X :size="14" aria-hidden="true" />
+                  </InputGroupButton>
+                </InputGroupAddon>
+              </InputGroup>
               <AppButton type="primary" :disabled="isLoading" @click="openEditor()">
                 <template #icon><AppIcon :component="Plus" /></template>
                 {{ t('新建', 'New') }}
@@ -903,7 +915,7 @@ void loadUpstreams()
 .provider-panel__title h2 { margin: 0; font-size: 17px; }
 .provider-panel__title p { margin: 2px 0 0; color: var(--cpa-text-muted); font-size: 11px; }
 .provider-panel__actions { display: flex; flex: 0 1 380px; align-items: center; justify-content: flex-end; gap: 8px; margin-left: auto; }
-.provider-panel__actions :deep(.n-input) { min-width: 220px; }
+.provider-search { min-width: 220px; }
 .provider-table-shell { min-width: 0; padding: 16px; }
 :global(.upstream-row-actions) { width: 100%; justify-content: flex-end; }
 

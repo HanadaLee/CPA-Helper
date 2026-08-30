@@ -881,7 +881,7 @@ onMounted(refresh)
             @keyup.enter="saveApiKey"
           />
         </AppFormItem>
-        <div class="modal-actions">
+        <div class="modal-actions api-key-editor-actions">
           <AppButton secondary :disabled="isSaving" @click="editorVisible = false">{{ t('取消', 'Cancel') }}</AppButton>
           <AppButton
             type="primary"
@@ -1060,9 +1060,18 @@ onMounted(refresh)
 }
 
 .api-endpoint-type-options {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  width: 100%;
   max-width: 100%;
-  flex-wrap: wrap;
+}
+
+.api-endpoint-type-options :deep(.n-radio-button) {
+  justify-content: center;
+  min-width: 0;
+  padding-inline: 8px;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .api-key-metrics {
@@ -1115,6 +1124,10 @@ onMounted(refresh)
   gap: 8px;
 }
 
+.api-key-editor-actions {
+  margin-top: 12px;
+}
+
 .request-test {
   display: grid;
   gap: 14px;
@@ -1137,6 +1150,11 @@ onMounted(refresh)
   color: var(--cpa-text-muted);
   font-size: 12px;
   font-weight: 700;
+}
+
+.api-endpoint-panel .request-endpoint-switch {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
 }
 
 .request-guide-list {
@@ -1354,6 +1372,14 @@ onMounted(refresh)
 
   .request-guide-row {
     grid-template-columns: 1fr;
+  }
+
+  .api-endpoint-panel .request-endpoint-switch {
+    grid-template-columns: 1fr;
+  }
+
+  .api-endpoint-type-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .request-example-head,

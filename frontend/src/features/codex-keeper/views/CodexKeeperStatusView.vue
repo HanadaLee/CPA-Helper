@@ -129,8 +129,8 @@ const AUTH_FILE_MAX_SIZE = 10 * 1024 * 1024
 const CODEX_FIVE_HOUR_WINDOW_SECONDS = 5 * 60 * 60
 const CODEX_WEEK_WINDOW_SECONDS = 7 * 24 * 60 * 60
 const CODEX_MONTH_WINDOW_SECONDS = 30 * 24 * 60 * 60
-const accountManageTableScrollX = 1622
-const accountReadOnlyTableScrollX = 1426
+const accountManageTableScrollX = 1664
+const accountReadOnlyTableScrollX = 1468
 const KEEPER_STATUS_POLL_INTERVAL_MS = 3000
 const REFRESH_STATUS_POLL_INTERVAL_MS = 1500
 const OAUTH_STATUS_POLL_INTERVAL_MS = 3000
@@ -253,12 +253,6 @@ const priorityFilterOptions = computed<Array<{ label: string; value: PriorityFil
   { label: t('临时降级', 'Temporary Downgrade'), value: 'minusOne' },
   { label: t('手动低优先 <-1', 'Manual Low Priority <-1'), value: 'low' },
 ])
-const accountDisplaySizeOptions = computed<Array<{ label: string; value: AccountDisplaySize }>>(() => [
-  { label: '50', value: 50 },
-  { label: '100', value: 100 },
-  { label: '150', value: 150 },
-  { label: '200', value: 200 },
-])
 const quotaSortOptions = computed(() => [
   { label: t('天', 'Day'), key: 'quotaDay' },
   { label: t('月/周', 'Month/Week'), key: 'quotaWeek' },
@@ -350,24 +344,8 @@ const activeFilterCount = computed(
     Number(filters.status !== 'all'),
 )
 const accountListPageCount = computed(() => accountPageCount(sortedListAccounts.value.length))
-const showAccountPagination = computed(() =>
-  shouldShowAccountPagination(sortedListAccounts.value.length),
-)
 const visibleListAccounts = computed(() =>
   pagedAccounts(sortedListAccounts.value, accountListPage.value),
-)
-const accountRangeStart = computed(() => {
-  if (sortedListAccounts.value.length === 0) {
-    return 0
-  }
-  const page = clampPage(accountListPage.value, accountListPageCount.value)
-  return (page - 1) * accountDisplaySize.value + 1
-})
-const accountRangeEnd = computed(() =>
-  Math.min(
-    clampPage(accountListPage.value, accountListPageCount.value) * accountDisplaySize.value,
-    sortedListAccounts.value.length,
-  ),
 )
 const activeQuotaSortLabel = computed(() => {
   if (accountSort.key === 'quotaDay') {
@@ -382,10 +360,6 @@ const sortDirectionMark = computed(() => (accountSort.direction === 'asc' ? '↑
 
 function accountPageCount(rowCount: number): number {
   return Math.max(1, Math.ceil(rowCount / accountDisplaySize.value))
-}
-
-function shouldShowAccountPagination(rowCount: number): boolean {
-  return rowCount > accountDisplaySize.value
 }
 
 function pagedAccounts(source: CodexKeeperAccount[], page: number): CodexKeeperAccount[] {
@@ -2260,13 +2234,13 @@ const baseColumns = computed<DataTableColumns<CodexKeeperAccount>>(() => [
   {
     title: t('窗口用量', 'Window Usage'),
     key: 'quota_usage',
-    width: 250,
+    width: 266,
     render: (row) => renderQuotaUsageCell(row),
   },
   {
     title: t('窗口预测', 'Window Projection'),
     key: 'quota_prediction',
-    width: 90,
+    width: 116,
     render: (row) => renderQuotaPredictionCell(row),
   },
   {
@@ -2304,7 +2278,7 @@ const manageActionColumn = computed<DataTableColumns<CodexKeeperAccount>[number]
             {
               size: 'small',
               quaternary: true,
-              type: row.disabled ? 'primary' : 'warning',
+              style: { color: row.disabled ? 'var(--cpa-primary)' : 'var(--cpa-warning)' },
               disabled: isRowActing(row) || isBulkOperationRunning.value,
               loading: isActionLoading(row, 'toggle'),
               onClick: () => row.disabled ? confirmEnableAccount(row) : confirmDisableAccount(row),
@@ -2316,7 +2290,7 @@ const manageActionColumn = computed<DataTableColumns<CodexKeeperAccount>[number]
             {
               size: 'small',
               quaternary: true,
-              type: 'error',
+              style: { color: 'var(--cpa-danger)' },
               disabled: isRowActing(row) || isBulkOperationRunning.value,
               loading: isActionLoading(row, 'delete'),
               onClick: () => confirmDeleteAccount(row),
@@ -2328,7 +2302,7 @@ const manageActionColumn = computed<DataTableColumns<CodexKeeperAccount>[number]
             {
               size: 'small',
               quaternary: true,
-              type: 'primary',
+              style: { color: 'var(--cpa-primary)' },
               disabled: isRowActing(row) || isBulkOperationRunning.value,
               loading: isActionLoading(row, 'refresh'),
               onClick: () => refreshAccount(row),
@@ -2699,27 +2673,12 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="account-table-footer">
-        <div class="account-range-controls">
-          <span class="account-range-text">
-            <span>{{ t(`第 ${accountRangeStart} - ${accountRangeEnd} 条`, `Items ${accountRangeStart} - ${accountRangeEnd}`) }}</span>
-            <span>{{ t(`共 ${sortedListAccounts.length} 条`, `${sortedListAccounts.length} total`) }}</span>
-          </span>
-          <div class="page-size-control">
-            <span>{{ t('每页显示', 'Show') }}</span>
-            <AppSelect
-              v-model:value="accountDisplaySize"
-              class="display-size-select"
-              size="small"
-              :options="accountDisplaySizeOptions"
-            />
-            <span>{{ t('条', 'per page') }}</span>
-          </div>
-        </div>
         <AppPagination
-          v-if="showAccountPagination"
           v-model:page="accountListPage"
+          v-model:page-size="accountDisplaySize"
+          show-size-picker
           size="small"
-          :page-size="accountDisplaySize"
+          :page-sizes="[50, 100, 150, 200]"
           :item-count="sortedListAccounts.length"
         />
       </div>
@@ -3309,44 +3268,11 @@ onBeforeUnmount(() => {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 10px;
   padding: 12px 14px;
   border-top: 1px solid var(--cpa-border);
   background: var(--cpa-surface-raised);
-}
-
-.account-range-controls {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 14px;
-  min-width: 0;
-}
-
-.account-range-text,
-.page-size-control {
-  color: var(--cpa-text-muted);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.account-range-text {
-  display: inline-flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.page-size-control {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-}
-
-.display-size-select {
-  flex-shrink: 0;
-  width: 82px;
 }
 
 .account-section {
@@ -3965,8 +3891,8 @@ onBeforeUnmount(() => {
   }
 
   .account-table-footer {
-    align-items: flex-start;
-    flex-direction: column;
+    justify-content: flex-start;
+    overflow-x: auto;
   }
 
   .sort-control-row {

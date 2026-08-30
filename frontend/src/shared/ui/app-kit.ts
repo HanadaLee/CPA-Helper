@@ -1133,8 +1133,7 @@ function dateValueToInputDate(value: { year: number, month: number, day: number 
   return `${String(value.year).padStart(4, '0')}-${String(value.month).padStart(2, '0')}-${String(value.day).padStart(2, '0')}`
 }
 
-function formatRangeLabel(value: [number, number] | null | undefined) {
-  if (!value) return localize('选择日期与时间', 'Select date and time')
+function formatRangePart(timestamp: number) {
   const formatter = new Intl.DateTimeFormat(localize('zh-CN', 'en-US'), {
     year: 'numeric',
     month: '2-digit',
@@ -1143,7 +1142,7 @@ function formatRangeLabel(value: [number, number] | null | undefined) {
     minute: '2-digit',
     hourCycle: 'h23',
   })
-  return `${formatter.format(new Date(value[0]))} – ${formatter.format(new Date(value[1]))}`
+  return formatter.format(new Date(timestamp))
 }
 
 export const AppDateTimeRange = defineComponent({
@@ -1224,6 +1223,23 @@ export const AppDateTimeRange = defineComponent({
       open.value = false
     }
 
+    const renderRangeValue = () => {
+      if (!props.value) {
+        return h(
+          'span',
+          { class: 'col-span-3 truncate text-left text-muted-foreground' },
+          localize('选择日期与时间', 'Select date and time'),
+        )
+      }
+      const start = formatRangePart(props.value[0])
+      const end = formatRangePart(props.value[1])
+      return [
+        h('span', { class: 'n-date-range-start truncate text-left', title: start }, start),
+        h('span', { class: 'n-date-range-separator text-center text-muted-foreground' }, '—'),
+        h('span', { class: 'n-date-range-end truncate text-right', title: end }, end),
+      ]
+    }
+
     return () =>
       h('div', { ...attrs, class: cn('n-date-picker flex min-w-0 items-center gap-1 bg-transparent shadow-none', attrs.class as HTMLAttributes['class']) }, [
         h(Popover, {
@@ -1243,7 +1259,11 @@ export const AppDateTimeRange = defineComponent({
               } as never, {
                 default: () => [
                   h(CalendarDaysIcon, { 'data-icon': 'inline-start' }),
-                  h('span', { class: cn('truncate', !props.value && 'text-muted-foreground') }, formatRangeLabel(props.value)),
+                  h(
+                    'span',
+                    { class: 'n-date-range-value grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 tabular-nums' },
+                    renderRangeValue(),
+                  ),
                   h(ChevronDownIcon, { class: 'ml-auto text-muted-foreground', 'data-icon': 'inline-end' }),
                 ],
               }),
@@ -1530,13 +1550,18 @@ export const AppDataTable = defineComponent({
           h('div', { class: cn('n-scrollbar-container', props.flexHeight && 'h-full min-h-0 flex-1'), style: wrapperStyle }, [
             h(Table, { class: 'n-data-table-base-table w-full border-collapse text-sm', style: tableStyle }, {
               default: () => [
-                h(TableHeader, { class: 'n-data-table-thead sticky top-0 z-[3] bg-muted/80 backdrop-blur-sm' }, {
+                h(TableHeader, { class: 'n-data-table-thead sticky top-0 z-[3]' }, {
                   default: () => h(TableRow, { class: 'n-data-table-tr' }, {
                     default: () => props.columns.map((column, index) =>
                       h(TableHead, {
                         key: String(column.key ?? index),
-                        class: 'n-data-table-th h-10 px-3 text-left align-middle text-xs font-semibold tracking-[0.01em] text-foreground',
-                        style: { ...cellStyle(column, index), background: column.fixed ? 'var(--cpa-surface-muted)' : undefined },
+                        class: 'n-data-table-th h-10 bg-muted/80 px-3 text-left align-middle text-xs font-semibold tracking-[0.01em] text-foreground backdrop-blur-sm',
+                        style: {
+                          ...cellStyle(column, index),
+                          background: column.fixed ? 'var(--cpa-surface-muted)' : undefined,
+                          borderTopLeftRadius: index === 0 ? 'calc(var(--cpa-radius) - 1px)' : undefined,
+                          borderTopRightRadius: index === props.columns.length - 1 ? 'calc(var(--cpa-radius) - 1px)' : undefined,
+                        },
                       }, { default: () => renderHeader(column) as never }),
                     ),
                   }),
