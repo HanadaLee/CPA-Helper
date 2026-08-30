@@ -39,6 +39,7 @@ type AvailableModelPrice struct {
 	CacheReadUSDPerMillion     float64  `json:"cache_read_usd_per_million"`
 	CacheCreationUSDPerMillion float64  `json:"cache_creation_usd_per_million"`
 	RequestUSD                 *float64 `json:"request_usd"`
+	FastMultiplier             float64  `json:"fast_multiplier"`
 	BillingUnit                string   `json:"billing_unit"`
 }
 
@@ -163,6 +164,7 @@ func (a *App) availableModelsForUser(ctx context.Context, userID int) (Available
 				CacheReadUSDPerMillion:     price.CacheReadUSDPerMillion,
 				CacheCreationUSDPerMillion: price.CacheCreationUSDPerMillion,
 				RequestUSD:                 price.RequestUSD,
+				FastMultiplier:             price.FastMultiplier,
 				BillingUnit:                price.BillingUnit,
 			}
 		}

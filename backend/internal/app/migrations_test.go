@@ -37,6 +37,9 @@ func TestRunMigrationsCreatesGooseVersionAndFinalSchema(t *testing.T) {
 	if !testColumnExists(t, app.db, "usage_records", "reasoning_effort") {
 		t.Fatal("usage_records.reasoning_effort was not created")
 	}
+	if !testColumnExists(t, app.db, "usage_records", "request_service_tier") {
+		t.Fatal("usage_records.request_service_tier was not created")
+	}
 	if !testColumnExists(t, app.db, "usage_records", "ttft_ms") {
 		t.Fatal("usage_records.ttft_ms was not created")
 	}
@@ -75,6 +78,9 @@ func TestRunMigrationsCreatesGooseVersionAndFinalSchema(t *testing.T) {
 	}
 	if !testColumnExists(t, app.db, "model_prices", "request_usd") {
 		t.Fatal("model_prices.request_usd was not created")
+	}
+	if !testColumnExists(t, app.db, "model_prices", "fast_multiplier") {
+		t.Fatal("model_prices.fast_multiplier was not created")
 	}
 	if testColumnExists(t, app.db, "model_prices", "cached_usd_per_million") {
 		t.Fatal("old model_prices.cached_usd_per_million should not exist")

@@ -104,6 +104,7 @@ const form = reactive<ModelPricePayload>({
   cache_read_usd_per_million: 0,
   cache_creation_usd_per_million: 0,
   request_usd: null,
+  fast_multiplier: 1,
 })
 const proxyForm = reactive<LiteLLMProxySettingsPayload>({
   enabled: false,
@@ -292,12 +293,12 @@ const isRequestPriceForm = computed(() => billingUnitForModel(form.model) === 'r
 const priceSaveHint = computed(() =>
   isRequestPriceForm.value
     ? t(
-        'image 模型按每次成功调用固定金额计费，保存后会作为手动价格优先保留。',
-        'Image models are charged a fixed amount per successful call. Saved values are kept as manual prices with priority.',
+        'image 模型按每次成功调用固定金额计费；仅修改 FAST 倍率不会取消 LiteLLM 同步。',
+        'Image models are charged a fixed amount per successful call. Changing only the FAST multiplier keeps LiteLLM sync enabled.',
       )
     : t(
-        '保存后会作为手动价格，后续 LiteLLM 同步会优先保留。',
-        'Saved values are kept as manual prices and preserved by later LiteLLM syncs.',
+        '基础价格修改后会转为手动价格；仅修改 FAST 倍率不会取消 LiteLLM 同步。',
+        'Changing base prices makes them manual. Changing only the FAST multiplier keeps LiteLLM sync enabled.',
       ),
 )
 
@@ -376,6 +377,7 @@ function resetForm() {
   form.cache_read_usd_per_million = 0
   form.cache_creation_usd_per_million = 0
   form.request_usd = null
+  form.fast_multiplier = 1
 }
 
 async function refresh() {
@@ -400,6 +402,7 @@ function openCreate(prefill: Partial<ModelPricePayload> = {}) {
   form.cache_read_usd_per_million = prefill.cache_read_usd_per_million ?? 0
   form.cache_creation_usd_per_million = prefill.cache_creation_usd_per_million ?? 0
   form.request_usd = prefill.request_usd ?? null
+  form.fast_multiplier = prefill.fast_multiplier ?? 1
   modalOpen.value = true
 }
 
@@ -419,6 +422,7 @@ function openEdit(row: ModelPrice) {
   form.cache_read_usd_per_million = row.cache_read_usd_per_million
   form.cache_creation_usd_per_million = row.cache_creation_usd_per_million
   form.request_usd = row.request_usd
+  form.fast_multiplier = row.fast_multiplier
   modalOpen.value = true
 }
 
@@ -433,9 +437,14 @@ async function savePrice() {
     cache_read_usd_per_million: form.cache_read_usd_per_million,
     cache_creation_usd_per_million: form.cache_creation_usd_per_million,
     request_usd: requestUSD,
+    fast_multiplier: form.fast_multiplier,
   }
   if (!payload.provider || !payload.model) {
     message.error(t('服务商和模型不能为空', 'Provider and model are required'))
+    return
+  }
+  if (!Number.isFinite(payload.fast_multiplier) || payload.fast_multiplier <= 0) {
+    message.error(t('FAST 倍率必须大于 0', 'FAST multiplier must be greater than 0'))
     return
   }
   if (requestPriceMode && requestUSD === null) {
@@ -578,6 +587,10 @@ function renderRequestPriceValue(row: PriceDisplayRow) {
   return formatPriceValue(row.price.request_usd)
 }
 
+function renderFastMultiplier(row: PriceDisplayRow) {
+  return row.price ? `×${row.price.fast_multiplier}` : '-'
+}
+
 function renderModelCell(row: PriceDisplayRow) {
   return h('div', { class: 'model-cell' }, [
     h('div', { class: 'model-title-row' }, [
@@ -645,6 +658,12 @@ const columns = computed<DataTableColumns<PriceDisplayRow>>(() => [
     key: 'billing_unit',
     width: 100,
     render: renderBillingUnitCell,
+  },
+  {
+    title: t('FAST 倍率', 'FAST multiplier'),
+    key: 'fast_multiplier',
+    width: 110,
+    render: renderFastMultiplier,
   },
   {
     title: t('每次 ($)', 'Per call ($)'),
@@ -811,7 +830,7 @@ onBeforeUnmount(() => {
         :data="filteredPrices"
         :pagination="pagination"
         :row-key="rowKey"
-        :scroll-x="1620"
+        :scroll-x="1730"
       />
     </section>
 
@@ -829,6 +848,9 @@ onBeforeUnmount(() => {
           </NFormItem>
           <NFormItem :label="t('模型', 'Model')">
             <NInput v-model:value="form.model" />
+          </NFormItem>
+          <NFormItem :label="t('FAST 倍率', 'FAST multiplier')" class="wide-form-item">
+            <NInputNumber v-model:value="form.fast_multiplier" :min="0.01" :step="0.1" />
           </NFormItem>
           <NFormItem v-if="isRequestPriceForm" :label="t('每次调用价格 USD', 'Per-call price USD')" class="wide-form-item">
             <NInputNumber v-model:value="form.request_usd" :min="0" :placeholder="t('例如：0.04', 'Example: 0.04')" />

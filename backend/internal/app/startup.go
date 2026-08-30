@@ -211,6 +211,8 @@ func requireSchemaShape(ctx context.Context, db *sql.DB) error {
 		{"usage_rollup_state", "last_rolled_usage_id"},
 		{"app_settings", "usage_detail_retention_days"},
 		{"model_prices", "request_usd"},
+		{"model_prices", "fast_multiplier"},
+		{"usage_records", "request_service_tier"},
 		{"users", "quota_daily_usd"},
 		{"users", "quota_weekly_usd"},
 		{"user_quota_charges", "daily_deducted_usd"},

@@ -436,6 +436,7 @@ export interface UsageRecordListItem {
   provider: string | null
   model: string | null
   reasoning_effort: string | null
+  request_service_tier: string | null
   endpoint: string | null
   source: string | null
   request_id: string | null
@@ -477,6 +478,7 @@ export interface ModelPrice {
   cache_read_usd_per_million: number
   cache_creation_usd_per_million: number
   request_usd: number | null
+  fast_multiplier: number
   billing_unit: 'token' | 'request' | string
   source: 'manual' | 'litellm' | string
   source_model: string | null
@@ -493,6 +495,7 @@ export interface ModelPricePayload {
   cache_read_usd_per_million: number
   cache_creation_usd_per_million: number
   request_usd: number | null
+  fast_multiplier: number
 }
 
 export interface ModelPriceSyncResponse {
@@ -609,6 +612,7 @@ export interface AvailableModelPrice {
   cache_read_usd_per_million: number
   cache_creation_usd_per_million: number
   request_usd: number | null
+  fast_multiplier: number
   billing_unit: 'token' | 'request' | string
 }
 

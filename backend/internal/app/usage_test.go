@@ -16,26 +16,28 @@ import (
 
 type usageRecordsResponse struct {
 	Items []struct {
-		Timestamp       string   `json:"timestamp"`
-		ID              int      `json:"id"`
-		Source          string   `json:"source"`
-		RequestID       *string  `json:"request_id"`
-		Model           *string  `json:"model"`
-		ReasoningEffort *string  `json:"reasoning_effort"`
-		TTFTMS          *float64 `json:"ttft_ms"`
-		AuthIndex       *string  `json:"auth_index"`
+		Timestamp          string   `json:"timestamp"`
+		ID                 int      `json:"id"`
+		Source             string   `json:"source"`
+		RequestID          *string  `json:"request_id"`
+		Model              *string  `json:"model"`
+		ReasoningEffort    *string  `json:"reasoning_effort"`
+		RequestServiceTier *string  `json:"request_service_tier"`
+		TTFTMS             *float64 `json:"ttft_ms"`
+		AuthIndex          *string  `json:"auth_index"`
 	} `json:"items"`
 	Start string `json:"start"`
 	End   string `json:"end"`
 }
 
 type usageRecordDetailResponse struct {
-	Source          string         `json:"source"`
-	Model           *string        `json:"model"`
-	ReasoningEffort *string        `json:"reasoning_effort"`
-	TTFTMS          *float64       `json:"ttft_ms"`
-	AuthIndex       *string        `json:"auth_index"`
-	RawJSON         map[string]any `json:"raw_json"`
+	Source             string         `json:"source"`
+	Model              *string        `json:"model"`
+	ReasoningEffort    *string        `json:"reasoning_effort"`
+	RequestServiceTier *string        `json:"request_service_tier"`
+	TTFTMS             *float64       `json:"ttft_ms"`
+	AuthIndex          *string        `json:"auth_index"`
+	RawJSON            map[string]any `json:"raw_json"`
 }
 
 type usageSummaryResponse struct {
@@ -163,22 +165,23 @@ func TestUsageRecordsExposeReasoningEffortTTFTAndSummaryAverage(t *testing.T) {
 	secondTTFT := 290.0
 	zeroTTFT := 0.0
 	firstID := seedUsageRecordWithValues(t, dataDir, usageRecordSeed{
-		Timestamp:         "2026-05-16T16:37:00+08:00",
-		Username:          "admin",
-		APIKeyDescription: "VSCode",
-		Provider:          "openai",
-		Model:             "gpt-5.5",
-		Endpoint:          "/v1/responses",
-		Source:            "code10001",
-		RequestID:         "req-ttft-1",
-		Auth:              "bearer",
-		DedupeKey:         "ttft-1",
-		RawJSON:           `{"request_id":"req-ttft-1"}`,
-		ReasoningEffort:   "xhigh",
-		TTFTMS:            &firstTTFT,
-		InputTokens:       10,
-		OutputTokens:      2,
-		TotalTokens:       12,
+		Timestamp:          "2026-05-16T16:37:00+08:00",
+		Username:           "admin",
+		APIKeyDescription:  "VSCode",
+		Provider:           "openai",
+		Model:              "gpt-5.5",
+		Endpoint:           "/v1/responses",
+		Source:             "code10001",
+		RequestID:          "req-ttft-1",
+		Auth:               "bearer",
+		DedupeKey:          "ttft-1",
+		RawJSON:            `{"request_id":"req-ttft-1"}`,
+		ReasoningEffort:    "xhigh",
+		RequestServiceTier: "priority",
+		TTFTMS:             &firstTTFT,
+		InputTokens:        10,
+		OutputTokens:       2,
+		TotalTokens:        12,
 	})
 	seedUsageRecordWithValues(t, dataDir, usageRecordSeed{
 		Timestamp:    "2026-05-16T16:38:00+08:00",
@@ -214,14 +217,15 @@ func TestUsageRecordsExposeReasoningEffortTTFTAndSummaryAverage(t *testing.T) {
 		t.Fatalf("usage record count = %d, want 3", len(records.Items))
 	}
 	var firstItem *struct {
-		Timestamp       string   `json:"timestamp"`
-		ID              int      `json:"id"`
-		Source          string   `json:"source"`
-		RequestID       *string  `json:"request_id"`
-		Model           *string  `json:"model"`
-		ReasoningEffort *string  `json:"reasoning_effort"`
-		TTFTMS          *float64 `json:"ttft_ms"`
-		AuthIndex       *string  `json:"auth_index"`
+		Timestamp          string   `json:"timestamp"`
+		ID                 int      `json:"id"`
+		Source             string   `json:"source"`
+		RequestID          *string  `json:"request_id"`
+		Model              *string  `json:"model"`
+		ReasoningEffort    *string  `json:"reasoning_effort"`
+		RequestServiceTier *string  `json:"request_service_tier"`
+		TTFTMS             *float64 `json:"ttft_ms"`
+		AuthIndex          *string  `json:"auth_index"`
 	}
 	for index := range records.Items {
 		if records.Items[index].RequestID != nil && *records.Items[index].RequestID == "req-ttft-1" {
@@ -229,13 +233,13 @@ func TestUsageRecordsExposeReasoningEffortTTFTAndSummaryAverage(t *testing.T) {
 			break
 		}
 	}
-	if firstItem == nil || firstItem.Model == nil || *firstItem.Model != "gpt-5.5" || firstItem.ReasoningEffort == nil || *firstItem.ReasoningEffort != "xhigh" || firstItem.TTFTMS == nil || *firstItem.TTFTMS != 710 {
+	if firstItem == nil || firstItem.Model == nil || *firstItem.Model != "gpt-5.5" || firstItem.ReasoningEffort == nil || *firstItem.ReasoningEffort != "xhigh" || firstItem.RequestServiceTier == nil || *firstItem.RequestServiceTier != "priority" || firstItem.TTFTMS == nil || *firstItem.TTFTMS != 710 {
 		t.Fatalf("first list item = %#v, want model/reasoning/ttft", firstItem)
 	}
 
 	detail := usageRecordDetailResponse{}
 	requestJSON(t, handler, http.MethodGet, "/api/usage/records/"+strconv.Itoa(firstID)+"?scope=admin", nil, cookies, &detail)
-	if detail.ReasoningEffort == nil || *detail.ReasoningEffort != "xhigh" || detail.TTFTMS == nil || *detail.TTFTMS != 710 {
+	if detail.ReasoningEffort == nil || *detail.ReasoningEffort != "xhigh" || detail.RequestServiceTier == nil || *detail.RequestServiceTier != "priority" || detail.TTFTMS == nil || *detail.TTFTMS != 710 {
 		t.Fatalf("detail reasoning/ttft = %#v/%#v, want xhigh/710", detail.ReasoningEffort, detail.TTFTMS)
 	}
 
@@ -748,24 +752,25 @@ func TestUsageRecordDetailRedactsAccountSourceForNonAdminOnly(t *testing.T) {
 }
 
 type usageRecordSeed struct {
-	Timestamp         string
-	Username          string
-	APIKeyDescription string
-	Provider          string
-	Model             string
-	Endpoint          string
-	Source            string
-	RequestID         string
-	Auth              string
-	AuthIndex         string
-	DedupeKey         string
-	RawJSON           string
-	ReasoningEffort   string
-	TTFTMS            *float64
-	Failed            bool
-	InputTokens       int
-	OutputTokens      int
-	TotalTokens       int
+	Timestamp          string
+	Username           string
+	APIKeyDescription  string
+	Provider           string
+	Model              string
+	Endpoint           string
+	Source             string
+	RequestID          string
+	Auth               string
+	AuthIndex          string
+	DedupeKey          string
+	RawJSON            string
+	ReasoningEffort    string
+	RequestServiceTier string
+	TTFTMS             *float64
+	Failed             bool
+	InputTokens        int
+	OutputTokens       int
+	TotalTokens        int
 }
 
 func seedUsageRecord(t *testing.T, dataDir string, timestamp string) {
@@ -797,12 +802,12 @@ func seedUsageRecordWithValues(t *testing.T, dataDir string, seed usageRecordSee
 	result, err := db.Exec(`
 		INSERT INTO usage_records (
 			created_at, timestamp, usage_username, api_key_description, provider, model,
-			reasoning_effort, endpoint, source, source_key, request_id, auth, auth_index, latency_ms, ttft_ms, failed, input_tokens,
+			reasoning_effort, request_service_tier, endpoint, source, source_key, request_id, auth, auth_index, latency_ms, ttft_ms, failed, input_tokens,
 			output_tokens, cached_tokens, reasoning_tokens, total_tokens, dedupe_key, raw_json
 		) VALUES (
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1000, ?, ?, ?, ?, 0, 0, ?, ?, ?
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1000, ?, ?, ?, ?, 0, 0, ?, ?, ?
 		)
-	`, seed.Timestamp, seed.Timestamp, seed.Username, description, provider, model, nullableSeedString(seed.ReasoningEffort), endpoint, seed.Source, nullableSeedSourceKey(seed.Source), seed.RequestID, seed.Auth, nullableSeedString(seed.AuthIndex), nullableSeedFloat(seed.TTFTMS), seed.Failed, seed.InputTokens, seed.OutputTokens, seed.TotalTokens, seed.DedupeKey, seed.RawJSON)
+	`, seed.Timestamp, seed.Timestamp, seed.Username, description, provider, model, nullableSeedString(seed.ReasoningEffort), nullableSeedString(seed.RequestServiceTier), endpoint, seed.Source, nullableSeedSourceKey(seed.Source), seed.RequestID, seed.Auth, nullableSeedString(seed.AuthIndex), nullableSeedFloat(seed.TTFTMS), seed.Failed, seed.InputTokens, seed.OutputTokens, seed.TotalTokens, seed.DedupeKey, seed.RawJSON)
 	if err != nil {
 		t.Fatal(err)
 	}

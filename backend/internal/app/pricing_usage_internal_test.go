@@ -111,6 +111,38 @@ func TestRecordCostUsesRequestPriceForImageModels(t *testing.T) {
 	}
 }
 
+func TestRecordCostAppliesFastMultiplierOnlyToPriorityRequests(t *testing.T) {
+	provider := "openai"
+	model := "gpt-fast-test"
+	priority := "priority"
+	standard := "standard"
+	prices := map[[2]string]ModelPrice{
+		priceKey(provider, model): {
+			Provider:           provider,
+			Model:              model,
+			InputUSDPerMillion: 2,
+			FastMultiplier:     2.5,
+		},
+	}
+	base := UsageRecord{
+		Provider:    &provider,
+		Model:       &model,
+		InputTokens: 1_000_000,
+		TotalTokens: 1_000_000,
+	}
+
+	base.RequestServiceTier = &priority
+	amount, unpriced := recordCost(base, prices)
+	if unpriced || amount != 5 {
+		t.Fatalf("priority cost = %v unpriced=%v, want 5 false", amount, unpriced)
+	}
+	base.RequestServiceTier = &standard
+	amount, unpriced = recordCost(base, prices)
+	if unpriced || amount != 2 {
+		t.Fatalf("standard cost = %v unpriced=%v, want 2 false", amount, unpriced)
+	}
+}
+
 func TestRecordCostTreatsImageWithoutRequestPriceAsUnpriced(t *testing.T) {
 	provider := "openai"
 	model := "custom-image-model"
@@ -161,6 +193,9 @@ func TestModelPriceAPIUpdatesImageRequestPrice(t *testing.T) {
 	if created.RequestUSD == nil || *created.RequestUSD != 1 || created.BillingUnit != modelBillingUnitRequest {
 		t.Fatalf("created image price = %#v, want request_usd=1 request billing", created)
 	}
+	if created.FastMultiplier != 1 {
+		t.Fatalf("created fast multiplier = %v, want default 1", created.FastMultiplier)
+	}
 
 	var updated ModelPrice
 	requestJSONForPricingTest(t, handler, http.MethodPut, fmt.Sprintf("/api/model-prices/%d", created.ID), map[string]any{
@@ -174,6 +209,47 @@ func TestModelPriceAPIUpdatesImageRequestPrice(t *testing.T) {
 	}, cookies, &updated)
 	if updated.RequestUSD == nil || *updated.RequestUSD != 2.5 || updated.BillingUnit != modelBillingUnitRequest {
 		t.Fatalf("updated image price = %#v, want request_usd=2.5 request billing", updated)
+	}
+}
+
+func TestUpdateAutoSyncedPriceOnlyFastMultiplierKeepsLiteLLMSync(t *testing.T) {
+	t.Setenv("CPA_HELPER_DATA_DIR", t.TempDir())
+	app, err := New()
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	defer app.Close()
+
+	now := dbTime(time.Now().In(appTimeLocation))
+	result, err := app.db.Exec(`
+		INSERT INTO model_prices (
+			provider, model, input_usd_per_million, output_usd_per_million,
+			cache_read_usd_per_million, cache_creation_usd_per_million,
+			fast_multiplier, source, source_model, auto_synced, last_synced_at, updated_at
+		) VALUES ('openai', 'gpt-fast-sync', 1, 2, 0.1, 0.2, 1, 'litellm', 'gpt-fast-sync', 1, ?, ?)
+	`, now, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, _ := result.LastInsertId()
+	fastMultiplier := 3.0
+	updated, err := app.updatePrice(context.Background(), int(id), modelPricePayload{
+		Provider:                   "openai",
+		Model:                      "gpt-fast-sync",
+		InputUSDPerMillion:         1,
+		OutputUSDPerMillion:        2,
+		CacheReadUSDPerMillion:     0.1,
+		CacheCreationUSDPerMillion: 0.2,
+		FastMultiplier:             &fastMultiplier,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !updated.AutoSynced || updated.Source != "litellm" || updated.SourceModel == nil || *updated.SourceModel != "gpt-fast-sync" {
+		t.Fatalf("updated source state = %#v, want LiteLLM auto sync preserved", updated)
+	}
+	if updated.FastMultiplier != 3 {
+		t.Fatalf("updated fast multiplier = %v, want 3", updated.FastMultiplier)
 	}
 }
 
@@ -250,6 +326,15 @@ func TestSyncLiteLLMPricesReplacesLiteLLMSource(t *testing.T) {
 	`, now, now); err != nil {
 		t.Fatalf("seed prices: %v", err)
 	}
+	if _, err := app.db.Exec(`
+		INSERT INTO model_prices (
+			provider, model, input_usd_per_million, output_usd_per_million,
+			cache_read_usd_per_million, cache_creation_usd_per_million, fast_multiplier,
+			source, source_model, auto_synced, last_synced_at, updated_at
+		) VALUES ('openai', 'gpt-new-model', 9, 9, 9, 9, 2.5, 'litellm', 'gpt-new-model', 1, ?, ?)
+	`, now, now); err != nil {
+		t.Fatalf("seed customized LiteLLM price: %v", err)
+	}
 
 	rawData := map[string]any{
 		"gpt-new-model": map[string]any{
@@ -298,6 +383,13 @@ func TestSyncLiteLLMPricesReplacesLiteLLMSource(t *testing.T) {
 	}
 	if cacheRead != 0.3 || cacheCreation != 3.75 {
 		t.Fatalf("claude cache prices = read %v creation %v, want 0.3 and 3.75", cacheRead, cacheCreation)
+	}
+	var syncedInput, fastMultiplier float64
+	if err := app.db.QueryRow(`SELECT input_usd_per_million, fast_multiplier FROM model_prices WHERE source = 'litellm' AND model = 'gpt-new-model'`).Scan(&syncedInput, &fastMultiplier); err != nil {
+		t.Fatalf("query customized LiteLLM price: %v", err)
+	}
+	if syncedInput != 1 || fastMultiplier != 2.5 {
+		t.Fatalf("synced input/fast multiplier = %v/%v, want refreshed input 1 and preserved multiplier 2.5", syncedInput, fastMultiplier)
 	}
 }
 

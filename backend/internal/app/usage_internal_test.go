@@ -92,6 +92,16 @@ func TestNormalizeUsagePrefersClientVisibleModelAlias(t *testing.T) {
 	}
 }
 
+func TestNormalizeUsageCapturesRequestServiceTier(t *testing.T) {
+	normalized, err := normalizeUsage([]byte(`{"request_service_tier":"priority"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if normalized.RequestServiceTier == nil || *normalized.RequestServiceTier != "priority" {
+		t.Fatalf("request service tier = %#v, want priority", normalized.RequestServiceTier)
+	}
+}
+
 func TestSaveUsageMessageUsesAliasForStoredModelAndCost(t *testing.T) {
 	t.Setenv("CPA_HELPER_DATA_DIR", t.TempDir())
 	app, err := NewWithOptions(context.Background(), NewOptions{Migrate: true})
@@ -128,6 +138,55 @@ func TestSaveUsageMessageUsesAliasForStoredModelAndCost(t *testing.T) {
 	}
 	if record.CostUSD != 2 || record.Unpriced {
 		t.Fatalf("stored cost = %v unpriced=%v, want alias price 2/false", record.CostUSD, record.Unpriced)
+	}
+}
+
+func TestSaveUsageMessageStoresPriorityTierAndFixedFastCost(t *testing.T) {
+	t.Setenv("CPA_HELPER_DATA_DIR", t.TempDir())
+	app, err := NewWithOptions(context.Background(), NewOptions{Migrate: true})
+	if err != nil {
+		t.Fatalf("NewWithOptions failed: %v", err)
+	}
+	defer app.Close()
+
+	now := dbTime(time.Now())
+	if _, err := app.db.Exec(`
+		INSERT INTO model_prices (
+			provider, model, input_usd_per_million, output_usd_per_million,
+			cache_read_usd_per_million, cache_creation_usd_per_million,
+			fast_multiplier, source, updated_at
+		) VALUES ('openai', 'gpt-fast', 2, 0, 0, 0, 3, 'manual', ?)
+	`, now); err != nil {
+		t.Fatal(err)
+	}
+
+	record, created, err := app.saveUsageMessage(context.Background(), []byte(`{
+		"provider":"openai",
+		"model":"gpt-fast",
+		"request_id":"priority-priced-request",
+		"request_service_tier":"priority",
+		"input_tokens":1000000,
+		"total_tokens":1000000
+	}`))
+	if err != nil || !created {
+		t.Fatalf("saveUsageMessage created=%v err=%v", created, err)
+	}
+	if record.RequestServiceTier == nil || *record.RequestServiceTier != "priority" {
+		t.Fatalf("stored request service tier = %#v, want priority", record.RequestServiceTier)
+	}
+	if record.CostUSD != 6 || record.Unpriced {
+		t.Fatalf("stored cost = %v unpriced=%v, want fixed cost 6/false", record.CostUSD, record.Unpriced)
+	}
+	if _, err := app.db.Exec(`UPDATE model_prices SET input_usd_per_million = 20, fast_multiplier = 9 WHERE model = 'gpt-fast'`); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := app.getUsageRecord(context.Background(), record.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	amount, unpriced := recordCost(reloaded, nil)
+	if amount != 6 || unpriced {
+		t.Fatalf("reloaded fixed cost = %v unpriced=%v, want 6/false", amount, unpriced)
 	}
 }
 

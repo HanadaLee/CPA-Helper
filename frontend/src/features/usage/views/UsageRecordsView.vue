@@ -634,14 +634,22 @@ function formatPositiveLatency(value: number | null | undefined): string {
 }
 
 function formatModelWithReasoning(
-  record: Pick<UsageRecordListItem, 'model' | 'reasoning_effort'>,
+  record: Pick<UsageRecordListItem, 'model' | 'reasoning_effort' | 'request_service_tier'>,
+  includeFast = false,
 ): string {
   const model = textOrDash(record.model)
   if (model === '-') {
     return model
   }
+  const parts = [model]
   const reasoningEffort = record.reasoning_effort?.trim()
-  return reasoningEffort ? `${model} ${reasoningEffort}` : model
+  if (reasoningEffort) {
+    parts.push(reasoningEffort)
+  }
+  if (includeFast && record.request_service_tier?.trim().toLowerCase() === 'priority') {
+    parts.push('fast')
+  }
+  return parts.join(' ')
 }
 
 function formatOutputTps(row: Pick<UsageRecordListItem, 'latency_ms' | 'output_tokens'>): string {
@@ -728,7 +736,7 @@ const detailRows = computed(() => {
   }
   const rows = [
     { label: t('时间', 'Time'), value: formatDateTime(record.timestamp) },
-    { label: t('模型', 'Model'), value: formatModelWithReasoning(record) },
+    { label: t('模型', 'Model'), value: formatModelWithReasoning(record, true) },
     { label: t('服务商', 'Provider'), value: textOrDash(record.provider) },
     { label: t('接口', 'Endpoint'), value: textOrDash(record.endpoint) },
     { label: t('API KEY 描述', 'API key description'), value: apiKeyDescriptionLabel(record.api_key_description) },
