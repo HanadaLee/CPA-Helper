@@ -11,6 +11,8 @@ import (
 
 type usageAggregateParts uint8
 
+const usageRealtimeWindow = 10 * time.Minute
+
 const (
 	usageAggregateSummary usageAggregateParts = 1 << iota
 	usageAggregateTrends
@@ -619,7 +621,7 @@ func (a *App) usageOverviewAggregates(ctx context.Context, scoped UsageFilters, 
 	todayFilters := scoped
 	todayFilters.Start = &todayStart
 	todayFilters.End = &todayEnd
-	realtimeStart := now.Add(-30 * time.Minute)
+	realtimeStart := now.Add(-usageRealtimeWindow)
 	realtimeFilters := scoped
 	realtimeFilters.Start = &realtimeStart
 	realtimeFilters.End = &now
@@ -632,7 +634,6 @@ func (a *App) usageOverviewAggregates(ctx context.Context, scoped UsageFilters, 
 	current := newUsageAggregateBuilder(scoped, usageAggregateSummary|usageAggregateTrends|usageAggregateRankings|usageAggregateDistributions, users)
 	failedAggregate := newUsageAggregateBuilder(failedFilters, usageAggregateSummary|usageAggregateTrends|usageAggregateEndpoints, users)
 	today := newUsageAggregateBuilder(todayFilters, usageAggregateTrends, users)
-	realtime := newUsageAggregateBuilder(realtimeFilters, usageAggregateSummary, users)
 
 	addCurrent := func(record UsageRecord, metrics usageAggregateMetrics) {
 		if usageRecordInRange(record, scoped) {
@@ -647,9 +648,6 @@ func (a *App) usageOverviewAggregates(ctx context.Context, scoped UsageFilters, 
 	addToday := func(record UsageRecord, metrics usageAggregateMetrics) {
 		if usageRecordInRange(record, todayFilters) && usageRecordMatchesFailure(record, scoped.Failed) {
 			today.addMetrics(record, metrics)
-		}
-		if usageRecordInRange(record, realtimeFilters) && usageRecordMatchesFailure(record, scoped.Failed) {
-			realtime.addMetrics(record, metrics)
 		}
 	}
 	addRecord := func(entry usageAggregateEntry, addToCurrent, addToToday bool) {
@@ -683,6 +681,10 @@ func (a *App) usageOverviewAggregates(ctx context.Context, scoped UsageFilters, 
 		}); err != nil {
 			return nil, err
 		}
+	}
+	realtime, err := a.buildUsageAggregate(ctx, realtimeFilters, usageAggregateSummary, users)
+	if err != nil {
+		return nil, err
 	}
 
 	apiKeyRanking := usageRankingResponse("api_key_description", current.apiKeys)

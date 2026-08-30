@@ -5,11 +5,13 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	backendApp "cpa-helper/backend/internal/app"
 )
@@ -43,6 +45,8 @@ type usageRecordDetailResponse struct {
 type usageSummaryResponse struct {
 	Start            string   `json:"start"`
 	End              string   `json:"end"`
+	TotalRecords     int      `json:"total_records"`
+	TotalTokens      int      `json:"total_tokens"`
 	AverageTTFTMS    *float64 `json:"average_ttft_ms"`
 	ZeroTokenRecords int      `json:"zero_token_records"`
 }
@@ -334,6 +338,51 @@ func TestUsageOverviewReturnsAuxiliaryMetricsWithoutOptions(t *testing.T) {
 	requestJSON(t, handler, http.MethodGet, "/api/usage/records?scope=admin&include_total=false&start=2026-05-16T00:00:00&end=2026-05-17T00:00:00&page=1&page_size=10", nil, cookies, &records)
 	if _, ok := records["total"]; ok {
 		t.Fatal("records total should be omitted when include_total=false")
+	}
+}
+
+func TestUsageOverviewRealtimeSummaryIgnoresSelectedTimeRange(t *testing.T) {
+	dataDir := t.TempDir()
+	t.Setenv("CPA_HELPER_DATA_DIR", dataDir)
+
+	app, err := backendApp.New()
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	defer app.Close()
+	handler := app.Routes()
+	cookies := requestJSON(t, handler, http.MethodPost, "/api/auth/setup", map[string]any{
+		"username": "admin", "password": "test-password", "nickname": "Admin",
+	}, nil, nil)
+
+	now := time.Now()
+	seedUsageRecordWithValues(t, dataDir, usageRecordSeed{
+		Timestamp: now.Add(-5 * time.Minute).Format(time.RFC3339Nano), Username: "admin", Source: "realtime-source",
+		RequestID: "req-realtime", Auth: "bearer", DedupeKey: "realtime-window",
+		RawJSON: `{"request_id":"req-realtime"}`, InputTokens: 500, OutputTokens: 100, TotalTokens: 600,
+	})
+
+	loadOverview := func(start, end time.Time) optimizedUsageOverviewResponse {
+		query := url.Values{
+			"scope":           {"admin"},
+			"include_options": {"false"},
+			"start":           {start.Format(time.RFC3339Nano)},
+			"end":             {end.Format(time.RFC3339Nano)},
+		}
+		response := optimizedUsageOverviewResponse{}
+		requestJSON(t, handler, http.MethodGet, "/api/usage/overview?"+query.Encode(), nil, cookies, &response)
+		return response
+	}
+
+	recentRange := loadOverview(now.Add(-30*time.Minute), now.Add(time.Minute))
+	historicRange := loadOverview(now.Add(-48*time.Hour), now.Add(-47*time.Hour))
+	for label, response := range map[string]optimizedUsageOverviewResponse{
+		"recent": recentRange, "historic": historicRange,
+	} {
+		if response.RealtimeSummary.TotalRecords != 1 || response.RealtimeSummary.TotalTokens != 600 {
+			t.Fatalf("%s realtime summary = records %d tokens %d, want 1/600", label,
+				response.RealtimeSummary.TotalRecords, response.RealtimeSummary.TotalTokens)
+		}
 	}
 }
 

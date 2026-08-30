@@ -87,7 +87,7 @@ interface HourActivityItem {
 }
 
 const AUTO_REFRESH_INTERVAL_MS = 10_000
-const RATE_WINDOW_MINUTES = 30
+const RATE_WINDOW_MINUTES = 10
 const HOUR_MS = 60 * 60 * 1000
 const DAY_MS = 24 * HOUR_MS
 const DISTRIBUTION_CHART_COLORS = [
@@ -381,7 +381,7 @@ const dashboardRangeLabel = computed(() => {
   return `${formatMetricRangeTime(range[0])} - ${formatMetricRangeTime(range[1])}`
 })
 
-const rateRangeLabel = computed(() => t('近 30 分钟', 'Last 30 minutes'))
+const rateRangeLabel = computed(() => t('近 10 分钟', 'Last 10 minutes'))
 
 function formatMetricRangeTime(value: number): string {
   return new Intl.DateTimeFormat(currentLanguage.value === 'zh' ? 'zh-CN' : 'en-US', {
