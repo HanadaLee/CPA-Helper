@@ -1455,7 +1455,7 @@ func normalizeUsage(raw []byte) (normalizedUsage, error) {
 		Timestamp:           parseUsageTimestamp(findFirst(parsed, "timestamp", "time", "created_at", "createdAt", "request_time")),
 		APIKeyHash:          hashAPIKey(*apiKey),
 		Provider:            toString(findFirst(parsed, "provider", "provider_name")),
-		Model:               toString(findFirst(parsed, "model", "model_name")),
+		Model:               usageDisplayModel(parsed),
 		Endpoint:            toString(findFirst(parsed, "endpoint", "path", "route")),
 		Source:              source,
 		SourceAccount:       sourceAccountFromUsageSource(source),
@@ -1476,6 +1476,20 @@ func normalizeUsage(raw []byte) (normalizedUsage, error) {
 		DedupeKey:           "raw:" + hex.EncodeToString(sum[:]),
 		RawJSON:             string(canonical),
 	}, nil
+}
+
+// usageDisplayModel returns the client-visible model identifier used by the
+// dashboard and pricing table. CLIProxyAPI reports the resolved upstream model
+// in model and the requested, user-facing model in alias.
+func usageDisplayModel(value any) *string {
+	if root, ok := value.(map[string]any); ok {
+		for _, key := range []string{"alias", "model_alias", "modelAlias"} {
+			if alias := toString(root[key]); alias != nil {
+				return alias
+			}
+		}
+	}
+	return toString(findFirst(value, "model", "model_name"))
 }
 
 func usageToken(value any, keys ...string) int {

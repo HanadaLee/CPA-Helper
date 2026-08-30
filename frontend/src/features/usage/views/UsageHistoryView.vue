@@ -330,8 +330,8 @@ const pageSubtitle = computed(() =>
   isAccountScope.value
     ? t('仅聚合当前登录账号自己的本地用量记录', 'Only local usage records for your account are aggregated')
     : t(
-        '按本地 SQLite 历史记录实时聚合，费用按当前模型价格估算',
-        'Aggregated live from local SQLite history. Costs are estimated using current model prices.',
+        '按本地 SQLite 历史记录聚合，费用按请求入库时的模型价格记录',
+        'Aggregated from local SQLite history. Costs use the model price stored when each request was ingested.',
       ),
 )
 const rankingTitle = computed(() =>

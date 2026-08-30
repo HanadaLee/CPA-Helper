@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"testing"
+	"time"
 )
 
 func TestNormalizeUsagePrefersTopLevelTokenSummary(t *testing.T) {
@@ -64,6 +65,69 @@ func TestNormalizeUsageKeepsLegacyTokenFallbacks(t *testing.T) {
 	}
 	if normalized.ReasoningTokens != 3 || normalized.TotalTokens != 18 {
 		t.Fatalf("normalized legacy reasoning/total = %d/%d, want 3/18", normalized.ReasoningTokens, normalized.TotalTokens)
+	}
+}
+
+func TestNormalizeUsagePrefersClientVisibleModelAlias(t *testing.T) {
+	normalized, err := normalizeUsage([]byte(`{
+		"provider":"openai",
+		"model":"upstream-model",
+		"alias":"client-model",
+		"input_tokens":10,
+		"total_tokens":10
+	}`))
+	if err != nil {
+		t.Fatalf("normalizeUsage() failed: %v", err)
+	}
+	if normalized.Model == nil || *normalized.Model != "client-model" {
+		t.Fatalf("normalized model = %#v, want client-model alias", normalized.Model)
+	}
+
+	normalized, err = normalizeUsage([]byte(`{"provider":"openai","model":"upstream-model"}`))
+	if err != nil {
+		t.Fatalf("normalizeUsage() fallback failed: %v", err)
+	}
+	if normalized.Model == nil || *normalized.Model != "upstream-model" {
+		t.Fatalf("fallback model = %#v, want upstream-model", normalized.Model)
+	}
+}
+
+func TestSaveUsageMessageUsesAliasForStoredModelAndCost(t *testing.T) {
+	t.Setenv("CPA_HELPER_DATA_DIR", t.TempDir())
+	app, err := NewWithOptions(context.Background(), NewOptions{Migrate: true})
+	if err != nil {
+		t.Fatalf("NewWithOptions failed: %v", err)
+	}
+	defer app.Close()
+
+	now := dbTime(time.Now())
+	if _, err := app.db.Exec(`
+		INSERT INTO model_prices (
+			provider, model, input_usd_per_million, output_usd_per_million,
+			cache_read_usd_per_million, cache_creation_usd_per_million, source, updated_at
+		) VALUES
+			('openai', 'client-model', 2, 0, 0, 0, 'manual', ?),
+			('openai', 'upstream-model', 9, 0, 0, 0, 'manual', ?)
+	`, now, now); err != nil {
+		t.Fatalf("insert model prices: %v", err)
+	}
+
+	record, created, err := app.saveUsageMessage(context.Background(), []byte(`{
+		"provider":"openai",
+		"model":"upstream-model",
+		"alias":"client-model",
+		"request_id":"alias-priced-request",
+		"input_tokens":1000000,
+		"total_tokens":1000000
+	}`))
+	if err != nil || !created {
+		t.Fatalf("saveUsageMessage created=%v err=%v", created, err)
+	}
+	if record.Model == nil || *record.Model != "client-model" {
+		t.Fatalf("stored model = %#v, want client-model alias", record.Model)
+	}
+	if record.CostUSD != 2 || record.Unpriced {
+		t.Fatalf("stored cost = %v unpriced=%v, want alias price 2/false", record.CostUSD, record.Unpriced)
 	}
 }
 
