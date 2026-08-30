@@ -903,10 +903,22 @@ func calculateRecordCost(record UsageRecord, prices map[[2]string]ModelPrice) (f
 }
 
 func usageFastMultiplier(record UsageRecord, price *ModelPrice) float64 {
-	if record.RequestServiceTier == nil || !strings.EqualFold(strings.TrimSpace(*record.RequestServiceTier), "priority") {
+	if !isFastServiceTier(record.RequestServiceTier) {
 		return 1
 	}
 	return normalizedFastMultiplier(price.FastMultiplier)
+}
+
+func isFastServiceTier(serviceTier *string) bool {
+	if serviceTier == nil {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(*serviceTier)) {
+	case "priority", "fast":
+		return true
+	default:
+		return false
+	}
 }
 
 func normalizedFastMultiplier(value float64) float64 {

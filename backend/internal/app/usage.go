@@ -1469,7 +1469,7 @@ func normalizeUsage(raw []byte) (normalizedUsage, error) {
 		AuthIndex:           authIndexFromUsagePayload(parsed),
 		LatencyMS:           toFloat(findFirst(parsed, "latency_ms", "latency", "duration_ms", "duration")),
 		ReasoningEffort:     toString(findFirst(parsed, "reasoning_effort", "reasoningEffort")),
-		RequestServiceTier:  toString(findFirst(parsed, "request_service_tier", "requestServiceTier")),
+		RequestServiceTier:  toString(findFirst(parsed, "request_service_tier", "requestServiceTier", "service_tier", "serviceTier")),
 		TTFTMS:              toPositiveFloat(findFirst(parsed, "ttft_ms", "ttftMs")),
 		Failed:              isUsageFailed(parsed),
 		InputTokens:         input,

@@ -93,12 +93,20 @@ func TestNormalizeUsagePrefersClientVisibleModelAlias(t *testing.T) {
 }
 
 func TestNormalizeUsageCapturesRequestServiceTier(t *testing.T) {
-	normalized, err := normalizeUsage([]byte(`{"request_service_tier":"priority"}`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if normalized.RequestServiceTier == nil || *normalized.RequestServiceTier != "priority" {
-		t.Fatalf("request service tier = %#v, want priority", normalized.RequestServiceTier)
+	for _, test := range []struct {
+		raw  string
+		want string
+	}{
+		{raw: `{"request_service_tier":"priority"}`, want: "priority"},
+		{raw: `{"service_tier":"fast"}`, want: "fast"},
+	} {
+		normalized, err := normalizeUsage([]byte(test.raw))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if normalized.RequestServiceTier == nil || *normalized.RequestServiceTier != test.want {
+			t.Fatalf("request service tier = %#v, want %q", normalized.RequestServiceTier, test.want)
+		}
 	}
 }
 
@@ -141,7 +149,7 @@ func TestSaveUsageMessageUsesAliasForStoredModelAndCost(t *testing.T) {
 	}
 }
 
-func TestSaveUsageMessageStoresPriorityTierAndFixedFastCost(t *testing.T) {
+func TestSaveUsageMessageStoresFastTierAndFixedFastCost(t *testing.T) {
 	t.Setenv("CPA_HELPER_DATA_DIR", t.TempDir())
 	app, err := NewWithOptions(context.Background(), NewOptions{Migrate: true})
 	if err != nil {
@@ -163,16 +171,16 @@ func TestSaveUsageMessageStoresPriorityTierAndFixedFastCost(t *testing.T) {
 	record, created, err := app.saveUsageMessage(context.Background(), []byte(`{
 		"provider":"openai",
 		"model":"gpt-fast",
-		"request_id":"priority-priced-request",
-		"request_service_tier":"priority",
+		"request_id":"fast-priced-request",
+		"service_tier":"fast",
 		"input_tokens":1000000,
 		"total_tokens":1000000
 	}`))
 	if err != nil || !created {
 		t.Fatalf("saveUsageMessage created=%v err=%v", created, err)
 	}
-	if record.RequestServiceTier == nil || *record.RequestServiceTier != "priority" {
-		t.Fatalf("stored request service tier = %#v, want priority", record.RequestServiceTier)
+	if record.RequestServiceTier == nil || *record.RequestServiceTier != "fast" {
+		t.Fatalf("stored request service tier = %#v, want fast", record.RequestServiceTier)
 	}
 	if record.CostUSD != 6 || record.Unpriced {
 		t.Fatalf("stored cost = %v unpriced=%v, want fixed cost 6/false", record.CostUSD, record.Unpriced)

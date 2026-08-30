@@ -646,10 +646,15 @@ function formatModelWithReasoning(
   if (reasoningEffort) {
     parts.push(reasoningEffort)
   }
-  if (includeFast && record.request_service_tier?.trim().toLowerCase() === 'priority') {
+  if (includeFast && isFastServiceTier(record.request_service_tier)) {
     parts.push('fast')
   }
   return parts.join(' ')
+}
+
+function isFastServiceTier(serviceTier: string | null | undefined): boolean {
+  const normalized = serviceTier?.trim().toLowerCase()
+  return normalized === 'priority' || normalized === 'fast'
 }
 
 function formatOutputTps(row: Pick<UsageRecordListItem, 'latency_ms' | 'output_tokens'>): string {

@@ -111,11 +111,9 @@ func TestRecordCostUsesRequestPriceForImageModels(t *testing.T) {
 	}
 }
 
-func TestRecordCostAppliesFastMultiplierOnlyToPriorityRequests(t *testing.T) {
+func TestRecordCostAppliesFastMultiplierToPriorityAndFastRequests(t *testing.T) {
 	provider := "openai"
 	model := "gpt-fast-test"
-	priority := "priority"
-	standard := "standard"
 	prices := map[[2]string]ModelPrice{
 		priceKey(provider, model): {
 			Provider:           provider,
@@ -131,15 +129,20 @@ func TestRecordCostAppliesFastMultiplierOnlyToPriorityRequests(t *testing.T) {
 		TotalTokens: 1_000_000,
 	}
 
-	base.RequestServiceTier = &priority
-	amount, unpriced := recordCost(base, prices)
-	if unpriced || amount != 5 {
-		t.Fatalf("priority cost = %v unpriced=%v, want 5 false", amount, unpriced)
-	}
-	base.RequestServiceTier = &standard
-	amount, unpriced = recordCost(base, prices)
-	if unpriced || amount != 2 {
-		t.Fatalf("standard cost = %v unpriced=%v, want 2 false", amount, unpriced)
+	for _, test := range []struct {
+		serviceTier string
+		wantCost    float64
+	}{
+		{serviceTier: "priority", wantCost: 5},
+		{serviceTier: "fast", wantCost: 5},
+		{serviceTier: " FAST ", wantCost: 5},
+		{serviceTier: "standard", wantCost: 2},
+	} {
+		base.RequestServiceTier = &test.serviceTier
+		amount, unpriced := recordCost(base, prices)
+		if unpriced || amount != test.wantCost {
+			t.Fatalf("%q cost = %v unpriced=%v, want %v false", test.serviceTier, amount, unpriced, test.wantCost)
+		}
 	}
 }
 
