@@ -85,7 +85,7 @@ function buildCurrentOption(): ChartOption {
       textStyle: {
         color: getChartTextColor(),
       },
-      extraCssText: 'box-shadow: 0 16px 32px rgba(26, 50, 57, 0.12); border-radius: 8px;',
+      extraCssText: 'box-shadow: 0 20px 42px rgba(26, 50, 57, 0.16); border-radius: 10px; padding: 10px 12px;',
     },
     ...props.option,
   }
@@ -196,8 +196,8 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   box-sizing: border-box;
-  min-height: 52px;
-  padding: 12px 16px;
+  min-height: 56px;
+  padding: 14px 18px;
   border-bottom: 1px solid var(--cpa-border);
 }
 
@@ -209,7 +209,8 @@ h2 {
   margin: 0;
   color: var(--cpa-text-strong);
   font-size: 15px;
-  font-weight: 750;
+  font-weight: 760;
+  letter-spacing: -0.01em;
 }
 
 .chart-body,
@@ -242,6 +243,6 @@ h2 {
 }
 
 .chart-footer {
-  padding: 0 18px 16px;
+  padding: 0 18px 18px;
 }
 </style>

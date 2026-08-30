@@ -8,11 +8,13 @@ const props = defineProps<{
 </script>
 
 <template>
-  <div
-    data-slot="sidebar-group"
-    data-sidebar="group"
-    :class="cn('p-2.5 pb-3 relative flex w-full min-w-0 flex-col', props.class)"
+  <p
+    data-slot="empty-description"
+    :class="cn(
+      'text-sm/relaxed text-muted-foreground [&>a]:underline [&>a]:underline-offset-4 [&>a:hover]:text-primary',
+      props.class,
+    )"
   >
     <slot />
-  </div>
+  </p>
 </template>

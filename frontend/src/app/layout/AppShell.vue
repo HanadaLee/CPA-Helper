@@ -6,9 +6,11 @@ import {
   useMessage,
 } from '@/shared/ui/app-kit'
 import { Button } from '@/components/ui/button'
+import { Separator } from '@/components/ui/separator'
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -273,7 +275,7 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
 
 <template>
   <SidebarProvider class="app-shell" :default-open="true">
-    <Sidebar class="app-sidebar" collapsible="icon">
+    <Sidebar class="app-sidebar" variant="inset" collapsible="icon">
       <SidebarHeader class="sidebar-brand-header">
         <div class="brand group-data-[collapsible=icon]:justify-center">
           <div class="brand-mark">
@@ -346,25 +348,31 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
                   <ChevronUp class="user-menu-chevron" />
                 </SidebarMenuButton>
               </DropdownMenuTrigger>
-              <DropdownMenuContent side="right" align="end" :side-offset="8" class="user-dropdown">
-                <DropdownMenuLabel class="user-dropdown-label">
-                  <strong>{{ accountText }}</strong>
-                  <span>{{ roleText }}</span>
-                </DropdownMenuLabel>
+              <DropdownMenuContent side="top" align="start" :side-offset="8" class="user-dropdown">
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel class="user-dropdown-label">
+                    <strong>{{ accountText }}</strong>
+                    <span>{{ roleText }}</span>
+                  </DropdownMenuLabel>
+                </DropdownMenuGroup>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem @select="toggleLanguage">
-                  <Languages />
-                  <span>{{ language === 'zh' ? 'English' : '中文' }}</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem @select="cycleTheme">
-                  <component :is="themeIcon" />
-                  <span>{{ t('切换主题', 'Switch theme') }}</span>
-                </DropdownMenuItem>
+                <DropdownMenuGroup>
+                  <DropdownMenuItem @select="toggleLanguage">
+                    <Languages />
+                    <span>{{ language === 'zh' ? 'English' : '中文' }}</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem @select="cycleTheme">
+                    <component :is="themeIcon" />
+                    <span>{{ t('切换主题', 'Switch theme') }}</span>
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem variant="destructive" @select="handleLogout">
-                  <LogOut />
-                  <span>{{ t('退出登录', 'Sign out') }}</span>
-                </DropdownMenuItem>
+                <DropdownMenuGroup>
+                  <DropdownMenuItem variant="destructive" @select="handleLogout">
+                    <LogOut />
+                    <span>{{ t('退出登录', 'Sign out') }}</span>
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
               </DropdownMenuContent>
             </DropdownMenu>
           </SidebarMenuItem>
@@ -376,7 +384,7 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
     <SidebarInset class="app-main">
       <header class="app-header">
         <SidebarTrigger class="navigation-trigger" :aria-label="t('打开导航', 'Open navigation')" />
-        <div class="header-divider" aria-hidden="true" />
+        <Separator orientation="vertical" class="header-divider" />
         <div class="desktop-location">{{ currentNavigationLabel }}</div>
         <div class="mobile-brand" :aria-label="t('CPA-Helper 账号信息', 'CPA-Helper account info')">
           <img class="mobile-brand-logo" :src="logoUrl" alt="" aria-hidden="true">
@@ -436,7 +444,7 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
   height: 100dvh;
   min-height: 0;
   overflow: hidden;
-  background: var(--cpa-bg);
+  background: var(--cpa-shell-bg);
 }
 
 .brand {
@@ -537,7 +545,9 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
   min-height: 0;
   min-width: 0;
   overflow: hidden;
-  background: var(--cpa-bg);
+  border: 1px solid var(--cpa-border);
+  background: var(--cpa-canvas);
+  box-shadow: var(--cpa-shadow-shell);
 }
 
 .content {
@@ -687,7 +697,14 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
 .app-sidebar {
   border-color: var(--cpa-border);
   background: var(--sidebar);
-  box-shadow: 16px 0 34px rgb(30 56 62 / 6%);
+  box-shadow: none;
+}
+
+.app-sidebar :deep([data-sidebar="sidebar"]) {
+  border: 1px solid color-mix(in srgb, var(--cpa-border) 82%, transparent);
+  border-radius: calc(var(--cpa-radius) + 2px);
+  background: var(--sidebar);
+  box-shadow: var(--cpa-shadow-card);
 }
 
 .sidebar-brand-header {
@@ -710,7 +727,8 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
   height: 32px;
   flex: 0 0 32px;
   border-radius: 10px;
-  box-shadow: 0 9px 20px rgb(0 154 168 / 18%);
+  border: 1px solid color-mix(in srgb, var(--cpa-primary) 16%, var(--cpa-border));
+  box-shadow: 0 1px 2px rgb(23 54 57 / 8%);
 }
 
 .sidebar-brand-header .brand-copy strong {
@@ -718,9 +736,7 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
 }
 
 .sidebar-group-label {
-  gap: 7px;
   color: var(--cpa-text-muted);
-  font-weight: 720;
 }
 
 .sider-menu {
@@ -729,27 +745,35 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
 }
 
 .app-sidebar :deep([data-sidebar="menu-button"]) {
-  min-height: 36px;
+  border: 1px solid transparent;
+  border-radius: 9px;
   color: var(--cpa-text);
   cursor: pointer;
+}
+
+.app-sidebar :deep([data-sidebar="menu-button"]:hover) {
+  border-color: color-mix(in srgb, var(--cpa-border) 74%, transparent);
+  background: color-mix(in srgb, var(--cpa-surface-muted) 76%, transparent);
 }
 
 .app-sidebar :deep([data-sidebar="menu-button"][data-active="true"]) {
   color: var(--cpa-primary);
   background:
-    linear-gradient(90deg, rgb(0 154 168 / 10%), rgb(0 154 168 / 4%)),
+    linear-gradient(90deg, color-mix(in srgb, var(--cpa-primary) 10%, transparent), transparent),
     var(--cpa-primary-wash);
-  box-shadow: inset 0 0 0 1px rgb(0 154 168 / 9%);
+  border-color: color-mix(in srgb, var(--cpa-primary) 18%, var(--cpa-border));
+  box-shadow: 0 1px 2px rgb(20 76 76 / 5%);
 }
 
 .sidebar-user-footer {
-  padding: 8px;
+  padding: 9px;
   border-top: 1px solid var(--cpa-border);
-  background: color-mix(in srgb, var(--sidebar) 94%, var(--cpa-primary-wash));
+  background: transparent;
 }
 
 .user-menu-button {
   height: 52px !important;
+  border-color: transparent !important;
 }
 
 .user-avatar {
@@ -816,13 +840,13 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
 .app-header {
   display: grid;
   grid-template-columns: auto 1px minmax(0, 1fr) auto;
-  flex: 0 0 52px;
+  flex: 0 0 56px;
   align-items: center;
   gap: 10px;
-  height: 52px;
-  padding: 0 16px;
+  height: 56px;
+  padding: 0 20px;
   border-bottom: 1px solid var(--cpa-border);
-  background: var(--cpa-mobile-header-bg);
+  background: color-mix(in srgb, var(--cpa-canvas) 90%, transparent);
   backdrop-filter: blur(18px);
 }
 
@@ -842,7 +866,7 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
   min-width: 0;
   overflow: hidden;
   color: var(--cpa-text-strong);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 720;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -868,11 +892,11 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
   min-width: 0;
   min-height: 0;
   overflow: auto;
-  padding: 28px 36px 32px 28px;
+  padding: 26px 30px 32px;
   scrollbar-gutter: stable;
   scrollbar-width: thin;
   scrollbar-color: var(--content-scrollbar-thumb) transparent;
-  background: var(--cpa-bg);
+  background: var(--cpa-canvas);
 }
 
 .content-scroll::-webkit-scrollbar {
@@ -916,7 +940,7 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
   .app-header {
     grid-template-columns: 36px minmax(0, 1fr) auto;
     gap: 6px;
-    height: 56px;
+    height: 58px;
     padding: 0 10px;
   }
 
@@ -930,7 +954,7 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
   }
 
   .content-scroll {
-    padding: 10px 18px 12px 10px;
+    padding: 14px 16px 18px;
   }
 }
 

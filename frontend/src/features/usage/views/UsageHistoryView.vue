@@ -1666,7 +1666,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .usage-dashboard-page {
-  gap: 10px;
+  gap: 16px;
 }
 
 .filter-panel {
@@ -1710,8 +1710,8 @@ onBeforeUnmount(() => {
 
 .filter-toolbar {
   display: grid;
-  gap: 8px;
-  padding: 10px 12px;
+  gap: 12px;
+  padding: 14px 16px 16px;
 }
 
 .time-row {
@@ -1741,15 +1741,35 @@ onBeforeUnmount(() => {
 .quick-ranges {
   display: flex;
   flex-wrap: wrap;
-  gap: 7px;
+  gap: 3px;
   min-width: 0;
+  width: fit-content;
+  padding: 3px;
+  border: 1px solid color-mix(in srgb, var(--cpa-border) 76%, transparent);
+  border-radius: 11px;
+  background: var(--cpa-surface-muted);
 }
 
 .quick-range-button {
   flex: 0 0 auto;
-  min-width: 72px;
-  border-radius: 999px;
-  font-weight: 750;
+  min-width: 68px;
+  border-color: transparent;
+  border-radius: 8px;
+  font-weight: 700;
+  box-shadow: none;
+}
+
+.quick-ranges :deep(.quick-range-button[data-variant="outline"]) {
+  border-color: transparent;
+  background: transparent;
+}
+
+.quick-ranges :deep(.quick-range-button[data-variant="outline"]:hover) {
+  background: color-mix(in srgb, var(--cpa-surface) 74%, var(--cpa-primary-wash));
+}
+
+.quick-ranges :deep(.quick-range-button[data-variant="default"]) {
+  box-shadow: 0 1px 2px rgb(0 82 87 / 16%);
 }
 
 .status-actions {
@@ -1770,7 +1790,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 12px;
+  gap: 10px;
   min-width: 0;
 }
 
@@ -1823,16 +1843,16 @@ onBeforeUnmount(() => {
 .dashboard-metric-grid {
   /* Keep the six usage metrics on one row where space allows. */
   grid-template-columns: repeat(auto-fit, minmax(138px, 1fr));
-  gap: 8px;
+  gap: 12px;
 }
 
 .dashboard-metric-card {
-  min-height: 96px;
-  padding: 14px;
+  min-height: 116px;
+  padding: 16px;
 }
 
 .dashboard-metric-card .metric-value {
-  font-size: 22px;
+  font-size: 24px;
 }
 
 .usage-metric-footnote {
@@ -1844,15 +1864,15 @@ onBeforeUnmount(() => {
 
 .dashboard-layout {
   display: grid;
-  gap: 12px;
-  margin-top: 12px;
+  gap: 16px;
+  margin-top: 16px;
   min-width: 0;
 }
 
 .dashboard-top-grid,
 .dashboard-columns {
   display: grid;
-  gap: 12px;
+  gap: 16px;
   min-width: 0;
 }
 
@@ -1864,13 +1884,13 @@ onBeforeUnmount(() => {
 .dashboard-columns {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   align-items: start;
-  --dashboard-card-height: 336px;
+  --dashboard-card-height: 352px;
 }
 
 .dashboard-column {
   display: grid;
   align-content: start;
-  gap: 12px;
+  gap: 16px;
   min-width: 0;
 }
 
@@ -2001,10 +2021,10 @@ onBeforeUnmount(() => {
 .compact-panel-inner {
   display: grid;
   align-content: start;
-  gap: 10px;
+  gap: 12px;
   box-sizing: border-box;
-  height: calc(100% - 52px);
-  padding: 14px;
+  height: calc(100% - 56px);
+  padding: 16px;
 }
 
 .panel-heading-row {
@@ -2018,8 +2038,8 @@ onBeforeUnmount(() => {
 .dashboard-panel-heading {
   box-sizing: border-box;
   align-items: center;
-  min-height: 52px;
-  padding: 12px 16px;
+  min-height: 56px;
+  padding: 14px 18px;
   border-bottom: 1px solid var(--cpa-border);
 }
 
@@ -2153,7 +2173,7 @@ onBeforeUnmount(() => {
 .recent-failed-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
-  gap: 8px;
+  gap: 10px;
   align-items: center;
   width: 100%;
   min-width: 0;
@@ -2673,7 +2693,7 @@ onBeforeUnmount(() => {
 
 @media (max-width: 720px) {
   .usage-dashboard-page {
-    gap: 10px;
+    gap: 12px;
   }
 
   .filter-summary {
@@ -2685,8 +2705,8 @@ onBeforeUnmount(() => {
   }
 
   .filter-toolbar {
-    gap: 8px;
-    padding: 10px;
+    gap: 10px;
+    padding: 12px;
   }
 
   .field-row,
@@ -2698,6 +2718,7 @@ onBeforeUnmount(() => {
   .quick-ranges {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
   }
 
   .quick-range-button {
@@ -2734,7 +2755,7 @@ onBeforeUnmount(() => {
   }
 
   .dashboard-metric-card {
-    min-height: 90px;
+    min-height: 108px;
   }
 
   .compact-panel-inner {

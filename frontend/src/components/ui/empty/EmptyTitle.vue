@@ -9,9 +9,8 @@ const props = defineProps<{
 
 <template>
   <div
-    data-slot="sidebar-group"
-    data-sidebar="group"
-    :class="cn('p-2.5 pb-3 relative flex w-full min-w-0 flex-col', props.class)"
+    data-slot="empty-title"
+    :class="cn('text-sm font-medium tracking-tight cn-font-heading', props.class)"
   >
     <slot />
   </div>

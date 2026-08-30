@@ -20,11 +20,12 @@ import {
 } from 'vue'
 import {
   CheckIcon,
+  ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-  ChevronsUpDownIcon,
   ChevronsLeftIcon,
   ChevronsRightIcon,
+  InboxIcon,
   LoaderCircleIcon,
   XIcon,
 } from '@lucide/vue'
@@ -67,15 +68,24 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+  Empty,
+  EmptyContent,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
 import { Input } from '@/components/ui/input'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -88,6 +98,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Toaster } from '@/components/ui/sonner'
 import { cn } from '@/lib/utils'
+import { localize } from '@/shared/i18n'
 
 export type DataTableRowKey = string | number
 
@@ -192,7 +203,7 @@ export const AppButton = defineComponent({
         {
           default: () => [
             props.loading
-              ? h(LoaderCircleIcon, { class: 'size-4 animate-spin', 'aria-hidden': 'true' })
+              ? h(LoaderCircleIcon, { class: 'animate-spin', 'data-icon': 'inline-start', 'aria-hidden': 'true' })
               : renderSlot(slots, 'icon'),
             renderSlot(slots),
           ],
@@ -410,21 +421,25 @@ export const AppSelect = defineComponent({
     const renderClearButton = () => props.clearable && props.value !== null && props.value !== undefined
       ? h(Button, {
           variant: 'ghost',
-          size: 'icon-sm',
-          class: 'n-select-clear shrink-0',
+          size: 'icon-xs',
+          class: 'n-select-clear absolute right-7 top-1/2 z-10 -translate-y-1/2 text-muted-foreground hover:bg-muted hover:text-foreground',
           type: 'button',
           disabled: props.disabled || props.loading,
           'aria-label': 'Clear selection',
-          onClick: clearValue,
+          onClick: (event: MouseEvent) => {
+            event.stopPropagation()
+            clearValue()
+          },
         } as never, { default: () => h(XIcon) })
       : null
 
     return () => {
-      const rootClass = cn('n-select n-base-selection flex min-w-0 items-center gap-1', attrs.class as HTMLAttributes['class'])
+      const rootClass = cn('n-select n-base-selection relative flex min-w-0 items-center', attrs.class as HTMLAttributes['class'])
       const triggerClass = cn(
-        'n-base-selection-label min-w-0 flex-1 justify-between bg-background',
-        props.size === 'small' && 'h-7 text-[0.8rem]',
-        props.size === 'tiny' && 'h-6 text-xs',
+        'n-base-selection-label min-w-0 flex-1 justify-between rounded-[8px] bg-background font-medium',
+        props.clearable && props.value !== null && props.value !== undefined && 'pr-14',
+        props.size === 'small' && 'h-8 text-[0.8rem]',
+        props.size === 'tiny' && 'h-7 text-xs',
       )
 
       if (props.filterable) {
@@ -451,8 +466,8 @@ export const AppSelect = defineComponent({
                     default: () => [
                       h('span', { class: cn('truncate', !selectedOption.value && 'text-muted-foreground') }, selectedOption.value?.label ?? props.placeholder ?? ''),
                       props.loading
-                        ? h(LoaderCircleIcon, { class: 'ml-auto shrink-0 animate-spin opacity-60' })
-                        : h(ChevronsUpDownIcon, { class: 'ml-auto shrink-0 opacity-50' }),
+                        ? h(LoaderCircleIcon, { class: 'ml-auto shrink-0 animate-spin opacity-60', 'data-icon': 'inline-end' })
+                        : h(ChevronDownIcon, { class: 'ml-auto shrink-0 opacity-60', 'data-icon': 'inline-end' }),
                     ],
                   }),
                 }),
@@ -460,7 +475,7 @@ export const AppSelect = defineComponent({
               h(ComboboxList, { align: 'start' }, {
                 default: () => [
                   h(ComboboxInput, { placeholder: props.placeholder ?? 'Search...' }),
-                  h(ComboboxEmpty, {}, { default: () => '—' }),
+                  h(ComboboxEmpty, {}, { default: () => localize('暂无选项', 'No options') }),
                   h(ComboboxGroup, {}, {
                     default: () => props.options.map((option) =>
                       h(ComboboxItem, { value: option, disabled: option.disabled } as never, {
@@ -494,9 +509,11 @@ export const AppSelect = defineComponent({
               default: () => h(SelectValue, { placeholder: props.placeholder }),
             }),
             h(SelectContent, { position: 'popper' }, {
-              default: () => props.options.map((option) =>
-                h(SelectItem, { value: option.value as never, disabled: option.disabled }, { default: () => option.label }),
-              ),
+              default: () => h(SelectGroup, {}, {
+                default: () => props.options.map((option) =>
+                  h(SelectItem, { value: option.value as never, disabled: option.disabled }, { default: () => option.label }),
+                ),
+              }),
             }),
           ],
         }),
@@ -650,11 +667,19 @@ export const AppEmpty = defineComponent({
   props: { description: String },
   setup(props, { attrs, slots }) {
     return () =>
-      h('div', { ...attrs, class: cn('n-empty grid place-items-center gap-3 p-8 text-center text-sm text-muted-foreground', attrs.class as HTMLAttributes['class']) }, [
-        h('div', { class: 'grid size-10 place-items-center rounded-full bg-muted' }, '—'),
-        h('div', props.description ?? renderSlot(slots)),
-        renderSlot(slots, 'extra'),
-      ])
+      h(Empty, { ...attrs, class: cn('n-empty min-h-36 p-6', attrs.class as HTMLAttributes['class']) }, {
+        default: () => [
+          h(EmptyHeader, {}, {
+            default: () => [
+              h(EmptyMedia, { variant: 'icon' }, { default: () => h(InboxIcon) }),
+              h(EmptyTitle, {}, { default: () => props.description ?? renderSlot(slots) }),
+            ],
+          }),
+          slots.extra
+            ? h(EmptyContent, {}, { default: () => renderSlot(slots, 'extra') })
+            : null,
+        ],
+      })
   },
 })
 
@@ -682,7 +707,7 @@ export const AppCard = defineComponent({
       h(Card, { ...attrs, class: cn('n-card', !props.bordered && 'border-transparent', attrs.class as HTMLAttributes['class']) }, {
         default: () => [
           props.title || slots.header
-            ? h(CardHeader, { class: 'n-card-header' }, { default: () => h(CardTitle, {}, { default: () => slots.header?.() ?? props.title }) })
+            ? h(CardHeader, { class: 'n-card-header border-b border-border/70 pb-4' }, { default: () => h(CardTitle, {}, { default: () => slots.header?.() ?? props.title }) })
             : null,
           h(CardContent, { class: 'n-card__content', style: props.contentStyle }, { default: () => renderSlot(slots) }),
           slots.footer ? h(CardFooter, { style: props.footerStyle }, { default: () => renderSlot(slots, 'footer') }) : null,
@@ -716,9 +741,9 @@ export const AppFormItem = defineComponent({
   },
   setup(props, { attrs, slots }) {
     return () =>
-      h('div', { ...attrs, class: cn('n-form-item grid gap-1.5', attrs.class as HTMLAttributes['class']) }, [
+      h('div', { ...attrs, class: cn('n-form-item grid gap-2', attrs.class as HTMLAttributes['class']) }, [
         props.showLabel && (props.label || slots.label)
-          ? h('label', { class: 'n-form-item-label text-sm font-medium text-foreground' }, [
+          ? h('label', { class: 'n-form-item-label text-[13px] font-semibold text-foreground' }, [
               slots.label?.() ?? props.label,
               props.required ? h('span', { class: 'ml-0.5 text-destructive' }, '*') : null,
             ])
@@ -844,10 +869,10 @@ export const AppDrawerContent = defineComponent({
         {
           default: () => [
             props.title || slots.header
-              ? h(SheetHeader, { class: 'n-drawer-header border-b px-4 py-3' }, { default: () => h(SheetTitle, {}, { default: () => slots.header?.() ?? props.title }) })
+              ? h(SheetHeader, { class: 'n-drawer-header border-b px-6 py-5' }, { default: () => h(SheetTitle, {}, { default: () => slots.header?.() ?? props.title }) })
               : null,
-            h('div', { class: 'n-drawer-body min-h-0 flex-1 overflow-auto p-4', style: props.bodyContentStyle }, renderSlot(slots)),
-            slots.footer ? h('div', { class: 'n-drawer-footer border-t p-4' }, renderSlot(slots, 'footer')) : null,
+            h('div', { class: 'n-drawer-body min-h-0 flex-1 overflow-auto p-6', style: props.bodyContentStyle }, renderSlot(slots)),
+            slots.footer ? h('div', { class: 'n-drawer-footer border-t bg-muted/30 p-5' }, renderSlot(slots, 'footer')) : null,
           ],
         },
       )
@@ -922,16 +947,32 @@ export const AppDropdown = defineComponent({
   },
   emits: ['select'],
   setup(props, { slots, emit }) {
-    const renderOptions = (options: MenuOption[]) =>
-      options.map((option) =>
-        option.type === 'divider'
-          ? h(DropdownMenuSeparator)
-          : h(
-              DropdownMenuItem,
-              { disabled: option.disabled, onSelect: () => emit('select', option.key) },
-              { default: () => [option.icon?.(), typeof option.label === 'function' ? option.label() : option.label] },
-            ),
+    const renderItem = (option: MenuOption) =>
+      h(
+        DropdownMenuItem,
+        { disabled: option.disabled, onSelect: () => emit('select', option.key) },
+        { default: () => [option.icon?.(), typeof option.label === 'function' ? option.label() : option.label] },
       )
+    const renderOptions = (options: MenuOption[]) => {
+      const nodes: VNodeChild[] = []
+      let group: MenuOption[] = []
+      const flushGroup = () => {
+        if (group.length === 0) return
+        const current = group
+        group = []
+        nodes.push(h(DropdownMenuGroup, {}, { default: () => current.map(renderItem) }))
+      }
+      for (const option of options) {
+        if (option.type === 'divider') {
+          flushGroup()
+          nodes.push(h(DropdownMenuSeparator))
+          continue
+        }
+        group.push(option)
+      }
+      flushGroup()
+      return nodes
+    }
     return () =>
       h(DropdownMenu, {}, {
         default: () => [
@@ -951,7 +992,7 @@ export const AppRadioGroup = defineComponent({
     return () =>
       h(RadioGroup, {
         ...attrs,
-        class: cn('n-radio-group flex flex-wrap gap-1', attrs.class as HTMLAttributes['class']),
+        class: cn('n-radio-group flex w-fit flex-wrap gap-1 rounded-lg bg-muted p-1', attrs.class as HTMLAttributes['class']),
         modelValue: String(props.value ?? ''),
         'onUpdate:modelValue': (value: string) => emit('update:value', value),
       } as never, { default: () => renderSlot(slots) })
@@ -965,7 +1006,7 @@ export const AppRadioButton = defineComponent({
   setup(props, { attrs, slots }) {
     const id = `radio-${Math.random().toString(36).slice(2)}`
     return () =>
-      h('label', { class: cn('n-radio-button inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-input px-2.5 py-1.5 text-xs has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary has-[[data-state=checked]]:text-primary-foreground', attrs.class as HTMLAttributes['class']) }, [
+      h('label', { class: cn('n-radio-button inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-md border border-transparent px-3 py-1.5 text-sm font-medium text-muted-foreground transition-[color,background-color,box-shadow] hover:text-foreground has-[[data-state=checked]]:bg-background has-[[data-state=checked]]:text-primary has-[[data-state=checked]]:shadow-xs', attrs.class as HTMLAttributes['class']) }, [
         h(RadioGroupItem, { id, value: String(props.value), disabled: props.disabled, class: 'sr-only' } as never),
         renderSlot(slots),
       ])
@@ -1015,12 +1056,12 @@ export const AppPagination = defineComponent({
     const pageCount = computed(() => Math.max(1, Math.ceil(props.itemCount / Math.max(1, props.pageSize))))
     const setPage = (page: number) => emit('update:page', Math.min(pageCount.value, Math.max(1, page)))
     return () =>
-      h('nav', { ...attrs, class: cn('n-pagination flex flex-wrap items-center gap-1', attrs.class as HTMLAttributes['class']), 'aria-label': 'Pagination' }, [
-        h(AppButton, { size: 'small', quaternary: true, circle: true, disabled: props.page <= 1, 'aria-label': 'First page', onClick: () => setPage(1) }, { default: () => h(ChevronsLeftIcon) }),
-        h(AppButton, { size: 'small', quaternary: true, circle: true, disabled: props.page <= 1, 'aria-label': 'Previous page', onClick: () => setPage(props.page - 1) }, { default: () => h(ChevronLeftIcon) }),
-        h('span', { class: 'min-w-16 px-2 text-center text-xs text-muted-foreground' }, `${props.page} / ${pageCount.value}`),
-        h(AppButton, { size: 'small', quaternary: true, circle: true, disabled: props.page >= pageCount.value, 'aria-label': 'Next page', onClick: () => setPage(props.page + 1) }, { default: () => h(ChevronRightIcon) }),
-        h(AppButton, { size: 'small', quaternary: true, circle: true, disabled: props.page >= pageCount.value, 'aria-label': 'Last page', onClick: () => setPage(pageCount.value) }, { default: () => h(ChevronsRightIcon) }),
+      h('nav', { ...attrs, class: cn('n-pagination flex flex-wrap items-center gap-1.5', attrs.class as HTMLAttributes['class']), 'aria-label': 'Pagination' }, [
+        h(AppButton, { size: 'small', secondary: true, circle: true, disabled: props.page <= 1, 'aria-label': 'First page', onClick: () => setPage(1) }, { default: () => h(ChevronsLeftIcon) }),
+        h(AppButton, { size: 'small', secondary: true, circle: true, disabled: props.page <= 1, 'aria-label': 'Previous page', onClick: () => setPage(props.page - 1) }, { default: () => h(ChevronLeftIcon) }),
+        h('span', { class: 'inline-flex h-8 min-w-16 items-center justify-center rounded-md border border-border bg-background px-2 text-sm font-medium text-foreground shadow-xs' }, `${props.page} / ${pageCount.value}`),
+        h(AppButton, { size: 'small', secondary: true, circle: true, disabled: props.page >= pageCount.value, 'aria-label': 'Next page', onClick: () => setPage(props.page + 1) }, { default: () => h(ChevronRightIcon) }),
+        h(AppButton, { size: 'small', secondary: true, circle: true, disabled: props.page >= pageCount.value, 'aria-label': 'Last page', onClick: () => setPage(pageCount.value) }, { default: () => h(ChevronsRightIcon) }),
         props.showSizePicker
           ? h(AppSelect, {
               class: 'ml-1 w-24',
@@ -1073,9 +1114,9 @@ export const AppDateTimeRange = defineComponent({
       if (start !== null && end !== null) emit('update:value', [start, end])
     }
     return () =>
-      h('div', { ...attrs, class: cn('n-date-picker flex min-w-0 items-center gap-1 rounded-lg border border-input bg-background p-1', attrs.class as HTMLAttributes['class']) }, [
+      h('div', { ...attrs, class: cn('n-date-picker flex h-9 min-w-0 items-center gap-1 rounded-lg border border-input bg-background px-2 shadow-xs transition-[border-color,box-shadow,background-color] focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/35', attrs.class as HTMLAttributes['class']) }, [
         h('input', {
-          class: 'min-w-0 flex-1 bg-transparent px-1 text-xs text-foreground outline-none',
+          class: 'min-w-0 flex-1 bg-transparent px-1 text-sm text-foreground outline-none',
           type: 'datetime-local',
           value: draftStart.value,
           disabled: props.disabled,
@@ -1086,7 +1127,7 @@ export const AppDateTimeRange = defineComponent({
         }),
         h('span', { class: 'text-muted-foreground' }, '–'),
         h('input', {
-          class: 'min-w-0 flex-1 bg-transparent px-1 text-xs text-foreground outline-none',
+          class: 'min-w-0 flex-1 bg-transparent px-1 text-sm text-foreground outline-none',
           type: 'datetime-local',
           value: draftEnd.value,
           disabled: props.disabled,
@@ -1336,16 +1377,16 @@ export const AppDataTable = defineComponent({
         tableLayout: props.tableLayout as CSSProperties['tableLayout'],
       }
       return h('div', { ...attrs, class: cn('n-data-table relative min-w-0', !props.bordered && 'is-borderless', attrs.class as HTMLAttributes['class']) }, [
-        h('div', { class: 'n-data-table-wrapper relative overflow-hidden rounded-lg border border-border' }, [
+        h('div', { class: 'n-data-table-wrapper relative overflow-hidden rounded-xl border border-border bg-card shadow-xs' }, [
           h('div', { class: 'n-scrollbar-container', style: wrapperStyle }, [
             h(Table, { class: 'n-data-table-base-table w-full border-collapse text-sm', style: tableStyle }, {
               default: () => [
-                h(TableHeader, { class: 'n-data-table-thead sticky top-0 z-[3] bg-muted' }, {
+                h(TableHeader, { class: 'n-data-table-thead sticky top-0 z-[3] bg-muted/80 backdrop-blur-sm' }, {
                   default: () => h(TableRow, { class: 'n-data-table-tr' }, {
                     default: () => props.columns.map((column, index) =>
                       h(TableHead, {
                         key: String(column.key ?? index),
-                        class: 'n-data-table-th h-9 border-b border-border px-3 text-left align-middle text-xs font-semibold text-foreground',
+                        class: 'n-data-table-th h-10 border-b border-border px-4 text-left align-middle text-xs font-semibold tracking-[0.01em] text-foreground',
                         style: { ...cellStyle(column, index), background: column.fixed ? 'var(--cpa-surface-muted)' : undefined },
                       }, { default: () => renderHeader(column) as never }),
                     ),
@@ -1356,25 +1397,25 @@ export const AppDataTable = defineComponent({
                     ? Array.from({ length: 5 }, (_, rowIndex) =>
                         h(TableRow, { key: `skeleton-${rowIndex}` }, {
                           default: () => props.columns.map((column, columnIndex) =>
-                            h(TableCell, { class: 'n-data-table-td border-b border-border px-3 py-2', style: cellStyle(column, columnIndex) }, { default: () => h(Skeleton, { class: 'h-4 w-full' }) }),
+                            h(TableCell, { class: 'n-data-table-td border-b border-border px-4 py-3', style: cellStyle(column, columnIndex) }, { default: () => h(Skeleton, { class: 'h-4 w-full' }) }),
                           ),
                         }),
                       )
                     : rows.value.length === 0
                       ? h(TableRow, {}, {
-                          default: () => h(TableCell, { class: 'n-data-table-td p-8 text-center text-muted-foreground', colspan: props.columns.length }, { default: () => slots.empty?.() ?? 'No data' }),
+                          default: () => h(TableCell, { class: 'n-data-table-td p-8 text-center text-muted-foreground', colspan: props.columns.length }, { default: () => slots.empty?.() ?? localize('暂无数据', 'No data') }),
                         })
                       : rows.value.map((row, rowIndex) => {
                           const rowAttrs = props.rowProps?.(row, rowIndex) ?? {}
                           return h(TableRow, {
                             ...rowAttrs,
                             key: getRowKey(row, rowIndex),
-                            class: cn('n-data-table-tr transition-colors hover:bg-accent/50', rowAttrs.class as HTMLAttributes['class']),
+                            class: cn('n-data-table-tr transition-colors hover:bg-accent/35', rowAttrs.class as HTMLAttributes['class']),
                           }, {
                             default: () => props.columns.map((column, columnIndex) =>
                               h(TableCell, {
                                 key: String(column.key ?? columnIndex),
-                                class: 'n-data-table-td border-b border-border px-3 py-2 align-middle text-foreground last:border-b-0',
+                                class: 'n-data-table-td border-b border-border px-4 py-3 align-middle text-foreground last:border-b-0',
                                 style: cellStyle(column, columnIndex),
                               }, { default: () => renderCell(column, row, rowIndex) as never }),
                             ),

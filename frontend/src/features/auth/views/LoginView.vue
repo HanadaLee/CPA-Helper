@@ -133,7 +133,7 @@ async function handleSubmit() {
   height: 100dvh;
   min-height: 0;
   overflow: auto;
-  background: var(--cpa-bg);
+  background: var(--cpa-shell-bg);
 }
 
 .auth-brand-panel {
@@ -143,17 +143,33 @@ async function handleSubmit() {
   align-items: center;
   overflow: hidden;
   padding: 72px 48px;
-  background: #030303;
+  background:
+    radial-gradient(circle at 18% 18%, rgb(34 193 200 / 26%), transparent 32%),
+    radial-gradient(circle at 82% 78%, rgb(0 154 168 / 22%), transparent 38%),
+    linear-gradient(145deg, #061c20 0%, #083b3f 52%, #071a1e 100%);
+}
+
+.auth-brand-panel::before {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgb(255 255 255 / 4%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 4%) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: linear-gradient(135deg, black, transparent 72%);
+  content: "";
 }
 
 .brand-stage {
   position: relative;
   display: grid;
-  width: 100%;
-  gap: 18px;
+  z-index: 1;
+  width: min(620px, 100%);
+  gap: 8px;
   align-content: center;
-  font-weight: 850;
-  line-height: 0.86;
+  justify-self: center;
+  font-weight: 820;
+  line-height: 0.9;
   text-transform: uppercase;
 }
 
@@ -166,14 +182,14 @@ async function handleSubmit() {
 
 .brand-word-cpa {
   justify-self: start;
-  color: #d6d6d6;
-  font-size: 172px;
+  color: rgb(255 255 255 / 96%);
+  font-size: 148px;
 }
 
 .brand-word-helper {
   justify-self: end;
-  color: #8d8d8d;
-  font-size: 136px;
+  color: #6fe0dc;
+  font-size: 116px;
 }
 
 .auth-content {
@@ -181,21 +197,20 @@ async function handleSubmit() {
   min-width: 0;
   align-content: center;
   justify-items: center;
-  gap: 28px;
+  gap: 24px;
   padding: 48px;
   background:
-    linear-gradient(135deg, var(--cpa-bg-glow) 0, transparent 30%),
-    linear-gradient(180deg, var(--cpa-bg-soft) 0, var(--cpa-bg) 560px),
-    var(--cpa-bg);
+    radial-gradient(circle at 88% 10%, var(--cpa-primary-weak), transparent 28%),
+    var(--cpa-canvas);
 }
 
 .auth-card {
   width: min(420px, 100%);
   border: 1px solid var(--cpa-border);
-  border-radius: var(--cpa-radius);
+  border-radius: calc(var(--cpa-radius) + 4px);
   overflow: hidden;
   background: var(--cpa-surface-raised);
-  box-shadow: 0 22px 54px rgb(24 45 53 / 10%), var(--cpa-shadow-hairline);
+  box-shadow: var(--cpa-shadow);
 }
 
 .auth-card :deep(.n-card__content) {
@@ -211,13 +226,14 @@ async function handleSubmit() {
 
 .brand-mark {
   display: grid;
-  width: 76px;
-  height: 76px;
+  width: 68px;
+  height: 68px;
   place-items: center;
   border-radius: 18px;
   overflow: hidden;
   background: var(--cpa-surface-solid);
-  box-shadow: 0 18px 34px rgb(0 154 168 / 18%);
+  border: 1px solid color-mix(in srgb, var(--cpa-primary) 20%, var(--cpa-border));
+  box-shadow: 0 12px 28px -18px rgb(0 112 118 / 58%), 0 1px 2px rgb(24 45 53 / 8%);
 }
 
 .brand-mark img {
@@ -250,17 +266,13 @@ p {
   font-weight: 650;
 }
 
-:global(:root.dark) .auth-brand-panel {
-  background: #020202;
-}
-
 @media (max-width: 1320px) {
   .brand-word-cpa {
-    font-size: 148px;
+    font-size: 128px;
   }
 
   .brand-word-helper {
-    font-size: 118px;
+    font-size: 102px;
   }
 }
 
