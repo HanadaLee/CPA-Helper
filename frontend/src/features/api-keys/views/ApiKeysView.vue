@@ -776,11 +776,7 @@ onMounted(refresh)
 
 <template>
   <section class="page">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">{{ t('API 密钥', 'API keys') }}</h1>
-        <p class="page-subtitle">{{ t('仅管理当前账号自己的密钥', 'Manage only keys for the current account') }}</p>
-      </div>
+    <div class="page-toolbar">
       <AppStack>
         <AppButton secondary :loading="isLoading" @click="refresh">{{ t('刷新', 'Refresh') }}</AppButton>
         <AppButton type="primary" :disabled="!canCreateApiKey" @click="openCreateDialog">

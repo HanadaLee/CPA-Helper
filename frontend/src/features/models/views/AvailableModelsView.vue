@@ -221,11 +221,7 @@ onMounted(refresh)
 
 <template>
   <section class="page models-page" :aria-busy="isLoading">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">{{ t('可用模型', 'Available Models') }}</h1>
-        <p class="page-subtitle">{{ t('通过当前账号绑定的 CPA API Key 查询并聚合', 'Query and aggregate models from CPA API keys bound to the current account') }}</p>
-      </div>
+    <div class="page-toolbar">
       <AppStack>
         <AppButton secondary :loading="isLoading" @click="refresh">
           <template #icon>

@@ -33,11 +33,7 @@ onMounted(loadCPAMC)
 
 <template>
   <section class="page cpamc-page">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">CPAMC</h1>
-        <p class="page-subtitle">{{ t('CLIProxyAPI 管理中心', 'CLIProxyAPI Management Center') }}</p>
-      </div>
+    <div class="page-toolbar">
       <AppButton secondary :loading="isLoading" @click="loadCPAMC">
         {{ t('刷新', 'Refresh') }}
       </AppButton>
@@ -69,7 +65,7 @@ onMounted(loadCPAMC)
 <style scoped>
 .cpamc-page {
   grid-template-rows: auto minmax(0, 1fr);
-  height: calc(100dvh - 60px);
+  height: 100%;
   overflow: hidden;
 }
 
@@ -109,9 +105,4 @@ onMounted(loadCPAMC)
   justify-self: start;
 }
 
-@media (max-width: 860px) {
-  .cpamc-page {
-    height: calc(100dvh - 78px);
-  }
-}
 </style>

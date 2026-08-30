@@ -43,9 +43,10 @@ test('all migrated routes render and core controls remain interactive', async ({
   await setupOrLogin(page)
   await expect(page.getByText(/管理中心|Admin Center/, { exact: true })).toBeVisible()
 
-  for (const [route] of adminRoutes) {
+  for (const [route, title] of adminRoutes) {
     await page.goto(route)
-    await expect(page.locator('h1')).toBeVisible()
+    await expect(page.locator('.desktop-location')).toContainText(title)
+    await expect(page.locator('main main h1')).toHaveCount(0)
   }
 
   await page.goto('/admin/account-mgmt')
@@ -79,7 +80,10 @@ test('all migrated routes render and core controls remain interactive', async ({
   await page.getByRole('button', { name: /取消|Cancel/ }).click()
 
   await page.goto('/admin/records')
-  await expect(page.locator('input[type="datetime-local"]')).toHaveCount(2)
+  await expect(page.locator('input[type="datetime-local"]')).toHaveCount(0)
+  await page.locator('.n-date-range-trigger').click()
+  await expect(page.locator('[data-slot="range-calendar"]')).toBeVisible()
+  await page.keyboard.press('Escape')
   await expect(page.locator('table')).toBeVisible()
 
   await page.goto('/admin/settings')
@@ -87,7 +91,7 @@ test('all migrated routes render and core controls remain interactive', async ({
   await expect(switches.first()).toBeVisible()
 
   await page.goto('/account/keys')
-  await expect(page.locator('h1')).toContainText(/API 密钥|API Keys/i)
+  await expect(page.locator('.desktop-location')).toContainText(/API 密钥|API Keys/i)
   await page.getByRole('button', { name: /新建|New API key/i }).click()
   await expect(page.getByRole('heading', { name: /新建 API 密钥|New API key/i })).toBeVisible()
   await page.getByRole('button', { name: /取消|Cancel/ }).click()

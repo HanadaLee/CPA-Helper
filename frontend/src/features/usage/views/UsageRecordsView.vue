@@ -2,6 +2,15 @@
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
+  CircleCheck,
+  Cpu,
+  Database,
+  KeyRound,
+  Route,
+  Server,
+  UserRound,
+} from '@lucide/vue'
+import {
   AppButton,
   AppDataTable,
   AppDateTimeRange,
@@ -284,17 +293,6 @@ const selectOptions = computed(() => ({
 }))
 
 const isAccountScope = computed(() => props.scope === 'account')
-const pageTitle = computed(() =>
-  isAccountScope.value ? t('我的明细', 'My records') : t('请求明细', 'Request records'),
-)
-const pageSubtitle = computed(() =>
-  isAccountScope.value
-    ? t('仅查询当前登录账号自己的本地用量记录', 'Only local usage records for your account are shown')
-    : t(
-        '分页查询本地用量记录，单条原始数据已在接口层脱敏',
-        'Browse local usage records by page. Raw record data is masked by the API.',
-      ),
-)
 const recordsTableScrollX = computed(() =>
   isAccountScope.value ? ACCOUNT_RECORDS_TABLE_SCROLL_X : ADMIN_RECORDS_TABLE_SCROLL_X,
 )
@@ -931,11 +929,7 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="page records-page">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">{{ pageTitle }}</h1>
-        <p class="page-subtitle">{{ pageSubtitle }}</p>
-      </div>
+    <div class="page-toolbar">
       <div class="header-actions">
         <span class="refresh-status" :class="{ 'is-error': autoRefreshError }">
           {{ refreshStatusText }}
@@ -970,6 +964,8 @@ onBeforeUnmount(() => {
         <div class="field-row" :class="{ 'is-account-scope': isAccountScope }">
           <AppSelect
             v-if="!isAccountScope"
+            grow
+            :icon="UserRound"
             :value="filterForm.user_id"
             :options="selectOptions.users"
             clearable
@@ -978,6 +974,8 @@ onBeforeUnmount(() => {
             @update:value="handleUserChange"
           />
           <AppSelect
+            grow
+            :icon="KeyRound"
             :value="filterForm.api_key_description"
             :options="selectOptions.apiKeyDescriptions"
             clearable
@@ -986,6 +984,8 @@ onBeforeUnmount(() => {
             @update:value="handleApiKeyChange"
           />
           <AppSelect
+            grow
+            :icon="Server"
             :value="filterForm.provider"
             :options="selectOptions.providers"
             clearable
@@ -994,6 +994,8 @@ onBeforeUnmount(() => {
             @update:value="handleProviderChange"
           />
           <AppSelect
+            grow
+            :icon="Cpu"
             :value="filterForm.model"
             :options="selectOptions.models"
             clearable
@@ -1003,6 +1005,8 @@ onBeforeUnmount(() => {
           />
           <AppSelect
             v-if="!isAccountScope"
+            grow
+            :icon="Database"
             :value="filterForm.source_key"
             :options="selectOptions.sources"
             clearable
@@ -1011,6 +1015,8 @@ onBeforeUnmount(() => {
             @update:value="handleSourceChange"
           />
           <AppSelect
+            grow
+            :icon="Route"
             :value="filterForm.endpoint"
             :options="selectOptions.endpoints"
             clearable
@@ -1020,6 +1026,7 @@ onBeforeUnmount(() => {
           />
           <div class="status-actions">
             <AppSelect
+              :icon="CircleCheck"
               :value="filterForm.failed"
               class="status-select"
               :options="failedFilterOptions"
@@ -1150,37 +1157,55 @@ onBeforeUnmount(() => {
 }
 
 .field-row {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(120px, 1fr)) auto;
+  display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   align-items: end;
   min-width: 0;
 }
 
-.field-row.is-account-scope {
-  grid-template-columns: repeat(4, minmax(120px, 1fr)) auto;
-}
-
 .range-picker {
   min-width: 0;
+  width: 100%;
 }
 
 .quick-ranges {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 3px;
   min-width: 0;
+  width: fit-content;
+  padding: 3px;
+  border: 1px solid color-mix(in srgb, var(--cpa-border) 76%, transparent);
+  border-radius: 11px;
+  background: var(--cpa-surface-muted);
 }
 
 .quick-range-button {
   flex: 0 0 auto;
-  min-width: 64px;
-  border-radius: 999px;
-  font-weight: 750;
+  min-width: 68px;
+  border-color: transparent;
+  border-radius: 8px;
+  font-weight: 700;
+  box-shadow: none;
+}
+
+.quick-ranges :deep(.quick-range-button[data-variant="outline"]) {
+  border-color: transparent;
+  background: transparent;
+}
+
+.quick-ranges :deep(.quick-range-button[data-variant="outline"]:hover) {
+  background: color-mix(in srgb, var(--cpa-surface) 74%, var(--cpa-primary-wash));
+}
+
+.quick-ranges :deep(.quick-range-button[data-variant="default"]) {
+  box-shadow: 0 1px 2px rgb(0 82 87 / 16%);
 }
 
 .status-actions {
   display: flex;
+  flex: 0 0 auto;
   gap: 8px;
   min-width: 0;
 }
@@ -1258,7 +1283,7 @@ onBeforeUnmount(() => {
 .records-table :deep(.v-vl),
 .records-table :deep(.n-scrollbar-container) {
   overscroll-behavior: contain;
-  scrollbar-gutter: stable;
+  scrollbar-gutter: auto;
 }
 
 .records-table :deep(.n-data-table-wrapper) {
@@ -1268,7 +1293,7 @@ onBeforeUnmount(() => {
 @media (min-width: 861px) {
   .records-page {
     grid-template-rows: auto auto minmax(0, 1fr);
-    height: calc(100dvh - 60px);
+    height: 100%;
     min-height: 0;
     overflow: hidden;
   }
@@ -1294,14 +1319,14 @@ onBeforeUnmount(() => {
 @media (max-width: 1180px) {
   .field-row,
   .field-row.is-account-scope {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    display: flex;
   }
 }
 
 @media (max-width: 720px) {
   .field-row,
   .field-row.is-account-scope {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    display: flex;
   }
 
   .filter-toolbar {
@@ -1318,6 +1343,10 @@ onBeforeUnmount(() => {
   .field-row,
   .field-row.is-account-scope {
     gap: 8px;
+  }
+
+  .status-actions {
+    flex: 1 1 100%;
   }
 
   .status-actions {

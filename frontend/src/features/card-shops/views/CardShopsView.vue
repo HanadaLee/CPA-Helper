@@ -781,13 +781,7 @@ function telegramHref(value: string | null | undefined): string | null {
 
 <template>
   <section class="page card-shops-page">
-    <div class="page-header card-shops-header">
-      <div>
-        <h1 class="page-title">{{ t('卡网收录', 'Card shops') }}</h1>
-        <p class="page-subtitle">
-          {{ t('同步公开卡网店铺与商品快照，用于检索和甄别。', 'Browse public card-shop and product snapshots for lookup and screening.') }}
-        </p>
-      </div>
+    <div class="page-toolbar card-shops-header">
       <AppButton type="primary" :loading="isLoading" @click="refresh">
         <template #icon>
           <AppIcon :component="RefreshCw" />

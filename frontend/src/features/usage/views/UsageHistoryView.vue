@@ -3,10 +3,16 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, type Component } f
 import { useRoute, useRouter } from 'vue-router'
 import { AppButton, AppDateTimeRange, AppSelect, AppSpinner, useMessage } from '@/shared/ui/app-kit'
 import {
+  CircleCheck,
   CircleDollarSign,
   ClipboardList,
+  Cpu,
   Gauge,
+  KeyRound,
+  Route,
+  Server,
   Timer,
+  UserRound,
   Zap,
 } from '@lucide/vue'
 
@@ -322,17 +328,6 @@ const selectOptions = computed(() => ({
 
 const isAccountScope = computed(() => props.scope === 'account')
 const canOpenRecords = computed(() => props.scope !== 'shared')
-const pageTitle = computed(() =>
-  isAccountScope.value ? t('我的用量', 'My usage') : t('历史用量', 'Usage history'),
-)
-const pageSubtitle = computed(() =>
-  isAccountScope.value
-    ? t('仅聚合当前登录账号自己的本地用量记录', 'Only local usage records for your account are aggregated')
-    : t(
-        '按本地 SQLite 历史记录聚合，费用按请求入库时的模型价格记录',
-        'Aggregated from local SQLite history. Costs use the model price stored when each request was ingested.',
-      ),
-)
 const rankingTitle = computed(() =>
   isAccountScope.value ? t('KEY 排行', 'Key ranking') : t('用户排行', 'User ranking'),
 )
@@ -1231,11 +1226,7 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="page usage-dashboard-page" :aria-busy="isLoading">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">{{ pageTitle }}</h1>
-        <p class="page-subtitle">{{ pageSubtitle }}</p>
-      </div>
+    <div class="page-toolbar">
       <div class="header-actions">
         <span
           v-if="isAccountScope"
@@ -1292,6 +1283,8 @@ onBeforeUnmount(() => {
         <div class="field-row" :class="{ 'is-account-scope': isAccountScope }">
           <AppSelect
             v-if="!isAccountScope"
+            grow
+            :icon="UserRound"
             :value="filterForm.user_id"
             :options="selectOptions.users"
             clearable
@@ -1300,6 +1293,8 @@ onBeforeUnmount(() => {
             @update:value="handleUserChange"
           />
           <AppSelect
+            grow
+            :icon="KeyRound"
             :value="filterForm.api_key_description"
             :options="selectOptions.apiKeyDescriptions"
             clearable
@@ -1308,6 +1303,8 @@ onBeforeUnmount(() => {
             @update:value="handleApiKeyChange"
           />
           <AppSelect
+            grow
+            :icon="Server"
             :value="filterForm.provider"
             :options="selectOptions.providers"
             clearable
@@ -1316,6 +1313,8 @@ onBeforeUnmount(() => {
             @update:value="handleProviderChange"
           />
           <AppSelect
+            grow
+            :icon="Cpu"
             :value="filterForm.model"
             :options="selectOptions.models"
             clearable
@@ -1324,6 +1323,8 @@ onBeforeUnmount(() => {
             @update:value="handleModelChange"
           />
           <AppSelect
+            grow
+            :icon="Route"
             :value="filterForm.endpoint"
             :options="selectOptions.endpoints"
             clearable
@@ -1333,6 +1334,7 @@ onBeforeUnmount(() => {
           />
           <div class="status-actions">
             <AppSelect
+              :icon="CircleCheck"
               :value="filterForm.failed"
               class="status-select"
               :options="failedFilterOptions"
@@ -1723,19 +1725,16 @@ onBeforeUnmount(() => {
 }
 
 .field-row {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(118px, 1fr)) auto;
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: end;
   min-width: 0;
 }
 
-.field-row.is-account-scope {
-  grid-template-columns: repeat(4, minmax(118px, 1fr)) auto;
-}
-
 .range-picker {
   min-width: 0;
+  width: 100%;
 }
 
 .quick-ranges {
@@ -1774,6 +1773,7 @@ onBeforeUnmount(() => {
 
 .status-actions {
   display: flex;
+  flex: 0 0 auto;
   gap: 8px;
   min-width: 0;
 }
@@ -2597,7 +2597,7 @@ onBeforeUnmount(() => {
 
   .field-row,
   .field-row.is-account-scope {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    display: flex;
   }
 }
 
@@ -2711,8 +2711,11 @@ onBeforeUnmount(() => {
 
   .field-row,
   .field-row.is-account-scope {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
+  }
+
+  .status-actions {
+    flex: 1 1 100%;
   }
 
   .quick-ranges {

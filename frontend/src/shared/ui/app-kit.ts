@@ -8,6 +8,7 @@ import type {
   Slots,
   VNodeChild,
 } from 'vue'
+import type { DateRange } from 'reka-ui'
 import {
   computed,
   defineComponent,
@@ -19,6 +20,7 @@ import {
   watch,
 } from 'vue'
 import {
+  CalendarDaysIcon,
   CheckIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
@@ -29,6 +31,7 @@ import {
   LoaderCircleIcon,
   XIcon,
 } from '@lucide/vue'
+import { CalendarDate } from '@internationalized/date'
 import { toast } from 'vue-sonner'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -80,8 +83,12 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty'
+import { Field, FieldDescription, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { RangeCalendar } from '@/components/ui/range-calendar'
+import { Separator } from '@/components/ui/separator'
 import {
   Select,
   SelectContent,
@@ -401,6 +408,8 @@ export const AppSelect = defineComponent({
     loading: Boolean,
     consistentMenuWidth: { type: Boolean, default: true },
     size: String,
+    icon: Object as PropType<Component>,
+    grow: Boolean,
   },
   emits: ['update:value', 'clear'],
   setup(props, { attrs, emit }) {
@@ -434,7 +443,11 @@ export const AppSelect = defineComponent({
       : null
 
     return () => {
-      const rootClass = cn('n-select n-base-selection relative flex min-w-0 items-center', attrs.class as HTMLAttributes['class'])
+      const rootClass = cn(
+        'n-select n-base-selection relative flex min-w-0 items-center',
+        props.grow && 'flex-1 basis-36',
+        attrs.class as HTMLAttributes['class'],
+      )
       const triggerClass = cn(
         'n-base-selection-label min-w-0 flex-1 justify-between rounded-[8px] bg-background font-medium',
         props.clearable && props.value !== null && props.value !== undefined && 'pr-14',
@@ -443,8 +456,13 @@ export const AppSelect = defineComponent({
       )
 
       if (props.filterable) {
-        return h('div', { ...attrs, class: rootClass }, [
+        return h('div', {
+          ...attrs,
+          class: rootClass,
+          style: [attrs.style as CSSProperties, props.grow ? { flex: '1 0 8rem' } : undefined],
+        }, [
           h(Combobox, {
+            class: 'w-full min-w-0',
             modelValue: selectedOption.value,
             by: 'value',
             disabled: props.disabled || props.loading,
@@ -460,10 +478,14 @@ export const AppSelect = defineComponent({
                     variant: 'outline',
                     size: props.size === 'small' ? 'sm' : props.size === 'tiny' ? 'xs' : 'default',
                     class: triggerClass,
+                    style: { width: '100%' },
                     disabled: props.disabled || props.loading,
                     role: 'combobox',
                   } as never, {
                     default: () => [
+                      props.icon
+                        ? h(props.icon, { class: 'shrink-0 text-muted-foreground', 'aria-hidden': true })
+                        : null,
                       h('span', { class: cn('truncate', !selectedOption.value && 'text-muted-foreground') }, selectedOption.value?.label ?? props.placeholder ?? ''),
                       props.loading
                         ? h(LoaderCircleIcon, { class: 'ml-auto shrink-0 animate-spin opacity-60', 'data-icon': 'inline-end' })
@@ -494,7 +516,11 @@ export const AppSelect = defineComponent({
         ])
       }
 
-      return h('div', { ...attrs, class: rootClass }, [
+      return h('div', {
+        ...attrs,
+        class: rootClass,
+        style: [attrs.style as CSSProperties, props.grow ? { flex: '1 0 8rem' } : undefined],
+      }, [
         h(Select, {
           modelValue: props.value ?? undefined,
           disabled: props.disabled || props.loading,
@@ -503,10 +529,16 @@ export const AppSelect = defineComponent({
           default: () => [
             h(SelectTrigger, {
               class: triggerClass,
+              style: { width: '100%' },
               size: props.size === 'small' || props.size === 'tiny' ? 'sm' : 'default',
               'aria-label': selectedOption.value?.label ?? props.placeholder ?? 'Select option',
             }, {
-              default: () => h(SelectValue, { placeholder: props.placeholder }),
+              default: () => [
+                props.icon
+                  ? h(props.icon, { class: 'shrink-0 text-muted-foreground', 'aria-hidden': true })
+                  : null,
+                h(SelectValue, { placeholder: props.placeholder }),
+              ],
             }),
             h(SelectContent, { position: 'popper' }, {
               default: () => h(SelectGroup, {}, {
@@ -741,16 +773,22 @@ export const AppFormItem = defineComponent({
   },
   setup(props, { attrs, slots }) {
     return () =>
-      h('div', { ...attrs, class: cn('n-form-item grid gap-2', attrs.class as HTMLAttributes['class']) }, [
-        props.showLabel && (props.label || slots.label)
-          ? h('label', { class: 'n-form-item-label text-[13px] font-semibold text-foreground' }, [
-              slots.label?.() ?? props.label,
-              props.required ? h('span', { class: 'ml-0.5 text-destructive' }, '*') : null,
-            ])
-          : null,
-        h('div', { class: 'n-form-item-blank min-w-0' }, renderSlot(slots)),
-        props.feedback ? h('div', { class: 'n-form-item-feedback-wrapper text-xs text-muted-foreground' }, props.feedback) : null,
-      ])
+      h(Field, { ...attrs, class: cn('n-form-item', attrs.class as HTMLAttributes['class']) }, {
+        default: () => [
+          props.showLabel && (props.label || slots.label)
+            ? h(FieldLabel, { class: 'n-form-item-label' }, {
+                default: () => [
+                  slots.label?.() ?? props.label,
+                  props.required ? h('span', { class: 'ml-0.5 text-destructive' }, '*') : null,
+                ],
+              })
+            : null,
+          h('div', { class: 'n-form-item-blank min-w-0' }, renderSlot(slots)),
+          props.feedback
+            ? h(FieldDescription, { class: 'n-form-item-feedback-wrapper' }, { default: () => props.feedback })
+            : null,
+        ],
+      })
   },
 })
 
@@ -1086,6 +1124,28 @@ function parseDateTimeLocal(value: string) {
   return Number.isFinite(timestamp) ? timestamp : null
 }
 
+function timestampToCalendarDate(timestamp: number) {
+  const date = new Date(timestamp)
+  return new CalendarDate(date.getFullYear(), date.getMonth() + 1, date.getDate())
+}
+
+function dateValueToInputDate(value: { year: number, month: number, day: number }) {
+  return `${String(value.year).padStart(4, '0')}-${String(value.month).padStart(2, '0')}-${String(value.day).padStart(2, '0')}`
+}
+
+function formatRangeLabel(value: [number, number] | null | undefined) {
+  if (!value) return localize('选择日期与时间', 'Select date and time')
+  const formatter = new Intl.DateTimeFormat(localize('zh-CN', 'en-US'), {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  })
+  return `${formatter.format(new Date(value[0]))} – ${formatter.format(new Date(value[1]))}`
+}
+
 export const AppDateTimeRange = defineComponent({
   name: 'AppDateTimeRange',
   inheritAttrs: false,
@@ -1098,56 +1158,144 @@ export const AppDateTimeRange = defineComponent({
   },
   emits: ['update:value', 'clear'],
   setup(props, { attrs, emit }) {
+    const open = ref(false)
     const draftStart = ref('')
     const draftEnd = ref('')
+    const calendarRange = ref<DateRange | null>(null)
+
+    const syncDraft = (value: [number, number] | null | undefined) => {
+      draftStart.value = value ? formatDateTimeLocal(value[0]) : ''
+      draftEnd.value = value ? formatDateTimeLocal(value[1]) : ''
+      calendarRange.value = value
+        ? { start: timestampToCalendarDate(value[0]), end: timestampToCalendarDate(value[1]) }
+        : null
+    }
+
     watch(
       () => props.value,
-      (value) => {
-        draftStart.value = value ? formatDateTimeLocal(value[0]) : ''
-        draftEnd.value = value ? formatDateTimeLocal(value[1]) : ''
-      },
+      syncDraft,
       { immediate: true, deep: true },
     )
-    const update = () => {
+
+    const canApply = computed(() => {
       const start = parseDateTimeLocal(draftStart.value)
       const end = parseDateTimeLocal(draftEnd.value)
-      if (start !== null && end !== null) emit('update:value', [start, end])
+      return start !== null && end !== null && start <= end
+    })
+
+    const updateCalendarRange = (value: DateRange) => {
+      calendarRange.value = value
+      if (value.start) {
+        const time = draftStart.value.slice(11, 16) || '00:00'
+        draftStart.value = `${dateValueToInputDate(value.start)}T${time}`
+      }
+      if (value.end) {
+        const time = draftEnd.value.slice(11, 16) || '23:59'
+        draftEnd.value = `${dateValueToInputDate(value.end)}T${time}`
+      }
     }
+
+    const updateTime = (target: 'start' | 'end', time: string) => {
+      const current = target === 'start' ? draftStart.value : draftEnd.value
+      const calendarValue = target === 'start' ? calendarRange.value?.start : calendarRange.value?.end
+      const date = current.slice(0, 10) || (calendarValue ? dateValueToInputDate(calendarValue) : '')
+      if (!date) return
+      if (target === 'start') draftStart.value = `${date}T${time}`
+      else draftEnd.value = `${date}T${time}`
+    }
+
+    const apply = () => {
+      const start = parseDateTimeLocal(draftStart.value)
+      const end = parseDateTimeLocal(draftEnd.value)
+      if (start === null || end === null || start > end) return
+      emit('update:value', [start, end])
+      open.value = false
+    }
+
+    const clear = () => {
+      syncDraft(null)
+      emit('update:value', null)
+      emit('clear')
+      open.value = false
+    }
+
+    const cancel = () => {
+      syncDraft(props.value)
+      open.value = false
+    }
+
     return () =>
-      h('div', { ...attrs, class: cn('n-date-picker flex h-9 min-w-0 items-center gap-1 rounded-lg border border-input bg-background px-2 shadow-xs transition-[border-color,box-shadow,background-color] focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/35', attrs.class as HTMLAttributes['class']) }, [
-        h('input', {
-          class: 'min-w-0 flex-1 bg-transparent px-1 text-sm text-foreground outline-none',
-          type: 'datetime-local',
-          value: draftStart.value,
-          disabled: props.disabled,
-          onChange: (event: Event) => {
-            draftStart.value = (event.target as HTMLInputElement).value
-            update()
+      h('div', { ...attrs, class: cn('n-date-picker flex min-w-0 items-center gap-1 bg-transparent shadow-none', attrs.class as HTMLAttributes['class']) }, [
+        h(Popover, {
+          open: open.value,
+          'onUpdate:open': (value: boolean) => {
+            if (value) syncDraft(props.value)
+            open.value = value
           },
+        } as never, {
+          default: () => [
+            h(PopoverTrigger, { asChild: true } as never, {
+              default: () => h(Button, {
+                variant: 'outline',
+                size: props.size === 'small' ? 'sm' : 'default',
+                disabled: props.disabled,
+                class: 'n-date-range-trigger min-w-0 flex-1 justify-start',
+              } as never, {
+                default: () => [
+                  h(CalendarDaysIcon, { 'data-icon': 'inline-start' }),
+                  h('span', { class: cn('truncate', !props.value && 'text-muted-foreground') }, formatRangeLabel(props.value)),
+                  h(ChevronDownIcon, { class: 'ml-auto text-muted-foreground', 'data-icon': 'inline-end' }),
+                ],
+              }),
+            }),
+            h(PopoverContent, { align: 'start', class: 'max-h-[calc(100dvh-2rem)] w-auto max-w-[calc(100vw-2rem)] gap-0 overflow-y-auto p-0' }, {
+              default: () => [
+                h(RangeCalendar, {
+                  modelValue: calendarRange.value,
+                  numberOfMonths: 2,
+                  weekStartsOn: 1,
+                  initialFocus: true,
+                  locale: localize('zh-CN', 'en-US'),
+                  'onUpdate:modelValue': updateCalendarRange,
+                } as never),
+                h(Separator),
+                h('div', { class: 'grid gap-3 p-3 sm:grid-cols-2' }, [
+                  h(Field, {}, {
+                    default: () => [
+                      h(FieldLabel, {}, { default: () => localize('开始时间', 'Start time') }),
+                      h(Input, {
+                        type: 'time',
+                        modelValue: draftStart.value.slice(11, 16),
+                        disabled: !calendarRange.value?.start,
+                        'onUpdate:modelValue': (value: string | number) => updateTime('start', String(value)),
+                      } as never),
+                    ],
+                  }),
+                  h(Field, {}, {
+                    default: () => [
+                      h(FieldLabel, {}, { default: () => localize('结束时间', 'End time') }),
+                      h(Input, {
+                        type: 'time',
+                        modelValue: draftEnd.value.slice(11, 16),
+                        disabled: !calendarRange.value?.end,
+                        'onUpdate:modelValue': (value: string | number) => updateTime('end', String(value)),
+                      } as never),
+                    ],
+                  }),
+                ]),
+                h('div', { class: 'flex items-center justify-between gap-2 px-3 pb-3' }, [
+                  props.clearable
+                    ? h(Button, { type: 'button', variant: 'ghost', size: 'sm', disabled: !props.value, onClick: clear } as never, { default: () => localize('清除', 'Clear') })
+                    : h('span'),
+                  h('div', { class: 'flex items-center gap-2' }, [
+                    h(Button, { type: 'button', variant: 'outline', size: 'sm', onClick: cancel } as never, { default: () => localize('取消', 'Cancel') }),
+                    h(Button, { type: 'button', size: 'sm', disabled: !canApply.value, onClick: apply } as never, { default: () => localize('应用', 'Apply') }),
+                  ]),
+                ]),
+              ],
+            }),
+          ],
         }),
-        h('span', { class: 'text-muted-foreground' }, '–'),
-        h('input', {
-          class: 'min-w-0 flex-1 bg-transparent px-1 text-sm text-foreground outline-none',
-          type: 'datetime-local',
-          value: draftEnd.value,
-          disabled: props.disabled,
-          onChange: (event: Event) => {
-            draftEnd.value = (event.target as HTMLInputElement).value
-            update()
-          },
-        }),
-        props.clearable && props.value
-          ? h('button', {
-              type: 'button',
-              class: 'grid size-6 place-items-center rounded hover:bg-muted',
-              onClick: () => {
-                draftStart.value = ''
-                draftEnd.value = ''
-                emit('update:value', null)
-                emit('clear')
-              },
-            }, h(XIcon, { class: 'size-3.5' }))
-          : null,
       ])
   },
 })
@@ -1386,7 +1534,7 @@ export const AppDataTable = defineComponent({
                     default: () => props.columns.map((column, index) =>
                       h(TableHead, {
                         key: String(column.key ?? index),
-                        class: 'n-data-table-th h-10 border-b border-border px-4 text-left align-middle text-xs font-semibold tracking-[0.01em] text-foreground',
+                        class: 'n-data-table-th h-10 border-b border-border px-3 text-left align-middle text-xs font-semibold tracking-[0.01em] text-foreground',
                         style: { ...cellStyle(column, index), background: column.fixed ? 'var(--cpa-surface-muted)' : undefined },
                       }, { default: () => renderHeader(column) as never }),
                     ),
@@ -1397,7 +1545,7 @@ export const AppDataTable = defineComponent({
                     ? Array.from({ length: 5 }, (_, rowIndex) =>
                         h(TableRow, { key: `skeleton-${rowIndex}` }, {
                           default: () => props.columns.map((column, columnIndex) =>
-                            h(TableCell, { class: 'n-data-table-td border-b border-border px-4 py-3', style: cellStyle(column, columnIndex) }, { default: () => h(Skeleton, { class: 'h-4 w-full' }) }),
+                            h(TableCell, { class: 'n-data-table-td border-b border-border px-3 py-2.5', style: cellStyle(column, columnIndex) }, { default: () => h(Skeleton, { class: 'h-4 w-full' }) }),
                           ),
                         }),
                       )
@@ -1415,7 +1563,7 @@ export const AppDataTable = defineComponent({
                             default: () => props.columns.map((column, columnIndex) =>
                               h(TableCell, {
                                 key: String(column.key ?? columnIndex),
-                                class: 'n-data-table-td border-b border-border px-4 py-3 align-middle text-foreground last:border-b-0',
+                                class: 'n-data-table-td border-b border-border px-3 py-2.5 align-middle text-foreground last:border-b-0',
                                 style: cellStyle(column, columnIndex),
                               }, { default: () => renderCell(column, row, rowIndex) as never }),
                             ),

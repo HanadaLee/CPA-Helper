@@ -19,7 +19,7 @@ import {
   useMessage,
   type DataTableColumns,
 } from '@/shared/ui/app-kit'
-import { Database, Layers3, RefreshCw, Search, Server, Settings2 } from '@lucide/vue'
+import { Database, Layers3, ListFilter, RefreshCw, Search, Server, Settings2 } from '@lucide/vue'
 
 import {
   createModelPrice,
@@ -551,22 +551,9 @@ function formatPriceValue(value: number | null | undefined) {
 function renderBillingUnitCell(row: PriceDisplayRow) {
   const isRequest = row.billing_unit === 'request'
   return h(
-    'span',
-    {
-      style: {
-        display: 'inline-flex',
-        alignItems: 'center',
-        minHeight: '22px',
-        padding: '2px 8px',
-        borderRadius: '6px',
-        background: isRequest ? 'rgba(16, 185, 129, 0.13)' : 'rgba(124, 58, 237, 0.12)',
-        color: isRequest ? '#047857' : '#6d28d9',
-        fontSize: '12px',
-        fontWeight: '600',
-        lineHeight: '1.2',
-      },
-    },
-    isRequest ? t('按次', 'Per call') : t('按 Token', 'Per token'),
+    AppBadge,
+    { size: 'small', type: isRequest ? 'success' : 'info', bordered: false },
+    { default: () => (isRequest ? t('按次', 'Per call') : t('按 Token', 'Per token')) },
   )
 }
 
@@ -632,84 +619,76 @@ function renderStatusCell(row: PriceDisplayRow) {
   )
 }
 
+function renderPricingModeCell(row: PriceDisplayRow) {
+  return h('div', { class: 'pricing-mode-cell' }, [
+    renderStatusCell(row),
+    renderBillingUnitCell(row),
+  ])
+}
+
+function renderPriceSummaryCell(row: PriceDisplayRow) {
+  const items = [
+    [t('每次', 'Per call'), renderRequestPriceValue(row)],
+    ['FAST', renderFastMultiplier(row)],
+    [t('输入 / MTok', 'Input / MTok'), renderTokenPriceValue(row, 'input_usd_per_million')],
+    [t('输出 / MTok', 'Output / MTok'), renderTokenPriceValue(row, 'output_usd_per_million')],
+    [t('缓存读 / MTok', 'Cache read / MTok'), renderTokenPriceValue(row, 'cache_read_usd_per_million')],
+    [t('缓存写 / MTok', 'Cache write / MTok'), renderTokenPriceValue(row, 'cache_creation_usd_per_million')],
+  ]
+  return h(
+    'div',
+    { class: 'price-summary-grid' },
+    items.map(([label, value]) =>
+      h('div', { class: 'price-summary-item' }, [
+        h('span', label),
+        h('strong', value),
+      ]),
+    ),
+  )
+}
+
 const columns = computed<DataTableColumns<PriceDisplayRow>>(() => [
   {
     title: t('模型', 'Model'),
     key: 'id',
-    width: 380,
+    width: 220,
     ellipsis: { tooltip: true },
     render: renderModelCell,
   },
   {
     title: t('服务商', 'Provider'),
     key: 'provider',
-    width: 160,
+    width: 110,
     ellipsis: { tooltip: true },
     render: renderProviderCell,
   },
   {
-    title: t('定价', 'Pricing'),
+    title: t('定价 / 计费', 'Pricing / billing'),
     key: 'status',
-    width: 96,
-    render: renderStatusCell,
+    width: 116,
+    render: renderPricingModeCell,
   },
   {
-    title: t('计费方式', 'Billing'),
-    key: 'billing_unit',
-    width: 100,
-    render: renderBillingUnitCell,
-  },
-  {
-    title: t('FAST 倍率', 'FAST multiplier'),
-    key: 'fast_multiplier',
-    width: 110,
-    render: renderFastMultiplier,
-  },
-  {
-    title: t('每次 ($)', 'Per call ($)'),
-    key: 'request_usd',
-    width: 110,
-    render: renderRequestPriceValue,
-  },
-  {
-    title: t('输入 ($/MTok)', 'Input ($/MTok)'),
-    key: 'input_usd_per_million',
-    width: 125,
-    render: (row) => renderTokenPriceValue(row, 'input_usd_per_million'),
-  },
-  {
-    title: t('输出 ($/MTok)', 'Output ($/MTok)'),
-    key: 'output_usd_per_million',
-    width: 125,
-    render: (row) => renderTokenPriceValue(row, 'output_usd_per_million'),
-  },
-  {
-    title: t('缓存读 ($/MTok)', 'Cache read ($/MTok)'),
-    key: 'cache_read_usd_per_million',
-    width: 125,
-    render: (row) => renderTokenPriceValue(row, 'cache_read_usd_per_million'),
-  },
-  {
-    title: t('缓存写 ($/MTok)', 'Cache write ($/MTok)'),
-    key: 'cache_creation_usd_per_million',
-    width: 125,
-    render: (row) => renderTokenPriceValue(row, 'cache_creation_usd_per_million'),
+    title: t('价格（USD）', 'Prices (USD)'),
+    key: 'prices',
+    width: 400,
+    render: renderPriceSummaryCell,
   },
   {
     title: t('更新', 'Updated'),
     key: 'updated_at',
-    width: 140,
+    width: 120,
     render: (row) => (row.price ? formatDateTime(row.price.updated_at) : '-'),
   },
   {
     title: '',
     key: 'actions',
-    width: 132,
-    fixed: 'right',
+    width: 110,
+    align: 'right',
     render: (row) =>
       h(
         AppStack,
-        { size: 4 },
+        { size: 4, justify: 'end', wrap: false, class: 'price-row-actions' },
         {
           default: () => [
             row.price
@@ -748,13 +727,7 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="page price-page">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">{{ t('模型价格', 'Model prices') }}</h1>
-        <p class="page-subtitle">
-          {{ t('Token 模型按 USD / 百万 Token 计费，image 模型按每次成功调用计费', 'Token models are charged in USD per million tokens. Image models are charged per successful call.') }}
-        </p>
-      </div>
+    <div class="page-toolbar">
       <AppStack>
         <AppButton secondary :loading="isSyncing" @click="syncPrices">
           <template #icon>
@@ -795,6 +768,7 @@ onBeforeUnmount(() => {
               <AppSelect
                 v-model:value="selectedProvider"
                 class="provider-filter"
+                :icon="Server"
                 :options="providerOptions"
                 clearable
                 filterable
@@ -803,6 +777,7 @@ onBeforeUnmount(() => {
               <AppSelect
                 v-model:value="selectedStatus"
                 class="status-filter"
+                :icon="ListFilter"
                 :options="statusOptions"
                 clearable
                 :placeholder="t('全部状态', 'All statuses')"
@@ -830,7 +805,7 @@ onBeforeUnmount(() => {
         :data="filteredPrices"
         :pagination="pagination"
         :row-key="rowKey"
-        :scroll-x="1730"
+        :scroll-x="1076"
       />
     </section>
 
@@ -985,6 +960,7 @@ onBeforeUnmount(() => {
 
 .price-table-panel,
 .price-table {
+  max-width: 100%;
   min-width: 0;
   min-height: 0;
 }
@@ -1034,15 +1010,60 @@ onBeforeUnmount(() => {
 .price-filters {
   min-width: 0;
   max-width: 100%;
+  flex: 1 1 auto;
 }
 
 .price-search {
   width: 280px;
 }
 
+:global(.price-row-actions) {
+  width: 100%;
+  justify-content: flex-end;
+}
+
 .model-cell,
 .provider-cell {
   min-width: 0;
+}
+
+.pricing-mode-cell {
+  display: flex;
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.price-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px 14px;
+  min-width: 0;
+}
+
+.price-summary-item {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.price-summary-item span {
+  overflow: hidden;
+  color: var(--cpa-text-muted);
+  font-size: 10px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.price-summary-item strong {
+  overflow: hidden;
+  color: var(--cpa-text);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .model-title-row {
@@ -1089,7 +1110,7 @@ onBeforeUnmount(() => {
 @media (min-width: 861px) {
   .price-page {
     grid-template-rows: auto auto minmax(0, 1fr);
-    height: calc(100dvh - 60px);
+    height: 100%;
     min-height: 0;
     overflow: hidden;
   }

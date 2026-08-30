@@ -23,7 +23,7 @@ import {
   useMessage,
   type DataTableColumns,
 } from '@/shared/ui/app-kit'
-import { Eye, Pencil, Plus, RefreshCw, Search, ServerCog, Trash2 } from '@lucide/vue'
+import { Activity, Clock3, Eye, Network, Pencil, Plus, RefreshCw, Search, ServerCog, Trash2 } from '@lucide/vue'
 
 import {
   listUpstreamSections,
@@ -156,7 +156,7 @@ const tableColumns = computed<DataTableColumns<UpstreamTableRow>>(() => [
   {
     title: isOpenAISection.value ? t('提供商', 'Provider') : t('密钥', 'Key'),
     key: 'identity',
-    width: 210,
+    width: 160,
     ellipsis: { tooltip: true },
     render: (row) =>
       h('div', { class: 'identity-cell' }, [
@@ -167,21 +167,21 @@ const tableColumns = computed<DataTableColumns<UpstreamTableRow>>(() => [
   {
     title: t('服务地址', 'Base URL'),
     key: 'base_url',
-    minWidth: 220,
+    width: 180,
     ellipsis: { tooltip: true },
     render: (row) => h('code', { class: 'url-cell' }, readString(row.item, 'base-url') || '-'),
   },
   {
     title: t('前缀', 'Prefix'),
     key: 'prefix',
-    width: 110,
+    width: 80,
     ellipsis: { tooltip: true },
     render: (row) => readString(row.item, 'prefix') || '-',
   },
   {
     title: t('模型 / 请求头', 'Models / Headers'),
     key: 'metrics',
-    width: 160,
+    width: 140,
     render: (row) =>
       h(AppStack, { size: 6, wrap: false }, () => [
         h(AppBadge, { size: 'small', bordered: false }, () => t(`模型 ${modelCount(row.item)}`, `Models ${modelCount(row.item)}`)),
@@ -191,14 +191,14 @@ const tableColumns = computed<DataTableColumns<UpstreamTableRow>>(() => [
   {
     title: t('优先级', 'Priority'),
     key: 'priority',
-    width: 80,
+    width: 60,
     align: 'center',
     render: (row) => readNumber(row.item, 'priority') ?? '-',
   },
   {
     title: t('状态', 'Status'),
     key: 'status',
-    width: 116,
+    width: 80,
     render: (row) =>
       h(AppSwitch, {
         value: !upstreamDisabled(activeSection.value, row.item),
@@ -210,10 +210,10 @@ const tableColumns = computed<DataTableColumns<UpstreamTableRow>>(() => [
   {
     title: t('操作', 'Actions'),
     key: 'actions',
-    width: 150,
-    fixed: 'right',
+    width: 120,
+    align: 'right',
     render: (row) =>
-      h(AppStack, { size: 2, wrap: false }, () => [
+      h(AppStack, { size: 2, wrap: false, justify: 'end', class: 'upstream-row-actions' }, () => [
         iconButton(Eye, t('详情', 'Details'), () => openDetail(row)),
         iconButton(Pencil, t('编辑', 'Edit'), () => openEditor(row)),
         iconButton(Trash2, t('删除', 'Delete'), () => confirmDelete(row), true),
@@ -600,11 +600,7 @@ void loadUpstreams()
 
 <template>
   <section class="page upstream-page">
-    <div class="page-header upstream-header">
-      <div>
-        <h1 class="page-title">{{ t('上游管理', 'Upstream Management') }}</h1>
-        <p class="page-subtitle">{{ t('管理 CLIProxyAPI 的 AI 提供商和路由凭据', 'Manage CLIProxyAPI AI providers and routing credentials') }}</p>
-      </div>
+    <div class="page-toolbar upstream-header">
       <AppButton secondary :loading="isLoading" @click="loadUpstreams(true)">
         <template #icon><AppIcon :component="RefreshCw" /></template>
         {{ t('刷新', 'Refresh') }}
@@ -612,17 +608,23 @@ void loadUpstreams()
     </div>
 
     <div class="metric-grid">
-      <div class="metric-card metric-card--green">
-        <span>{{ t('活跃资源', 'Active resources') }}</span>
-        <strong>{{ activeResources }} / {{ totalResources }}</strong>
+      <div class="metric-card is-green">
+        <div class="metric-icon" aria-hidden="true"><Activity /></div>
+        <div class="metric-label">{{ t('活跃资源', 'Active resources') }}</div>
+        <div class="metric-value">{{ activeResources }} / {{ totalResources }}</div>
+        <div class="metric-footnote">{{ t('启用 / 已配置', 'Enabled / configured') }}</div>
       </div>
-      <div class="metric-card metric-card--blue">
-        <span>{{ t('提供商类型', 'Provider families') }}</span>
-        <strong>{{ configuredFamilies }} / {{ upstreamSectionNames.length }}</strong>
+      <div class="metric-card is-blue">
+        <div class="metric-icon" aria-hidden="true"><Network /></div>
+        <div class="metric-label">{{ t('提供商类型', 'Provider families') }}</div>
+        <div class="metric-value">{{ configuredFamilies }} / {{ upstreamSectionNames.length }}</div>
+        <div class="metric-footnote">{{ t('已配置 / 支持', 'Configured / supported') }}</div>
       </div>
-      <div class="metric-card metric-card--purple">
-        <span>{{ t('最近同步', 'Last synced') }}</span>
-        <strong>{{ formatUpdatedAt() }}</strong>
+      <div class="metric-card is-purple">
+        <div class="metric-icon" aria-hidden="true"><Clock3 /></div>
+        <div class="metric-label">{{ t('最近同步', 'Last synced') }}</div>
+        <div class="metric-value">{{ formatUpdatedAt() }}</div>
+        <div class="metric-footnote">{{ t('CLIProxyAPI 配置', 'CLIProxyAPI configuration') }}</div>
       </div>
     </div>
 
@@ -630,7 +632,7 @@ void loadUpstreams()
       {{ loadError }}
     </AppAlert>
 
-    <AppCard class="upstream-workbench" :bordered="false" content-style="padding: 0; min-height: 0;">
+    <AppCard class="upstream-workbench" content-style="padding: 0; min-height: 0;">
       <div class="workbench-layout">
         <aside class="provider-nav">
           <p class="provider-nav__title">{{ t('提供商', 'Providers') }}</p>
@@ -679,7 +681,7 @@ void loadUpstreams()
                 :data="filteredRows"
                 :row-key="(row: UpstreamTableRow) => row.key"
                 :pagination="{ pageSize: 50 }"
-                :scroll-x="1040"
+                :scroll-x="820"
                 :bordered="false"
               />
             </AppSpinner>
@@ -837,11 +839,7 @@ void loadUpstreams()
 <style scoped>
 .upstream-page {
   grid-template-rows: auto auto auto minmax(0, 1fr);
-  min-height: calc(100dvh - 60px);
-}
-
-.upstream-header {
-  align-items: flex-end;
+  min-height: 0;
 }
 
 .metric-grid {
@@ -850,32 +848,9 @@ void loadUpstreams()
   gap: 12px;
 }
 
-.metric-card {
-  display: flex;
-  min-height: 74px;
-  flex-direction: column;
-  justify-content: center;
-  gap: 5px;
-  padding: 14px 18px;
-  border: 1px solid var(--cpa-border);
-  border-left: 4px solid var(--metric-color);
-  border-radius: var(--cpa-radius);
-  background: var(--cpa-surface);
-  box-shadow: var(--cpa-shadow-hairline);
-}
-
-.metric-card span { color: var(--cpa-text-secondary); font-size: 12px; }
-.metric-card strong { color: var(--cpa-text); font-size: 21px; font-variant-numeric: tabular-nums; }
-.metric-card--green { --metric-color: #2f9d78; }
-.metric-card--blue { --metric-color: #4b86d1; }
-.metric-card--purple { --metric-color: #8a68c7; }
-
 .upstream-workbench {
   min-height: 0;
   overflow: hidden;
-  border: 1px solid var(--cpa-border);
-  border-radius: var(--cpa-radius);
-  box-shadow: var(--cpa-shadow-card), var(--cpa-shadow-hairline);
 }
 
 .workbench-layout {
@@ -926,9 +901,10 @@ void loadUpstreams()
 .provider-panel__title { display: flex; align-items: center; gap: 10px; }
 .provider-panel__title h2 { margin: 0; font-size: 17px; }
 .provider-panel__title p { margin: 2px 0 0; color: var(--cpa-text-muted); font-size: 11px; }
-.provider-panel__actions { display: flex; width: min(460px, 55%); align-items: center; gap: 8px; }
-.provider-panel__actions :deep(.n-input) { min-width: 180px; }
-.provider-table-shell { min-width: 0; padding: 0 2px 2px; }
+.provider-panel__actions { display: flex; flex: 0 1 380px; align-items: center; justify-content: flex-end; gap: 8px; margin-left: auto; }
+.provider-panel__actions :deep(.n-input) { min-width: 220px; }
+.provider-table-shell { min-width: 0; padding: 16px; }
+:global(.upstream-row-actions) { width: 100%; justify-content: flex-end; }
 
 :deep(.identity-cell) { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
 :deep(.identity-cell strong) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

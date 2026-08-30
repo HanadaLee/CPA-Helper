@@ -59,11 +59,7 @@ onMounted(refresh)
 
 <template>
   <section class="page">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">{{ t('账户设置', 'Account Settings') }}</h1>
-        <p class="page-subtitle">{{ t('查看账号并更新当前登录密码', 'View your account and update the current sign-in password') }}</p>
-      </div>
+    <div class="page-toolbar">
       <AppStack>
         <AppButton secondary :loading="isLoading" @click="refresh">{{ t('刷新', 'Refresh') }}</AppButton>
         <AppButton type="primary" :loading="isSaving" @click="saveAccount">{{ t('保存账户', 'Save account') }}</AppButton>

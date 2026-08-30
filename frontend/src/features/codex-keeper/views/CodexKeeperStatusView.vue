@@ -138,20 +138,6 @@ const message = useMessage()
 const { currentLanguage, errorText, keeperStatusText, serverText, t } = useI18n()
 const { currentUser } = useCurrentUser()
 const canManageAccounts = computed(() => currentUser.value?.is_admin === true)
-const accountPageTitle = computed(() =>
-  canManageAccounts.value ? t('账号管理', 'Account Management') : t('账号状态', 'Account Status'),
-)
-const accountPageSubtitle = computed(() =>
-  canManageAccounts.value
-    ? t(
-        '管理 Codex 认证文件的健康、额度、优先级和文件内容',
-        'Manage Codex auth file health, quota, priority, and credential files',
-      )
-    : t(
-        '查看 Codex 认证文件的健康、额度和优先级维护结果',
-        'View Codex auth file health, quota, and priority maintenance results',
-      ),
-)
 const accountTableScrollX = computed(() =>
   canManageAccounts.value ? accountManageTableScrollX : accountReadOnlyTableScrollX,
 )
@@ -2421,11 +2407,7 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="page account-status-page">
-    <div class="page-header account-page-header">
-      <div class="account-header-copy">
-        <h1 class="page-title">{{ accountPageTitle }}</h1>
-        <p class="page-subtitle">{{ accountPageSubtitle }}</p>
-      </div>
+    <div class="page-toolbar account-page-header">
       <div class="header-actions">
         <AppButton
           v-if="canManageAccounts"

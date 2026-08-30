@@ -14,6 +14,16 @@ import {
   AppBadge,
   useMessage,
 } from '@/shared/ui/app-kit'
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+  FieldTitle,
+} from '@/components/ui/field'
 import { Activity, Database, Power, Server } from '@lucide/vue'
 
 import CodexKeeperSettingsPanel from '@/features/codex-keeper/components/CodexKeeperSettingsPanel.vue'
@@ -148,11 +158,7 @@ onMounted(refresh)
 
 <template>
   <section class="page">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">{{ t('系统设置', 'System Settings') }}</h1>
-        <p class="page-subtitle">{{ t('集中管理系统、采集与账号巡检配置', 'Manage system, collection, and account inspection settings in one place') }}</p>
-      </div>
+    <div class="page-toolbar">
       <AppStack>
         <AppButton secondary :loading="isLoading" @click="refresh">{{ t('刷新', 'Refresh') }}</AppButton>
         <AppButton type="primary" :loading="isSaving" @click="saveSettings">{{ t('保存设置', 'Save settings') }}</AppButton>
@@ -199,106 +205,75 @@ onMounted(refresh)
         <div class="panel-inner">
           <h2 class="section-title">{{ t('系统配置', 'System Settings') }}</h2>
           <AppForm :model="settingsForm" label-placement="top">
-            <div class="form-grid">
-              <div class="field-stack">
-                <div class="field-label">{{ t('CLIProxyAPI 地址', 'CLIProxyAPI URL') }}</div>
-                <AppInput v-model:value="settingsForm.cliaproxy_url" />
-                <div class="form-help">{{ t('用于采集队列、API Key 同步和管理接口。', 'Used for collection queues, API key sync, and management APIs.') }}</div>
-              </div>
-              <div class="field-stack">
-                <div class="field-label">{{ t('模型请求地址（例如：填写CPA外网地址）', 'Model request URL (for example, CPA public URL)') }}</div>
-                <AppInput
-                  v-model:value="settingsForm.model_request_url"
-                  :placeholder="t('例如：http://192.168.26.50:8317', 'Example: http://192.168.26.50:8317')"
-                />
-                <div class="form-help">{{ t('作为默认 Endpoint 展示，并用于 API 密钥页「请求测试」生成 URL 和示例。', 'Displayed as the default endpoint and used to generate URLs and examples for request tests on the API keys page.') }}</div>
-              </div>
-              <div class="field-stack extra-endpoints-field">
-                <div class="extra-endpoints-heading">
-                  <div>
-                    <div class="field-label">{{ t('额外 API Endpoint', 'Additional API endpoints') }}</div>
-                    <div class="form-help">{{ t('仅展示在 API 密钥页，不参与请求测试。填写基础地址和独立说明后，将生成基础、聊天补全、Responses、Claude 四类 URL。', 'Shown only on the API keys page and never used for request tests. Enter a base URL and description to generate Base, Chat Completions, Responses, and Claude URLs.') }}</div>
-                  </div>
-                  <AppButton
-                    size="small"
-                    type="primary"
-                    secondary
-                    :disabled="settingsForm.model_request_extra_endpoints.length >= 20"
-                    @click="addModelRequestExtraEndpoint"
-                  >
-                    {{ t('追加 Endpoint', 'Add endpoint') }}
-                  </AppButton>
-                </div>
-                <div v-if="settingsForm.model_request_extra_endpoints.length === 0" class="extra-endpoints-empty">
-                  {{ t('暂无额外 Endpoint', 'No additional endpoints') }}
-                </div>
-                <div v-else class="extra-endpoints-list">
-                  <div
-                    v-for="(endpoint, index) in settingsForm.model_request_extra_endpoints"
-                    :key="index"
-                    class="extra-endpoint-row"
-                  >
-                    <AppInput
-                      v-model:value="endpoint.url"
-                      :placeholder="t('Endpoint 基础 URL，例如：https://api.example.com/v1', 'Endpoint base URL, for example: https://api.example.com/v1')"
-                    />
-                    <AppInput
-                      v-model:value="endpoint.description"
-                      :placeholder="t('Endpoint 说明，例如：备用线路', 'Endpoint description, for example: Backup route')"
-                      :maxlength="200"
-                      show-count
-                    />
-                    <AppButton
-                      type="error"
-                      secondary
-                      @click="removeModelRequestExtraEndpoint(index)"
-                    >
-                      {{ t('移除', 'Remove') }}
-                    </AppButton>
-                  </div>
-                </div>
-              </div>
-              <div class="field-stack">
-                <div class="field-label">{{ t('CPAMC 页面地址', 'CPAMC page URL') }}</div>
-                <AppInput
-                  v-model:value="settingsForm.cpamc_url"
-                  :placeholder="t('例如：/management.html', 'Example: /management.html')"
-                />
-                <div class="form-help">{{ t('用于 CPAMC 页面内嵌 iframe，支持站内路径或完整 URL。', 'Used by the embedded iframe on the CPAMC page. Supports site paths or full URLs.') }}</div>
-              </div>
-              <AppFormItem :label="t('管理密钥', 'Management key')">
-                <AppInput
-                  v-model:value="settingsForm.management_key"
-                  type="password"
-                  show-password-on="mousedown"
-                  :placeholder="t('请输入 CLIProxyAPI 管理密钥', 'Enter the CLIProxyAPI management key')"
-                />
-              </AppFormItem>
-              <AppFormItem :label="t('开启本地采集', 'Enable local collection')">
-                <AppSwitch v-model:value="settingsForm.collector_enabled" />
-              </AppFormItem>
-              <AppFormItem :label="t('允许普通用户查看账号状态', 'Allow standard users to view account status')">
-                <AppSwitch v-model:value="settingsForm.allow_user_account_status" />
-              </AppFormItem>
-              <AppFormItem :label="t('允许用户查看历史用量', 'Allow users to view usage history')">
-                <AppSwitch v-model:value="settingsForm.allow_user_usage_history" />
-              </AppFormItem>
-              <AppFormItem :label="t('批量读取数', 'Batch size')">
-                <AppNumberInput v-model:value="settingsForm.batch_size" :min="1" :max="1000" />
-              </AppFormItem>
-              <AppFormItem :label="t('轮询间隔（秒）', 'Poll interval (seconds)')">
-                <AppNumberInput v-model:value="settingsForm.poll_interval_seconds" :min="0.2" />
-              </AppFormItem>
-              <AppFormItem :label="t('重试间隔（秒）', 'Retry interval (seconds)')">
-                <AppNumberInput v-model:value="settingsForm.retry_interval_seconds" :min="1" />
-              </AppFormItem>
-              <AppFormItem :label="t('用量明细保留天数', 'Usage detail retention days')">
-                <div class="field-stack">
-                  <AppNumberInput v-model:value="settingsForm.usage_detail_retention_days" :min="31" :precision="0" />
-                  <div class="form-help">{{ t('最低 31 天。超过保留期的请求明细会在完成小时聚合后自动清理，历史表盘仍可查看。', 'Minimum 31 days. Expired request details are removed after hourly aggregation, while historical dashboards remain available.') }}</div>
-                </div>
-              </AppFormItem>
-            </div>
+            <FieldGroup class="settings-form">
+              <FieldSet class="settings-section">
+                <FieldLegend>{{ t('连接与入口', 'Connections and endpoints') }}</FieldLegend>
+                <FieldDescription>{{ t('配置 CPA 管理接口、模型请求入口与管理页面地址。', 'Configure CPA management APIs, model request endpoints, and the management page.') }}</FieldDescription>
+                <FieldGroup class="form-grid">
+                  <AppFormItem :label="t('CLIProxyAPI 地址', 'CLIProxyAPI URL')" :feedback="t('用于采集队列、API Key 同步和管理接口。', 'Used for collection queues, API key sync, and management APIs.')">
+                    <AppInput v-model:value="settingsForm.cliaproxy_url" />
+                  </AppFormItem>
+                  <AppFormItem :label="t('模型请求地址（例如：填写 CPA 外网地址）', 'Model request URL (for example, CPA public URL)')" :feedback="t('作为默认 Endpoint 展示，并用于 API 密钥页请求测试。', 'Displayed as the default endpoint and used for API key request tests.')">
+                    <AppInput v-model:value="settingsForm.model_request_url" :placeholder="t('例如：http://192.168.26.50:8317', 'Example: http://192.168.26.50:8317')" />
+                  </AppFormItem>
+                  <Field class="extra-endpoints-field">
+                    <div class="extra-endpoints-heading">
+                      <FieldContent>
+                        <FieldLabel>{{ t('额外 API Endpoint', 'Additional API endpoints') }}</FieldLabel>
+                        <FieldDescription>{{ t('仅展示在 API 密钥页，不参与请求测试；每项会生成四类 URL。', 'Shown only on the API keys page and not used for request tests; each item generates four URL types.') }}</FieldDescription>
+                      </FieldContent>
+                      <AppButton size="small" type="primary" secondary :disabled="settingsForm.model_request_extra_endpoints.length >= 20" @click="addModelRequestExtraEndpoint">
+                        {{ t('追加 Endpoint', 'Add endpoint') }}
+                      </AppButton>
+                    </div>
+                    <div v-if="settingsForm.model_request_extra_endpoints.length === 0" class="extra-endpoints-empty">
+                      {{ t('暂无额外 Endpoint', 'No additional endpoints') }}
+                    </div>
+                    <FieldGroup v-else class="extra-endpoints-list">
+                      <Field v-for="(endpoint, index) in settingsForm.model_request_extra_endpoints" :key="index" orientation="horizontal" class="extra-endpoint-row">
+                        <AppInput v-model:value="endpoint.url" :aria-label="t(`Endpoint ${index + 1} 基础 URL`, `Endpoint ${index + 1} base URL`)" :placeholder="t('基础 URL，例如：https://api.example.com/v1', 'Base URL, for example: https://api.example.com/v1')" />
+                        <AppInput v-model:value="endpoint.description" :aria-label="t(`Endpoint ${index + 1} 说明`, `Endpoint ${index + 1} description`)" :placeholder="t('说明，例如：备用线路', 'Description, for example: Backup route')" :maxlength="200" />
+                        <AppButton type="error" secondary @click="removeModelRequestExtraEndpoint(index)">{{ t('移除', 'Remove') }}</AppButton>
+                      </Field>
+                    </FieldGroup>
+                  </Field>
+                  <AppFormItem :label="t('CPAMC 页面地址', 'CPAMC page URL')" :feedback="t('用于 CPAMC 内嵌页面，支持站内路径或完整 URL。', 'Used by the embedded CPAMC page. Supports site paths or full URLs.')">
+                    <AppInput v-model:value="settingsForm.cpamc_url" :placeholder="t('例如：/management.html', 'Example: /management.html')" />
+                  </AppFormItem>
+                  <AppFormItem :label="t('管理密钥', 'Management key')" :feedback="t('用于访问 CLIProxyAPI 管理接口。', 'Used to access CLIProxyAPI management APIs.')">
+                    <AppInput v-model:value="settingsForm.management_key" type="password" show-password-on="mousedown" :placeholder="t('请输入 CLIProxyAPI 管理密钥', 'Enter the CLIProxyAPI management key')" />
+                  </AppFormItem>
+                </FieldGroup>
+              </FieldSet>
+
+              <FieldSet class="settings-section">
+                <FieldLegend>{{ t('访问与采集', 'Access and collection') }}</FieldLegend>
+                <FieldGroup class="settings-switch-list">
+                  <Field orientation="horizontal" class="settings-switch">
+                    <FieldContent><FieldTitle>{{ t('开启本地采集', 'Enable local collection') }}</FieldTitle><FieldDescription>{{ t('定时将 CPA 队列写入本地用量数据库。', 'Periodically write CPA queue data to the local usage database.') }}</FieldDescription></FieldContent>
+                    <AppSwitch v-model:value="settingsForm.collector_enabled" />
+                  </Field>
+                  <Field orientation="horizontal" class="settings-switch">
+                    <FieldContent><FieldTitle>{{ t('允许普通用户查看账号状态', 'Allow standard users to view account status') }}</FieldTitle><FieldDescription>{{ t('普通用户仅能只读查看账号状态。', 'Standard users receive read-only account status access.') }}</FieldDescription></FieldContent>
+                    <AppSwitch v-model:value="settingsForm.allow_user_account_status" />
+                  </Field>
+                  <Field orientation="horizontal" class="settings-switch">
+                    <FieldContent><FieldTitle>{{ t('允许用户查看历史用量', 'Allow users to view usage history') }}</FieldTitle><FieldDescription>{{ t('开放只读历史用量面板，不提供请求明细跳转。', 'Expose the read-only usage history dashboard without record links.') }}</FieldDescription></FieldContent>
+                    <AppSwitch v-model:value="settingsForm.allow_user_usage_history" />
+                  </Field>
+                </FieldGroup>
+              </FieldSet>
+
+              <FieldSet class="settings-section">
+                <FieldLegend>{{ t('采集与保留参数', 'Collection and retention') }}</FieldLegend>
+                <FieldGroup class="form-grid">
+                  <AppFormItem :label="t('批量读取数', 'Batch size')"><AppNumberInput v-model:value="settingsForm.batch_size" :min="1" :max="1000" /></AppFormItem>
+                  <AppFormItem :label="t('轮询间隔（秒）', 'Poll interval (seconds)')"><AppNumberInput v-model:value="settingsForm.poll_interval_seconds" :min="0.2" /></AppFormItem>
+                  <AppFormItem :label="t('重试间隔（秒）', 'Retry interval (seconds)')"><AppNumberInput v-model:value="settingsForm.retry_interval_seconds" :min="1" /></AppFormItem>
+                  <AppFormItem :label="t('用量明细保留天数', 'Usage detail retention days')" :feedback="t('最低 31 天；清理明细前会先完成小时聚合。', 'Minimum 31 days; hourly aggregation completes before details are removed.')"><AppNumberInput v-model:value="settingsForm.usage_detail_retention_days" :min="31" :precision="0" /></AppFormItem>
+                </FieldGroup>
+              </FieldSet>
+            </FieldGroup>
           </AppForm>
         </div>
       </section>
@@ -360,15 +335,18 @@ onMounted(refresh)
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px 12px;
+  gap: 18px 16px;
 }
 
-.field-stack {
-  display: grid;
-  gap: 6px;
-  width: 100%;
-  min-width: 0;
-  align-content: start;
+.settings-form {
+  gap: 18px;
+}
+
+.settings-section {
+  padding: 16px;
+  border: 1px solid var(--cpa-border);
+  border-radius: var(--cpa-radius);
+  background: var(--cpa-surface-raised);
 }
 
 .extra-endpoints-field {
@@ -382,14 +360,7 @@ onMounted(refresh)
   gap: 12px;
 }
 
-.extra-endpoints-heading > div {
-  display: grid;
-  gap: 6px;
-  min-width: 0;
-}
-
 .extra-endpoints-list {
-  display: grid;
   gap: 8px;
 }
 
@@ -409,20 +380,16 @@ onMounted(refresh)
   text-align: center;
 }
 
-.field-label {
-  color: var(--cpa-text);
-  font-size: 14px;
-  line-height: 1.35;
+.settings-switch-list {
+  gap: 10px;
 }
 
-.form-help {
-  margin: 0;
-  padding-left: 8px;
-  border-left: 2px solid color-mix(in srgb, var(--cpa-primary) 42%, transparent);
-  color: var(--cpa-text);
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.45;
+.settings-switch {
+  gap: 18px;
+  padding: 14px;
+  border: 1px solid var(--cpa-border);
+  border-radius: var(--cpa-radius);
+  background: var(--cpa-surface-muted);
 }
 
 .status-alert {

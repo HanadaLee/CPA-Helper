@@ -12,8 +12,6 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
@@ -34,7 +32,7 @@ import {
 } from '@/components/ui/sidebar'
 import {
   BarChart3,
-  ChevronUp,
+  ChevronsUpDown,
   Cpu,
   DollarSign,
   KeyRound,
@@ -277,15 +275,19 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
   <SidebarProvider class="app-shell" :default-open="true">
     <Sidebar class="app-sidebar" variant="inset" collapsible="icon">
       <SidebarHeader class="sidebar-brand-header">
-        <div class="brand group-data-[collapsible=icon]:justify-center">
-          <div class="brand-mark">
-            <img :src="logoUrl" alt="">
-          </div>
-          <div class="brand-copy group-data-[collapsible=icon]:hidden">
-            <strong>CPA-Helper</strong>
-            <span>{{ t('智能网关管理面板', 'AI gateway console') }}</span>
-          </div>
-        </div>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton as="div" size="lg" class="sidebar-brand-button">
+              <span class="brand-mark">
+                <img :src="logoUrl" alt="">
+              </span>
+              <span class="brand-copy group-data-[collapsible=icon]:hidden">
+                <strong>CPA-Helper</strong>
+                <span>{{ t('边缘网关管理平台', 'Edge Gateway Management Platform') }}</span>
+              </span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
       </SidebarHeader>
 
       <SidebarContent class="sider-menu">
@@ -341,32 +343,14 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
               <DropdownMenuTrigger as-child>
                 <SidebarMenuButton size="lg" class="user-menu-button">
                   <span class="user-avatar"><UserRound /></span>
-                  <span class="user-copy">
+                  <span class="user-copy group-data-[collapsible=icon]:hidden">
                     <strong>{{ accountText }}</strong>
                     <span>{{ roleText }}</span>
                   </span>
-                  <ChevronUp class="user-menu-chevron" />
+                  <ChevronsUpDown class="user-menu-chevron group-data-[collapsible=icon]:hidden" />
                 </SidebarMenuButton>
               </DropdownMenuTrigger>
-              <DropdownMenuContent side="top" align="start" :side-offset="8" class="user-dropdown">
-                <DropdownMenuGroup>
-                  <DropdownMenuLabel class="user-dropdown-label">
-                    <strong>{{ accountText }}</strong>
-                    <span>{{ roleText }}</span>
-                  </DropdownMenuLabel>
-                </DropdownMenuGroup>
-                <DropdownMenuSeparator />
-                <DropdownMenuGroup>
-                  <DropdownMenuItem @select="toggleLanguage">
-                    <Languages />
-                    <span>{{ language === 'zh' ? 'English' : '中文' }}</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem @select="cycleTheme">
-                    <component :is="themeIcon" />
-                    <span>{{ t('切换主题', 'Switch theme') }}</span>
-                  </DropdownMenuItem>
-                </DropdownMenuGroup>
-                <DropdownMenuSeparator />
+              <DropdownMenuContent side="top" align="end" :side-offset="8" class="user-dropdown">
                 <DropdownMenuGroup>
                   <DropdownMenuItem variant="destructive" @select="handleLogout">
                     <LogOut />
@@ -447,23 +431,17 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
   background: var(--cpa-shell-bg);
 }
 
-.brand {
-  display: flex;
-  flex: 0 0 auto;
-  gap: 12px;
-  align-items: center;
-  padding: 28px 18px 24px;
-}
-
 .brand-mark {
   display: grid;
-  width: 46px;
-  height: 46px;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
   place-items: center;
-  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--cpa-primary) 16%, var(--cpa-border));
+  border-radius: 10px;
   overflow: hidden;
   background: var(--cpa-surface-solid);
-  box-shadow: 0 14px 26px rgb(0 154 168 / 20%);
+  box-shadow: 0 1px 2px rgb(23 54 57 / 8%);
 }
 
 .brand-mark img {
@@ -475,8 +453,10 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
 
 .brand-copy {
   display: grid;
+  flex: 1 1 auto;
   min-width: 0;
-  gap: 3px;
+  gap: 1px;
+  text-align: left;
 }
 
 .mobile-title-row {
@@ -487,7 +467,7 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
 
 .brand-copy strong {
   color: var(--cpa-text-strong);
-  font-size: 17px;
+  font-size: 14px;
   font-weight: 760;
   line-height: 1.2;
 }
@@ -513,7 +493,7 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
 
 .brand-copy > span {
   color: var(--cpa-text-muted);
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .sider-menu {
@@ -557,7 +537,6 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
   min-width: 0;
   overflow: hidden;
   padding: 0;
-  scrollbar-gutter: stable;
   scrollbar-width: thin;
   scrollbar-color: var(--content-scrollbar-thumb) transparent;
   --content-scrollbar-thumb: color-mix(in srgb, var(--cpa-text-muted) 44%, transparent);
@@ -708,31 +687,23 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
 }
 
 .sidebar-brand-header {
-  padding: 12px 10px 8px;
+  padding: 10px 8px 6px;
   overflow: hidden;
 }
 
-.app-shell :deep([data-collapsible="icon"] [data-sidebar="header"] .brand-copy) {
+.app-shell :deep([data-collapsible="icon"] [data-sidebar="header"] .brand-copy),
+.app-shell :deep([data-collapsible="icon"] [data-sidebar="header"] .sidebar-brand-copy) {
   display: none;
 }
 
-.sidebar-brand-header .brand {
-  min-width: 0;
-  gap: 10px;
-  padding: 4px 2px 8px;
+.sidebar-brand-button {
+  height: 48px !important;
+  cursor: default !important;
 }
 
-.sidebar-brand-header .brand-mark {
-  width: 32px;
-  height: 32px;
-  flex: 0 0 32px;
-  border-radius: 10px;
-  border: 1px solid color-mix(in srgb, var(--cpa-primary) 16%, var(--cpa-border));
-  box-shadow: 0 1px 2px rgb(23 54 57 / 8%);
-}
-
-.sidebar-brand-header .brand-copy strong {
-  font-size: 15px;
+.sidebar-brand-button:hover {
+  border-color: transparent !important;
+  background: transparent !important;
 }
 
 .sidebar-group-label {
@@ -792,8 +763,7 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
   height: 17px;
 }
 
-.user-copy,
-.user-dropdown-label {
+.user-copy {
   display: grid;
   min-width: 0;
   gap: 2px;
@@ -805,23 +775,19 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
 }
 
 .user-copy strong,
-.user-copy span,
-.user-dropdown-label strong,
-.user-dropdown-label span {
+.user-copy span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.user-copy strong,
-.user-dropdown-label strong {
+.user-copy strong {
   color: var(--cpa-text-strong);
   font-size: 13px;
 }
 
-.user-copy span,
-.user-dropdown-label span {
+.user-copy span {
   color: var(--cpa-text-muted);
   font-size: 11px;
 }
@@ -834,7 +800,8 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
 }
 
 .user-dropdown {
-  min-width: 208px;
+  width: var(--reka-dropdown-menu-trigger-width);
+  min-width: 176px;
 }
 
 .app-header {
@@ -893,7 +860,7 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
   min-height: 0;
   overflow: auto;
   padding: 26px 30px 32px;
-  scrollbar-gutter: stable;
+  scrollbar-gutter: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--content-scrollbar-thumb) transparent;
   background: var(--cpa-canvas);

@@ -17,6 +17,15 @@ import {
   useMessage,
   type DataTableColumns,
 } from '@/shared/ui/app-kit'
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldGroup,
+  FieldLegend,
+  FieldSet,
+  FieldTitle,
+} from '@/components/ui/field'
 import { CircleDollarSign, KeyRound, ShieldCheck, UserRound } from '@lucide/vue'
 
 import {
@@ -172,6 +181,13 @@ function setQuotaMonthlyUsd(value: number | null) {
   quotaMonthlyUsd.value = value ?? 0
 }
 
+function todayTokenDetail(row: UserSummary): string {
+  return t(
+    `入 ${formatCompact(row.today_input_tokens)} · 出 ${formatCompact(row.today_output_tokens)} · 缓 ${formatCompact(row.today_cached_tokens)}`,
+    `In ${formatCompact(row.today_input_tokens)} · Out ${formatCompact(row.today_output_tokens)} · Cache ${formatCompact(row.today_cached_tokens)}`,
+  )
+}
+
 function setQuotaWeeklyUsd(value: number | null) {
   quotaWeeklyUsd.value = value ?? 0
 }
@@ -296,42 +312,38 @@ async function saveUser() {
 
 const columns = computed<DataTableColumns<UserSummary>>(() => [
   {
-    title: t('用户昵称', 'User nickname'),
+    title: t('用户', 'User'),
     key: 'nickname',
-    width: 120,
-    render: (row) => userLabel(row),
-  },
-  {
-    title: t('账号', 'Account'),
-    key: 'username',
-    width: 130,
-    render: (row) => row.username,
-  },
-  {
-    title: t('角色', 'Role'),
-    key: 'is_admin',
-    width: 90,
-    render: (row) => (row.is_admin ? t('管理员', 'Admin') : t('普通用户', 'Standard user')),
-  },
-  {
-    title: t('状态', 'Status'),
-    key: 'disabled_at',
-    width: 90,
+    width: 145,
     render: (row) =>
-      h(
-        AppBadge,
-        {
-          size: 'small',
-          type: isUserDisabled(row) ? 'warning' : 'success',
-          bordered: false,
-        },
-        { default: () => (isUserDisabled(row) ? t('已禁用', 'Disabled') : t('启用中', 'Enabled')) },
-      ),
+      h('div', { class: 'metric-stack' }, [
+        h('span', { class: 'metric-primary' }, userLabel(row)),
+        h('span', { class: 'metric-muted' }, row.username),
+      ]),
+  },
+  {
+    title: t('角色 / 状态', 'Role / status'),
+    key: 'is_admin',
+    width: 110,
+    render: (row) =>
+      h('div', { class: 'metric-stack is-compact' }, [
+        h('span', { class: 'metric-primary' }, row.is_admin ? t('管理员', 'Admin') : t('普通用户', 'Standard user')),
+        h(
+          AppBadge,
+          {
+            size: 'small',
+            type: isUserDisabled(row) ? 'warning' : 'success',
+            bordered: false,
+            class: 'user-status-badge',
+          },
+          { default: () => (isUserDisabled(row) ? t('已禁用', 'Disabled') : t('启用中', 'Enabled')) },
+        ),
+      ]),
   },
   {
     title: t('余额', 'Balance'),
     key: 'quota',
-    width: 210,
+    width: 150,
     render: (row) => {
       const detail = quotaDetail(row)
       return h('div', { class: ['metric-stack', 'quota-balance-stack'] }, [
@@ -366,13 +378,13 @@ const columns = computed<DataTableColumns<UserSummary>>(() => [
   {
     title: t('API KEY 数量', 'API keys'),
     key: 'key_count',
-    width: 95,
+    width: 72,
     render: (row) => t(`${formatInteger(row.key_count)} 个`, `${formatInteger(row.key_count)} keys`),
   },
   {
     title: t('今日请求', 'Today requests'),
     key: 'today_records',
-    width: 140,
+    width: 95,
     render: (row) =>
       h('div', { class: 'metric-stack' }, [
         h('span', { class: 'metric-primary' }, formatInteger(row.today_records)),
@@ -380,33 +392,19 @@ const columns = computed<DataTableColumns<UserSummary>>(() => [
       ]),
   },
   {
-    title: t('今日输入', 'Today input'),
-    key: 'today_input_tokens',
-    width: 120,
-    render: (row) => formatCompact(row.today_input_tokens),
-  },
-  {
-    title: t('今日输出', 'Today output'),
-    key: 'today_output_tokens',
-    width: 120,
-    render: (row) => formatCompact(row.today_output_tokens),
-  },
-  {
-    title: t('今日缓存', 'Today cache'),
-    key: 'today_cached_tokens',
-    width: 120,
-    render: (row) => formatCompact(row.today_cached_tokens),
-  },
-  {
-    title: t('今日总 Token', 'Today total tokens'),
+    title: t('今日 Token', 'Today tokens'),
     key: 'today_total_tokens',
     width: 145,
-    render: (row) => formatCompact(row.today_total_tokens),
+    render: (row) =>
+      h('div', { class: 'metric-stack' }, [
+        h('span', { class: 'metric-primary' }, formatCompact(row.today_total_tokens)),
+        h('span', { class: 'metric-muted' }, todayTokenDetail(row)),
+      ]),
   },
   {
     title: t('今日费用', 'Today cost'),
     key: 'today_estimated_cost_usd',
-    width: 150,
+    width: 105,
     render: (row) =>
       h('div', { class: 'metric-stack' }, [
         h('span', { class: 'metric-primary' }, formatUsd(row.today_estimated_cost_usd)),
@@ -418,30 +416,25 @@ const columns = computed<DataTableColumns<UserSummary>>(() => [
       ]),
   },
   {
-    title: t('最近模型', 'Recent model'),
-    key: 'last_model',
-    width: 160,
+    title: t('最近使用', 'Last used'),
+    key: 'last_seen_at',
+    width: 178,
     render: (row) =>
       h('div', { class: 'metric-stack' }, [
         h('span', { class: 'model-value' }, lastModelLabel(row)),
         h('span', { class: 'metric-muted' }, lastProviderLabel(row)),
+        h('span', { class: 'metric-muted' }, formatDateTime(row.last_seen_at)),
       ]),
-  },
-  {
-    title: t('最近使用', 'Last used'),
-    key: 'last_seen_at',
-    width: 150,
-    render: (row) => formatDateTime(row.last_seen_at),
   },
   {
     title: '',
     key: 'actions',
-    width: 90,
-    fixed: 'right',
+    width: 84,
+    align: 'right',
     render: (row) =>
       h(
         AppStack,
-        { size: 4 },
+        { size: 4, justify: 'end', wrap: false, class: 'table-row-actions' },
         {
           default: () => [
             h(
@@ -489,11 +482,7 @@ onMounted(refresh)
 
 <template>
   <section class="page">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">{{ t('用户管理', 'User Management') }}</h1>
-        <p class="page-subtitle">{{ t('管理用户昵称、登录账号、密码和角色', 'Manage user nicknames, sign-in accounts, passwords, and roles') }}</p>
-      </div>
+    <div class="page-toolbar">
       <AppStack>
         <AppButton secondary :loading="isLoading" @click="refresh">{{ t('刷新', 'Refresh') }}</AppButton>
         <AppButton type="primary" @click="openCreateUser">{{ t('增加用户', 'Add user') }}</AppButton>
@@ -519,7 +508,7 @@ onMounted(refresh)
         :data="users"
         :pagination="{ pageSize: 12 }"
         table-layout="fixed"
-        :scroll-x="2000"
+        :scroll-x="1084"
       />
     </section>
 
@@ -529,102 +518,86 @@ onMounted(refresh)
       :mask-closable="false"
       :closable="false"
       :title="editingUserId ? t('编辑用户', 'Edit user') : t('增加用户', 'Add user')"
-      :style="{ width: 'min(520px, calc(100vw - 32px))' }"
+      :style="{ width: 'min(640px, calc(100vw - 32px))' }"
     >
       <AppAlert v-if="editingUserId === null" type="warning" :bordered="false" class="user-editor-warning">
         {{ t('账号一旦创建，不允许删除，只允许禁用，请谨慎操作。', 'Accounts cannot be deleted after creation. They can only be disabled, so proceed carefully.') }}
       </AppAlert>
 
-      <AppForm label-placement="top">
-        <AppFormItem :label="t('用户昵称', 'User nickname')" required>
-          <AppInput
-            v-model:value="userNickname"
-            :placeholder="t('例如：研发用户', 'Example: Engineering user')"
-            @keyup.enter="saveUser"
-          />
-        </AppFormItem>
-        <AppFormItem :label="t('账号', 'Account')" required>
-          <AppInput
-            v-model:value="userAccount"
-            autocomplete="username"
-            :disabled="editingUserId !== null"
-            :placeholder="t('例如：user001', 'Example: user001')"
-            @keyup.enter="saveUser"
-          />
-        </AppFormItem>
-        <AppFormItem :label="t('密码', 'Password')" :required="editingUserId === null">
-          <AppInput
-            v-model:value="userPassword"
-            type="password"
-            show-password-on="mousedown"
-            autocomplete="new-password"
-            :placeholder="editingUserId ? t('留空不修改密码', 'Leave blank to keep the current password') : t('请输入登录密码', 'Enter a sign-in password')"
-            @keyup.enter="saveUser"
-          />
-        </AppFormItem>
-        <AppFormItem :label="t('是否设为管理员', 'Set as admin')">
-          <AppSwitch v-model:value="isUserAdmin" :disabled="isEditingFirstUser" />
-        </AppFormItem>
-        <AppFormItem :label="t('余额设置', 'Balance settings')">
-          <div class="quota-unlimited-row">
-            <div>
-              <div class="quota-unlimited-title">{{ t('不限制余额', 'Unlimited balance') }}</div>
-              <div class="quota-unlimited-desc">{{ t('开启后不扣余额，也不会因余额暂停 API Key。', 'When enabled, balances are not deducted and API keys are not paused due to balance.') }}</div>
-            </div>
-            <AppSwitch v-model:value="quotaUnlimited" />
+      <AppForm label-placement="top" class="user-editor-form">
+        <FieldGroup>
+          <FieldGroup class="identity-fields">
+            <AppFormItem :label="t('用户昵称', 'User nickname')" required>
+              <AppInput
+                v-model:value="userNickname"
+                :placeholder="t('例如：研发用户', 'Example: Engineering user')"
+                @keyup.enter="saveUser"
+              />
+            </AppFormItem>
+            <AppFormItem :label="t('账号', 'Account')" required>
+              <AppInput
+                v-model:value="userAccount"
+                autocomplete="username"
+                :disabled="editingUserId !== null"
+                :placeholder="t('例如：user001', 'Example: user001')"
+                @keyup.enter="saveUser"
+              />
+            </AppFormItem>
+            <AppFormItem class="password-field" :label="t('密码', 'Password')" :required="editingUserId === null">
+              <AppInput
+                v-model:value="userPassword"
+                type="password"
+                show-password-on="mousedown"
+                autocomplete="new-password"
+                :placeholder="editingUserId ? t('留空不修改密码', 'Leave blank to keep the current password') : t('请输入登录密码', 'Enter a sign-in password')"
+                @keyup.enter="saveUser"
+              />
+            </AppFormItem>
+          </FieldGroup>
+
+          <Field orientation="horizontal" class="switch-setting" :data-disabled="isEditingFirstUser || undefined">
+            <FieldContent>
+              <FieldTitle>{{ t('管理员权限', 'Administrator access') }}</FieldTitle>
+              <FieldDescription>{{ t('管理员可以管理用户、价格、上游和系统设置。', 'Administrators can manage users, prices, upstreams, and system settings.') }}</FieldDescription>
+            </FieldContent>
+            <AppSwitch v-model:value="isUserAdmin" :disabled="isEditingFirstUser" />
+          </Field>
+
+          <FieldSet class="quota-fieldset">
+            <FieldLegend>{{ t('余额设置', 'Balance settings') }}</FieldLegend>
+            <FieldDescription>{{ t('扣费顺序为每日、每周、每月、不限时。', 'Charges are deducted from daily, weekly, monthly, then lifetime balance.') }}</FieldDescription>
+            <FieldGroup>
+              <Field orientation="horizontal" class="switch-setting">
+                <FieldContent>
+                  <FieldTitle>{{ t('不限制余额', 'Unlimited balance') }}</FieldTitle>
+                  <FieldDescription>{{ t('开启后不扣余额，也不会因余额暂停 API Key。', 'Balances are not deducted and API keys are not paused due to balance.') }}</FieldDescription>
+                </FieldContent>
+                <AppSwitch v-model:value="quotaUnlimited" />
+              </Field>
+              <FieldGroup class="quota-editor-grid">
+                <AppFormItem :label="t('每日余额 USD', 'Daily balance USD')">
+                  <AppNumberInput :value="quotaDailyUsd" :disabled="quotaUnlimited" :min="0" :precision="8" placeholder="0" @update:value="setQuotaDailyUsd" />
+                </AppFormItem>
+                <AppFormItem :label="t('每周余额 USD', 'Weekly balance USD')">
+                  <AppNumberInput :value="quotaWeeklyUsd" :disabled="quotaUnlimited" :min="0" :precision="8" placeholder="0" @update:value="setQuotaWeeklyUsd" />
+                </AppFormItem>
+                <AppFormItem :label="t('每月余额 USD', 'Monthly balance USD')">
+                  <AppNumberInput :value="quotaMonthlyUsd" :disabled="quotaUnlimited" :min="0" :precision="8" placeholder="0" @update:value="setQuotaMonthlyUsd" />
+                </AppFormItem>
+                <AppFormItem :label="t('不限时余额 USD', 'Lifetime balance USD')">
+                  <AppNumberInput :value="quotaLifetimeUsd" :disabled="quotaUnlimited" :min="0" :precision="8" placeholder="0" @update:value="setQuotaLifetimeUsd" />
+                </AppFormItem>
+              </FieldGroup>
+            </FieldGroup>
+          </FieldSet>
+
+          <div class="user-editor-actions">
+            <AppButton secondary @click="editorVisible = false">{{ t('取消', 'Cancel') }}</AppButton>
+            <AppButton type="primary" :loading="isSavingUser" @click="saveUser">
+              {{ editingUserId ? t('保存', 'Save') : t('创建', 'Create') }}
+            </AppButton>
           </div>
-        </AppFormItem>
-        <div class="form-grid quota-editor-grid">
-          <AppFormItem :label="t('每日余额 USD', 'Daily balance USD')">
-            <AppNumberInput
-              :value="quotaDailyUsd"
-              :disabled="quotaUnlimited"
-              :min="0"
-              :precision="8"
-              placeholder="0"
-              @update:value="setQuotaDailyUsd"
-            />
-          </AppFormItem>
-          <AppFormItem :label="t('每周余额 USD', 'Weekly balance USD')">
-            <AppNumberInput
-              :value="quotaWeeklyUsd"
-              :disabled="quotaUnlimited"
-              :min="0"
-              :precision="8"
-              placeholder="0"
-              @update:value="setQuotaWeeklyUsd"
-            />
-          </AppFormItem>
-          <AppFormItem :label="t('每月余额 USD', 'Monthly balance USD')">
-            <AppNumberInput
-              :value="quotaMonthlyUsd"
-              :disabled="quotaUnlimited"
-              :min="0"
-              :precision="8"
-              placeholder="0"
-              @update:value="setQuotaMonthlyUsd"
-            />
-          </AppFormItem>
-          <AppFormItem :label="t('不限时余额 USD', 'Lifetime balance USD')">
-            <AppNumberInput
-              :value="quotaLifetimeUsd"
-              :disabled="quotaUnlimited"
-              :min="0"
-              :precision="8"
-              placeholder="0"
-              @update:value="setQuotaLifetimeUsd"
-            />
-          </AppFormItem>
-        </div>
-        <AppAlert type="info" :bordered="false" class="quota-editor-hint">
-          {{ t('关闭不限制后，扣费顺序：每日、每周、每月、不限时；全部余额都无剩余时暂停该用户的 API Key。', 'After unlimited balance is disabled, charges are deducted from daily, weekly, monthly, then lifetime balance. If all balances are exhausted, the user API keys are paused.') }}
-        </AppAlert>
-        <div class="user-editor-actions">
-          <AppButton secondary @click="editorVisible = false">{{ t('取消', 'Cancel') }}</AppButton>
-          <AppButton type="primary" :loading="isSavingUser" @click="saveUser">
-            {{ editingUserId ? t('保存', 'Save') : t('创建', 'Create') }}
-          </AppButton>
-        </div>
+        </FieldGroup>
       </AppForm>
     </AppModal>
   </section>
@@ -642,43 +615,37 @@ onMounted(refresh)
 }
 
 .user-editor-warning {
-  margin-bottom: 12px;
+  margin-bottom: 16px;
 }
 
+.identity-fields,
 .quota-editor-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px 12px;
-}
-
-.quota-editor-hint {
-  margin: -2px 0 12px;
-}
-
-.quota-unlimited-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
   gap: 16px;
-  min-width: 0;
-  padding: 10px 12px;
+}
+
+.password-field {
+  grid-column: 1 / -1;
+}
+
+.switch-setting {
+  gap: 20px;
+  padding: 14px 16px;
   border: 1px solid var(--cpa-border);
   border-radius: var(--cpa-radius);
-  background: var(--cpa-surface);
+  background: var(--cpa-surface-muted);
 }
 
-.quota-unlimited-title {
-  color: var(--cpa-text-strong);
-  font-size: 13px;
-  font-weight: 760;
+.quota-fieldset {
+  padding: 16px;
+  border: 1px solid var(--cpa-border);
+  border-radius: var(--cpa-radius);
 }
 
-.quota-unlimited-desc {
-  margin-top: 2px;
-  color: var(--cpa-muted);
-  font-size: 12px;
-  line-height: 1.35;
+:global(.table-row-actions) {
+  width: 100%;
+  justify-content: flex-end;
 }
 
 :global(.metric-stack) {
@@ -709,6 +676,14 @@ onMounted(refresh)
 :global(.quota-balance-row.is-monthly.is-normal) {
   background: var(--cpa-success-weak);
   color: var(--cpa-success);
+}
+
+:global(.metric-stack.is-compact) {
+  align-items: start;
+}
+
+:global(.user-status-badge) {
+  width: fit-content;
 }
 
 :global(.quota-balance-row.is-weekly.is-normal) {
@@ -789,6 +764,14 @@ onMounted(refresh)
 
   .quota-editor-grid {
     grid-template-columns: 1fr;
+  }
+
+  .identity-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .password-field {
+    grid-column: auto;
   }
 }
 </style>
