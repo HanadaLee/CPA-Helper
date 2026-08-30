@@ -68,6 +68,12 @@ export const router = createRouter({
           meta: { requiresAdmin: true },
         },
         {
+          path: 'admin/upstreams',
+          name: 'admin-upstreams',
+          component: () => import('@/features/upstreams/views/UpstreamManagementView.vue'),
+          meta: { requiresAdmin: true },
+        },
+        {
           path: 'admin/pricing',
           name: 'admin-pricing',
           component: () => import('@/features/pricing/views/ModelPricesView.vue'),
