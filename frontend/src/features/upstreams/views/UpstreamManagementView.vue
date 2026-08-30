@@ -601,6 +601,7 @@ void loadUpstreams()
 <template>
   <section class="page upstream-page">
     <div class="page-toolbar upstream-header">
+      <h1 data-page-title class="page-title">{{ t('上游管理', 'Upstream Management') }}</h1>
       <AppButton secondary :loading="isLoading" @click="loadUpstreams(true)">
         <template #icon><AppIcon :component="RefreshCw" /></template>
         {{ t('刷新', 'Refresh') }}

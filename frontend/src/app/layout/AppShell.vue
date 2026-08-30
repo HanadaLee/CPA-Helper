@@ -65,8 +65,53 @@ const { currentUser, setCurrentUser } = useCurrentUser()
 const hasLoadedUser = ref(currentUser.value !== null)
 const { isDark, preference, setThemePreference } = useThemePreference()
 const { language, t, toggleLanguage } = useI18n()
+const contentScroll = ref<HTMLElement | null>(null)
+const showStickyLocation = ref(false)
 let navigationFeedbackTimer: number | undefined
 let routeTransitionReleaseTimer: number | undefined
+let pageTitleObserver: IntersectionObserver | undefined
+let pageTitleObserverFrame: number | undefined
+
+function disconnectPageTitleObserver() {
+  pageTitleObserver?.disconnect()
+  pageTitleObserver = undefined
+  if (pageTitleObserverFrame !== undefined) {
+    window.cancelAnimationFrame(pageTitleObserverFrame)
+    pageTitleObserverFrame = undefined
+  }
+}
+
+function observePageTitle() {
+  disconnectPageTitleObserver()
+  const scrollRoot = contentScroll.value
+  const pageTitle = scrollRoot?.querySelector<HTMLElement>('[data-page-title]')
+  if (!scrollRoot || !pageTitle || typeof IntersectionObserver === 'undefined') {
+    showStickyLocation.value = true
+    return
+  }
+
+  showStickyLocation.value = false
+  pageTitleObserver = new IntersectionObserver(
+    ([entry]) => {
+      if (!entry) return
+      const rootTop = entry.rootBounds?.top ?? scrollRoot.getBoundingClientRect().top
+      showStickyLocation.value = !entry.isIntersecting && entry.boundingClientRect.bottom <= rootTop
+    },
+    { root: scrollRoot, threshold: 0 },
+  )
+  pageTitleObserver.observe(pageTitle)
+}
+
+function refreshPageTitleObserver() {
+  disconnectPageTitleObserver()
+  showStickyLocation.value = false
+  void nextTick(() => {
+    pageTitleObserverFrame = window.requestAnimationFrame(() => {
+      pageTitleObserverFrame = undefined
+      observePageTitle()
+    })
+  })
+}
 
 onBeforeUnmount(() => {
   if (navigationFeedbackTimer !== undefined) {
@@ -75,6 +120,7 @@ onBeforeUnmount(() => {
   if (routeTransitionReleaseTimer !== undefined) {
     window.clearTimeout(routeTransitionReleaseTimer)
   }
+  disconnectPageTitleObserver()
 })
 
 async function refreshCurrentUser() {
@@ -89,6 +135,7 @@ async function refreshCurrentUser() {
 
 onMounted(() => {
   void refreshCurrentUser()
+  refreshPageTitleObserver()
 })
 
 function handleAccountUpdated(event: Event) {
@@ -113,7 +160,7 @@ interface NavigationItem {
 }
 
 const adminMenuItems = computed<NavigationItem[]>(() => [
-  { label: t('历史用量', 'Usage History'), key: '/admin/usage', icon: BarChart3 },
+  { label: t('用量分析', 'Usage Analytics'), key: '/admin/usage', icon: BarChart3 },
   { label: t('请求明细', 'Request Records'), key: '/admin/records', icon: List },
   { label: t('用户管理', 'Users'), key: '/admin/users', icon: Users },
   { label: t('模型价格', 'Model Prices'), key: '/admin/pricing', icon: DollarSign },
@@ -132,7 +179,7 @@ const showUsageHistoryForUser = computed(
 
 const accountMenuItems = computed<NavigationItem[]>(() => [
   ...(showUsageHistoryForUser.value
-    ? [{ label: t('历史用量', 'Usage History'), key: '/account/history', icon: BarChart3 }]
+    ? [{ label: t('用量分析', 'Usage Analytics'), key: '/account/history', icon: BarChart3 }]
     : []),
   { label: t('我的用量', 'My Usage'), key: '/account/usage', icon: BarChart3 },
   { label: t('我的明细', 'My Records'), key: '/account/records', icon: List },
@@ -217,6 +264,7 @@ function finishRouteTransition() {
   routeTransitionReleaseTimer = window.setTimeout(() => {
     isRouteTransitioning.value = false
     routeTransitionReleaseTimer = undefined
+    refreshPageTitleObserver()
   }, 60)
 }
 
@@ -368,8 +416,10 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
     <SidebarInset class="app-main">
       <header class="app-header">
         <SidebarTrigger class="navigation-trigger" :aria-label="t('打开导航', 'Open navigation')" />
-        <Separator orientation="vertical" class="header-divider" />
-        <div class="desktop-location">{{ currentNavigationLabel }}</div>
+        <Separator orientation="vertical" class="header-divider data-[orientation=vertical]:h-4" />
+        <div class="desktop-location" :class="{ 'is-visible': showStickyLocation }">
+          {{ currentNavigationLabel }}
+        </div>
         <div class="mobile-brand" :aria-label="t('CPA-Helper 账号信息', 'CPA-Helper account info')">
           <img class="mobile-brand-logo" :src="logoUrl" alt="" aria-hidden="true">
           <div class="mobile-brand-copy">
@@ -400,7 +450,7 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
         }"
       >
         <div v-if="isMenuNavigationPending" class="route-progress" aria-hidden="true" />
-        <div class="content-scroll">
+        <div ref="contentScroll" class="content-scroll">
           <RouterView v-slot="{ Component: RouteComponent, route: activeRoute }">
             <Transition
               name="route-fade"
@@ -809,7 +859,7 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
   grid-template-columns: auto 1px minmax(0, 1fr) auto;
   flex: 0 0 56px;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   height: 56px;
   padding: 0 20px;
   border-bottom: 1px solid var(--cpa-border);
@@ -824,9 +874,14 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
 }
 
 .header-divider {
+  align-self: center;
   width: 1px;
-  height: 18px;
+  height: 16px;
   background: var(--cpa-border);
+}
+
+.header-divider[data-orientation="vertical"] {
+  height: 16px;
 }
 
 .desktop-location {
@@ -835,8 +890,21 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
   color: var(--cpa-text-strong);
   font-size: 14px;
   font-weight: 720;
+  opacity: 0;
   text-overflow: ellipsis;
+  transform: translateY(-3px);
+  transition:
+    opacity 150ms ease,
+    transform 150ms ease,
+    visibility 150ms ease;
+  visibility: hidden;
   white-space: nowrap;
+}
+
+.desktop-location.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+  visibility: visible;
 }
 
 .header-actions {

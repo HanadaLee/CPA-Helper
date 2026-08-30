@@ -293,6 +293,9 @@ const selectOptions = computed(() => ({
 }))
 
 const isAccountScope = computed(() => props.scope === 'account')
+const pageTitle = computed(() =>
+  isAccountScope.value ? t('我的明细', 'My records') : t('请求明细', 'Request records'),
+)
 const recordsTableScrollX = computed(() =>
   isAccountScope.value ? ACCOUNT_RECORDS_TABLE_SCROLL_X : ADMIN_RECORDS_TABLE_SCROLL_X,
 )
@@ -930,6 +933,7 @@ onBeforeUnmount(() => {
 <template>
   <section class="page records-page">
     <div class="page-toolbar">
+      <h1 data-page-title class="page-title">{{ pageTitle }}</h1>
       <div class="header-actions">
         <span class="refresh-status" :class="{ 'is-error': autoRefreshError }">
           {{ refreshStatusText }}
@@ -1150,7 +1154,7 @@ onBeforeUnmount(() => {
 
 .time-row {
   display: grid;
-  grid-template-columns: auto minmax(280px, 460px);
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
   gap: 12px;
   align-items: center;
   min-width: 0;

@@ -782,6 +782,7 @@ function telegramHref(value: string | null | undefined): string | null {
 <template>
   <section class="page card-shops-page">
     <div class="page-toolbar card-shops-header">
+      <h1 data-page-title class="page-title">{{ t('卡网收录', 'Card shops') }}</h1>
       <AppButton type="primary" :loading="isLoading" @click="refresh">
         <template #icon>
           <AppIcon :component="RefreshCw" />

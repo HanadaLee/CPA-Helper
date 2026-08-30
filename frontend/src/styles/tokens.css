@@ -233,12 +233,24 @@ pre {
 .page-toolbar {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   flex-wrap: wrap;
   gap: 10px;
   min-width: 0;
   min-height: 36px;
   padding: 0 2px;
+}
+
+.page-title {
+  flex: 1 1 auto;
+  min-width: min(220px, 100%);
+  margin: 0;
+  color: var(--cpa-text-strong);
+  font-size: 28px;
+  font-weight: 760;
+  letter-spacing: -0.025em;
+  line-height: 1.18;
+  text-wrap: pretty;
 }
 
 .section-title {
@@ -539,7 +551,7 @@ pre {
   color: var(--cpa-text);
 }
 
-.n-data-table .n-data-table-tr:last-child .n-data-table-td {
+.n-data-table .n-data-table-tbody .n-data-table-tr:last-child {
   border-bottom: 0;
 }
 
@@ -616,10 +628,16 @@ pre {
 
   .page-toolbar {
     align-items: center;
-    justify-content: flex-end;
+    justify-content: space-between;
     gap: 8px;
     min-height: 0;
     padding: 0;
+  }
+
+  .page-title {
+    min-width: min(180px, 100%);
+    font-size: 22px;
+    line-height: 1.16;
   }
 
   .panel-inner {

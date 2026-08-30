@@ -10,13 +10,22 @@ import {
   AppInput,
   AppNumberInput,
   AppModal,
-  AppConfirm,
   AppStack,
   AppSwitch,
   AppBadge,
+  useDialog,
   useMessage,
   type DataTableColumns,
 } from '@/shared/ui/app-kit'
+import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import {
   Field,
   FieldContent,
@@ -26,7 +35,16 @@ import {
   FieldSet,
   FieldTitle,
 } from '@/components/ui/field'
-import { CircleDollarSign, KeyRound, ShieldCheck, UserRound } from '@lucide/vue'
+import {
+  CircleDollarSign,
+  KeyRound,
+  MoreHorizontal,
+  Pencil,
+  ShieldCheck,
+  UserCheck,
+  UserRound,
+  UserX,
+} from '@lucide/vue'
 
 import {
   createUser,
@@ -41,6 +59,7 @@ import type { UserSummary } from '@/shared/types/api'
 import { formatCompact, formatDateTime, formatInteger, formatUsd } from '@/shared/utils/format'
 
 const message = useMessage()
+const dialog = useDialog()
 const { errorText, t } = useI18n()
 const isLoading = ref(false)
 const isSavingUser = ref(false)
@@ -264,6 +283,32 @@ async function enableUserRow(row: UserSummary) {
   }
 }
 
+function confirmEnableUser(row: UserSummary) {
+  dialog.warning({
+    title: t('启用用户', 'Enable user'),
+    content: t(
+      `启用用户 ${userLabel(row)} 并恢复其 API KEY？`,
+      `Enable user ${userLabel(row)} and restore their API keys?`,
+    ),
+    positiveText: t('启用', 'Enable'),
+    negativeText: t('取消', 'Cancel'),
+    onPositiveClick: () => enableUserRow(row),
+  })
+}
+
+function confirmDisableUser(row: UserSummary) {
+  dialog.warning({
+    title: t('禁用用户', 'Disable user'),
+    content: t(
+      `禁用用户 ${userLabel(row)} 并从 CPA 移除其 API KEY？`,
+      `Disable user ${userLabel(row)} and remove their API keys from CPA?`,
+    ),
+    positiveText: t('禁用', 'Disable'),
+    negativeText: t('取消', 'Cancel'),
+    onPositiveClick: () => disableUserRow(row),
+  })
+}
+
 async function saveUser() {
   const nickname = userNickname.value.trim()
   if (!nickname) {
@@ -429,48 +474,65 @@ const columns = computed<DataTableColumns<UserSummary>>(() => [
   {
     title: '',
     key: 'actions',
-    width: 84,
+    width: 56,
     align: 'right',
     render: (row) =>
       h(
-        AppStack,
-        { size: 4, justify: 'end', wrap: false, class: 'table-row-actions' },
+        DropdownMenu,
+        {},
         {
           default: () => [
             h(
-              AppButton,
-              { size: 'small', quaternary: true, onClick: () => editUser(row) },
-              { default: () => t('编辑', 'Edit') },
-            ),
-            row.id === 1
-              ? null
-              : isUserDisabled(row)
-                ? h(
-                    AppConfirm,
-                    { onPositiveClick: () => enableUserRow(row) },
+              DropdownMenuTrigger,
+              { asChild: true },
+              {
+                default: () =>
+                  h(
+                    Button,
                     {
-                      trigger: () =>
-                        h(
-                          AppButton,
-                          { size: 'small', quaternary: true, type: 'primary' },
-                          { default: () => t('启用', 'Enable') },
-                        ),
-                      default: () => t(`启用用户 ${userLabel(row)} 并恢复其 API KEY？`, `Enable user ${userLabel(row)} and restore their API keys?`),
+                      variant: 'ghost',
+                      size: 'icon-sm',
+                      class: 'row-actions-trigger',
+                      'aria-label': t(`打开 ${userLabel(row)} 的操作菜单`, `Open actions for ${userLabel(row)}`),
                     },
-                  )
-                : h(
-                    AppConfirm,
-                    { onPositiveClick: () => disableUserRow(row) },
+                    { default: () => h(MoreHorizontal) },
+                  ),
+              },
+            ),
+            h(
+              DropdownMenuContent,
+              { align: 'end', sideOffset: 4, class: 'w-40' },
+              {
+                default: () => [
+                  h(
+                    DropdownMenuGroup,
+                    {},
                     {
-                      trigger: () =>
+                      default: () =>
                         h(
-                          AppButton,
-                          { size: 'small', quaternary: true, type: 'warning' },
-                          { default: () => t('禁用', 'Disable') },
+                          DropdownMenuItem,
+                          { onSelect: () => editUser(row) },
+                          { default: () => [h(Pencil), h('span', t('编辑', 'Edit'))] },
                         ),
-                      default: () => t(`禁用用户 ${userLabel(row)} 并从 CPA 移除其 API KEY？`, `Disable user ${userLabel(row)} and remove their API keys from CPA?`),
                     },
                   ),
+                  row.id === 1 ? null : h(DropdownMenuSeparator),
+                  row.id === 1
+                    ? null
+                    : isUserDisabled(row)
+                      ? h(
+                          DropdownMenuItem,
+                          { onSelect: () => confirmEnableUser(row) },
+                          { default: () => [h(UserCheck), h('span', t('启用', 'Enable'))] },
+                        )
+                      : h(
+                          DropdownMenuItem,
+                          { variant: 'destructive', onSelect: () => confirmDisableUser(row) },
+                          { default: () => [h(UserX), h('span', t('禁用', 'Disable'))] },
+                        ),
+                ],
+              },
+            ),
           ],
         },
       ),
@@ -483,6 +545,7 @@ onMounted(refresh)
 <template>
   <section class="page">
     <div class="page-toolbar">
+      <h1 data-page-title class="page-title">{{ t('用户管理', 'User Management') }}</h1>
       <AppStack>
         <AppButton secondary :loading="isLoading" @click="refresh">{{ t('刷新', 'Refresh') }}</AppButton>
         <AppButton type="primary" @click="openCreateUser">{{ t('增加用户', 'Add user') }}</AppButton>
@@ -508,7 +571,7 @@ onMounted(refresh)
         :data="users"
         :pagination="{ pageSize: 12 }"
         table-layout="fixed"
-        :scroll-x="1084"
+        :scroll-x="1056"
       />
     </section>
 
@@ -643,9 +706,9 @@ onMounted(refresh)
   border-radius: var(--cpa-radius);
 }
 
-:global(.table-row-actions) {
-  width: 100%;
-  justify-content: flex-end;
+:global(.row-actions-trigger) {
+  margin-left: auto;
+  color: var(--cpa-text-muted);
 }
 
 :global(.metric-stack) {

@@ -328,6 +328,9 @@ const selectOptions = computed(() => ({
 
 const isAccountScope = computed(() => props.scope === 'account')
 const canOpenRecords = computed(() => props.scope !== 'shared')
+const pageTitle = computed(() =>
+  isAccountScope.value ? t('我的用量', 'My usage') : t('用量分析', 'Usage analytics'),
+)
 const rankingTitle = computed(() =>
   isAccountScope.value ? t('KEY 排行', 'Key ranking') : t('用户排行', 'User ranking'),
 )
@@ -569,7 +572,7 @@ async function refresh({ silent = false }: RefreshOptions = {}) {
     autoRefreshError.value = null
     lastRefreshedAt.value = new Date()
   } catch (error) {
-    const errorMessage = errorText(error, '加载历史用量失败', 'Failed to load usage history')
+    const errorMessage = errorText(error, '加载用量分析失败', 'Failed to load usage analytics')
     if (silent) {
       autoRefreshError.value = errorMessage
     } else {
@@ -1227,6 +1230,7 @@ onBeforeUnmount(() => {
 <template>
   <section class="page usage-dashboard-page" :aria-busy="isLoading">
     <div class="page-toolbar">
+      <h1 data-page-title class="page-title">{{ pageTitle }}</h1>
       <div class="header-actions">
         <span
           v-if="isAccountScope"
@@ -1718,7 +1722,7 @@ onBeforeUnmount(() => {
 
 .time-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 430px);
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
   gap: 10px;
   align-items: center;
   min-width: 0;

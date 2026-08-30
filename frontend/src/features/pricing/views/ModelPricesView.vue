@@ -19,7 +19,28 @@ import {
   useMessage,
   type DataTableColumns,
 } from '@/shared/ui/app-kit'
-import { Database, Layers3, ListFilter, RefreshCw, Search, Server, Settings2 } from '@lucide/vue'
+import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
+  Database,
+  Layers3,
+  ListFilter,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Search,
+  Server,
+  Settings2,
+  Trash2,
+} from '@lucide/vue'
 
 import {
   createModelPrice,
@@ -619,60 +640,68 @@ function renderStatusCell(row: PriceDisplayRow) {
   )
 }
 
-function renderPricingModeCell(row: PriceDisplayRow) {
-  return h('div', { class: 'pricing-mode-cell' }, [
-    renderStatusCell(row),
-    renderBillingUnitCell(row),
-  ])
-}
-
-function renderPriceSummaryCell(row: PriceDisplayRow) {
-  const items = [
-    [t('每次', 'Per call'), renderRequestPriceValue(row)],
-    ['FAST', renderFastMultiplier(row)],
-    [t('输入 / MTok', 'Input / MTok'), renderTokenPriceValue(row, 'input_usd_per_million')],
-    [t('输出 / MTok', 'Output / MTok'), renderTokenPriceValue(row, 'output_usd_per_million')],
-    [t('缓存读 / MTok', 'Cache read / MTok'), renderTokenPriceValue(row, 'cache_read_usd_per_million')],
-    [t('缓存写 / MTok', 'Cache write / MTok'), renderTokenPriceValue(row, 'cache_creation_usd_per_million')],
-  ]
-  return h(
-    'div',
-    { class: 'price-summary-grid' },
-    items.map(([label, value]) =>
-      h('div', { class: 'price-summary-item' }, [
-        h('span', label),
-        h('strong', value),
-      ]),
-    ),
-  )
-}
-
 const columns = computed<DataTableColumns<PriceDisplayRow>>(() => [
   {
     title: t('模型', 'Model'),
     key: 'id',
-    width: 220,
+    width: 300,
     ellipsis: { tooltip: true },
     render: renderModelCell,
   },
   {
     title: t('服务商', 'Provider'),
     key: 'provider',
-    width: 110,
+    width: 130,
     ellipsis: { tooltip: true },
     render: renderProviderCell,
   },
   {
-    title: t('定价 / 计费', 'Pricing / billing'),
+    title: t('定价', 'Pricing'),
     key: 'status',
-    width: 116,
-    render: renderPricingModeCell,
+    width: 90,
+    render: renderStatusCell,
   },
   {
-    title: t('价格（USD）', 'Prices (USD)'),
-    key: 'prices',
-    width: 400,
-    render: renderPriceSummaryCell,
+    title: t('计费方式', 'Billing'),
+    key: 'billing_unit',
+    width: 100,
+    render: renderBillingUnitCell,
+  },
+  {
+    title: t('FAST 倍率', 'FAST multiplier'),
+    key: 'fast_multiplier',
+    width: 100,
+    render: renderFastMultiplier,
+  },
+  {
+    title: t('每次 ($)', 'Per call ($)'),
+    key: 'request_usd',
+    width: 100,
+    render: renderRequestPriceValue,
+  },
+  {
+    title: t('输入 ($/MTok)', 'Input ($/MTok)'),
+    key: 'input_usd_per_million',
+    width: 110,
+    render: (row) => renderTokenPriceValue(row, 'input_usd_per_million'),
+  },
+  {
+    title: t('输出 ($/MTok)', 'Output ($/MTok)'),
+    key: 'output_usd_per_million',
+    width: 110,
+    render: (row) => renderTokenPriceValue(row, 'output_usd_per_million'),
+  },
+  {
+    title: t('缓存读 ($/MTok)', 'Cache read ($/MTok)'),
+    key: 'cache_read_usd_per_million',
+    width: 120,
+    render: (row) => renderTokenPriceValue(row, 'cache_read_usd_per_million'),
+  },
+  {
+    title: t('缓存写 ($/MTok)', 'Cache write ($/MTok)'),
+    key: 'cache_creation_usd_per_million',
+    width: 120,
+    render: (row) => renderTokenPriceValue(row, 'cache_creation_usd_per_million'),
   },
   {
     title: t('更新', 'Updated'),
@@ -683,32 +712,65 @@ const columns = computed<DataTableColumns<PriceDisplayRow>>(() => [
   {
     title: '',
     key: 'actions',
-    width: 110,
+    width: 56,
     align: 'right',
+    fixed: 'right',
     render: (row) =>
       h(
-        AppStack,
-        { size: 4, justify: 'end', wrap: false, class: 'price-row-actions' },
+        DropdownMenu,
+        {},
         {
           default: () => [
-            row.price
-              ? h(
-                  AppButton,
-                  { size: 'small', quaternary: true, onClick: () => openEdit(row.price as ModelPrice) },
-                  { default: () => t('改价', 'Edit') },
-                )
-              : h(
-                  AppButton,
-                  { size: 'small', type: 'primary', secondary: true, onClick: () => openCreateForRow(row) },
-                  { default: () => t('设价', 'Set price') },
-                ),
-            row.price
-              ? h(
-                  AppButton,
-                  { size: 'small', quaternary: true, type: 'error', onClick: () => confirmDelete(row.price as ModelPrice) },
-                  { default: () => t('删除', 'Delete') },
-                )
-              : null,
+            h(
+              DropdownMenuTrigger,
+              { asChild: true },
+              {
+                default: () =>
+                  h(
+                    Button,
+                    {
+                      variant: 'ghost',
+                      size: 'icon-sm',
+                      class: 'price-actions-trigger',
+                      'aria-label': t(`打开 ${row.id} 的操作菜单`, `Open actions for ${row.id}`),
+                    },
+                    { default: () => h(MoreHorizontal) },
+                  ),
+              },
+            ),
+            h(
+              DropdownMenuContent,
+              { align: 'end', sideOffset: 4, class: 'w-40' },
+              {
+                default: () => [
+                  h(
+                    DropdownMenuGroup,
+                    {},
+                    {
+                      default: () =>
+                        h(
+                          DropdownMenuItem,
+                          { onSelect: () => (row.price ? openEdit(row.price) : openCreateForRow(row)) },
+                          {
+                            default: () => [
+                              h(row.price ? Pencil : Plus),
+                              h('span', row.price ? t('改价', 'Edit price') : t('设价', 'Set price')),
+                            ],
+                          },
+                        ),
+                    },
+                  ),
+                  row.price ? h(DropdownMenuSeparator) : null,
+                  row.price
+                    ? h(
+                        DropdownMenuItem,
+                        { variant: 'destructive', onSelect: () => confirmDelete(row.price as ModelPrice) },
+                        { default: () => [h(Trash2), h('span', t('删除', 'Delete'))] },
+                      )
+                    : null,
+                ],
+              },
+            ),
           ],
         },
       ),
@@ -728,6 +790,7 @@ onBeforeUnmount(() => {
 <template>
   <section class="page price-page">
     <div class="page-toolbar">
+      <h1 data-page-title class="page-title">{{ t('模型价格', 'Model prices') }}</h1>
       <AppStack>
         <AppButton secondary :loading="isSyncing" @click="syncPrices">
           <template #icon>
@@ -805,7 +868,8 @@ onBeforeUnmount(() => {
         :data="filteredPrices"
         :pagination="pagination"
         :row-key="rowKey"
-        :scroll-x="1076"
+        :scroll-x="1456"
+        table-layout="fixed"
       />
     </section>
 
@@ -1017,53 +1081,14 @@ onBeforeUnmount(() => {
   width: 280px;
 }
 
-:global(.price-row-actions) {
-  width: 100%;
-  justify-content: flex-end;
+:global(.price-actions-trigger) {
+  margin-left: auto;
+  color: var(--cpa-text-muted);
 }
 
 .model-cell,
 .provider-cell {
   min-width: 0;
-}
-
-.pricing-mode-cell {
-  display: flex;
-  align-items: flex-start;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.price-summary-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 7px 14px;
-  min-width: 0;
-}
-
-.price-summary-item {
-  display: grid;
-  min-width: 0;
-  gap: 1px;
-}
-
-.price-summary-item span {
-  overflow: hidden;
-  color: var(--cpa-text-muted);
-  font-size: 10px;
-  line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.price-summary-item strong {
-  overflow: hidden;
-  color: var(--cpa-text);
-  font-size: 12px;
-  font-weight: 650;
-  line-height: 1.25;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .model-title-row {

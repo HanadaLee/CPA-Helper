@@ -138,6 +138,9 @@ const message = useMessage()
 const { currentLanguage, errorText, keeperStatusText, serverText, t } = useI18n()
 const { currentUser } = useCurrentUser()
 const canManageAccounts = computed(() => currentUser.value?.is_admin === true)
+const accountPageTitle = computed(() =>
+  canManageAccounts.value ? t('账号管理', 'Account Management') : t('账号状态', 'Account Status'),
+)
 const accountTableScrollX = computed(() =>
   canManageAccounts.value ? accountManageTableScrollX : accountReadOnlyTableScrollX,
 )
@@ -2408,6 +2411,7 @@ onBeforeUnmount(() => {
 <template>
   <section class="page account-status-page">
     <div class="page-toolbar account-page-header">
+      <h1 data-page-title class="page-title">{{ accountPageTitle }}</h1>
       <div class="header-actions">
         <AppButton
           v-if="canManageAccounts"

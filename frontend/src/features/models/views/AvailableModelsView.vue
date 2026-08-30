@@ -222,6 +222,7 @@ onMounted(refresh)
 <template>
   <section class="page models-page" :aria-busy="isLoading">
     <div class="page-toolbar">
+      <h1 data-page-title class="page-title">{{ t('可用模型', 'Available Models') }}</h1>
       <AppStack>
         <AppButton secondary :loading="isLoading" @click="refresh">
           <template #icon>

@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 
 const adminRoutes = [
-  ['/admin/usage', /历史用量|Usage History/i],
+  ['/admin/usage', /用量分析|Usage Analytics/i],
   ['/admin/records', /请求明细|Request Records/i],
   ['/admin/users', /用户管理|Users/i],
   ['/admin/pricing', /模型价格|Model Prices/i],
@@ -31,6 +31,19 @@ async function setupOrLogin(page: Page) {
   }
 }
 
+async function expectTableInsidePanel(page: Page, tableSelector: string, panelSelector: string) {
+  const tableBox = await page.locator(tableSelector).boundingBox()
+  const panelBox = await page.locator(panelSelector).boundingBox()
+  expect(tableBox).not.toBeNull()
+  expect(panelBox).not.toBeNull()
+  expect((tableBox?.y ?? 0) + (tableBox?.height ?? 0)).toBeLessThanOrEqual(
+    (panelBox?.y ?? 0) + (panelBox?.height ?? 0) + 1,
+  )
+  await expect.poll(() =>
+    page.locator('.content-scroll').evaluate((element) => element.scrollHeight <= element.clientHeight + 1),
+  ).toBe(true)
+}
+
 test('all migrated routes render and core controls remain interactive', async ({ page }) => {
   const consoleErrors: string[] = []
   page.on('console', (message) => {
@@ -46,7 +59,8 @@ test('all migrated routes render and core controls remain interactive', async ({
   for (const [route, title] of adminRoutes) {
     await page.goto(route)
     await expect(page.locator('.desktop-location')).toContainText(title)
-    await expect(page.locator('main main h1')).toHaveCount(0)
+    await expect(page.locator('[data-page-title]')).toBeVisible()
+    await expect(page.locator('.desktop-location')).toHaveCSS('visibility', 'hidden')
   }
 
   await page.goto('/admin/account-mgmt')
@@ -66,6 +80,7 @@ test('all migrated routes render and core controls remain interactive', async ({
   await firstStatusOption.click()
   await expect(statusFilter).toContainText(firstStatusLabel)
   await page.getByRole('button', { name: 'Clear selection' }).click()
+  await expectTableInsidePanel(page, '.price-table', '.price-table-panel')
 
   await page.goto('/admin/upstreams')
   await page.getByRole('button', { name: /新建|New/ }).click()
@@ -75,8 +90,14 @@ test('all migrated routes render and core controls remain interactive', async ({
   await page.getByRole('button', { name: /取消|Cancel/ }).click()
 
   await page.goto('/admin/users')
+  await page.getByRole('button', { name: /打开 .*操作菜单|Open actions for/ }).first().click()
+  await expect(page.getByRole('menuitem', { name: /编辑|Edit/ })).toBeVisible()
+  await page.keyboard.press('Escape')
   await page.getByRole('button', { name: /增加用户|Add user/ }).click()
   await expect(page.getByText(/增加用户|Add user/, { exact: true }).last()).toBeVisible()
+  const adminSwitch = page.locator('button[role="switch"]').first()
+  await adminSwitch.click()
+  await expect(adminSwitch).toHaveAttribute('data-state', 'checked')
   await page.getByRole('button', { name: /取消|Cancel/ }).click()
 
   await page.goto('/admin/records')
@@ -85,10 +106,13 @@ test('all migrated routes render and core controls remain interactive', async ({
   await expect(page.locator('[data-slot="range-calendar"]')).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(page.locator('table')).toBeVisible()
+  await expectTableInsidePanel(page, '.records-table', '.records-table-panel')
 
   await page.goto('/admin/settings')
   const switches = page.locator('button[role="switch"]')
   await expect(switches.first()).toBeVisible()
+  await page.locator('.content-scroll').evaluate((element) => element.scrollTo({ top: element.scrollHeight }))
+  await expect(page.locator('.desktop-location')).toHaveCSS('visibility', 'visible')
 
   await page.goto('/account/keys')
   await expect(page.locator('.desktop-location')).toContainText(/API 密钥|API Keys/i)
@@ -117,7 +141,7 @@ test('theme and mobile navigation survive the migration', async ({ page }) => {
   await page.reload()
   await page.getByRole('button', { name: /打开导航|Open navigation/ }).click()
   await expect(page.getByText('CPA-Helper', { exact: false }).last()).toBeVisible()
-  await expect(page.getByRole('button', { name: /历史用量|Usage History/ }).first()).toBeVisible()
+  await expect(page.getByRole('button', { name: /用量分析|Usage Analytics/ }).first()).toBeVisible()
   await page.getByRole('button', { name: /用户管理|Users/ }).click()
   await expect(page).toHaveURL(/\/admin\/users/)
   await expect(page.locator('[data-mobile="true"]')).toBeHidden()

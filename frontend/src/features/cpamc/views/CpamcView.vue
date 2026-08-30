@@ -34,6 +34,7 @@ onMounted(loadCPAMC)
 <template>
   <section class="page cpamc-page">
     <div class="page-toolbar">
+      <h1 data-page-title class="page-title">CPAMC</h1>
       <AppButton secondary :loading="isLoading" @click="loadCPAMC">
         {{ t('刷新', 'Refresh') }}
       </AppButton>

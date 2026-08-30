@@ -147,7 +147,7 @@ const serverTermTranslations: MessagePair[] = [
   ['可用模型', 'available models'],
   ['代理配置', 'proxy settings'],
   ['API 密钥', 'API keys'],
-  ['历史用量', 'usage history'],
+  ['用量分析', 'usage analytics'],
   ['明细', 'records'],
   ['原始数据', 'raw data'],
   ['巡检配置', 'inspection settings'],

@@ -1516,7 +1516,8 @@ export const AppDataTable = defineComponent({
     }
     return () => {
       const wrapperStyle: CSSProperties = {
-        maxHeight: props.flexHeight ? '100%' : styleSize(props.maxHeight),
+        height: props.flexHeight ? '100%' : undefined,
+        maxHeight: props.flexHeight ? undefined : styleSize(props.maxHeight),
         minHeight: styleSize(props.minHeight),
         overflow: 'auto',
       }
@@ -1524,9 +1525,9 @@ export const AppDataTable = defineComponent({
         minWidth: styleSize(props.scrollX),
         tableLayout: props.tableLayout as CSSProperties['tableLayout'],
       }
-      return h('div', { ...attrs, class: cn('n-data-table relative min-w-0', !props.bordered && 'is-borderless', attrs.class as HTMLAttributes['class']) }, [
-        h('div', { class: 'n-data-table-wrapper relative overflow-hidden rounded-xl border border-border bg-card shadow-xs' }, [
-          h('div', { class: 'n-scrollbar-container', style: wrapperStyle }, [
+      return h('div', { ...attrs, class: cn('n-data-table relative min-w-0', props.flexHeight && 'flex h-full min-h-0 flex-col', !props.bordered && 'is-borderless', attrs.class as HTMLAttributes['class']) }, [
+        h('div', { class: cn('n-data-table-wrapper relative overflow-hidden rounded-xl border border-border bg-card shadow-xs', props.flexHeight && 'flex min-h-0 flex-1 flex-col') }, [
+          h('div', { class: cn('n-scrollbar-container', props.flexHeight && 'h-full min-h-0 flex-1'), style: wrapperStyle }, [
             h(Table, { class: 'n-data-table-base-table w-full border-collapse text-sm', style: tableStyle }, {
               default: () => [
                 h(TableHeader, { class: 'n-data-table-thead sticky top-0 z-[3] bg-muted/80 backdrop-blur-sm' }, {
@@ -1534,7 +1535,7 @@ export const AppDataTable = defineComponent({
                     default: () => props.columns.map((column, index) =>
                       h(TableHead, {
                         key: String(column.key ?? index),
-                        class: 'n-data-table-th h-10 border-b border-border px-3 text-left align-middle text-xs font-semibold tracking-[0.01em] text-foreground',
+                        class: 'n-data-table-th h-10 px-3 text-left align-middle text-xs font-semibold tracking-[0.01em] text-foreground',
                         style: { ...cellStyle(column, index), background: column.fixed ? 'var(--cpa-surface-muted)' : undefined },
                       }, { default: () => renderHeader(column) as never }),
                     ),
@@ -1545,7 +1546,7 @@ export const AppDataTable = defineComponent({
                     ? Array.from({ length: 5 }, (_, rowIndex) =>
                         h(TableRow, { key: `skeleton-${rowIndex}` }, {
                           default: () => props.columns.map((column, columnIndex) =>
-                            h(TableCell, { class: 'n-data-table-td border-b border-border px-3 py-2.5', style: cellStyle(column, columnIndex) }, { default: () => h(Skeleton, { class: 'h-4 w-full' }) }),
+                            h(TableCell, { class: 'n-data-table-td px-3 py-2.5', style: cellStyle(column, columnIndex) }, { default: () => h(Skeleton, { class: 'h-4 w-full' }) }),
                           ),
                         }),
                       )
@@ -1563,7 +1564,7 @@ export const AppDataTable = defineComponent({
                             default: () => props.columns.map((column, columnIndex) =>
                               h(TableCell, {
                                 key: String(column.key ?? columnIndex),
-                                class: 'n-data-table-td border-b border-border px-3 py-2.5 align-middle text-foreground last:border-b-0',
+                                class: 'n-data-table-td px-3 py-2.5 align-middle text-foreground',
                                 style: cellStyle(column, columnIndex),
                               }, { default: () => renderCell(column, row, rowIndex) as never }),
                             ),
@@ -1579,7 +1580,7 @@ export const AppDataTable = defineComponent({
         ]),
         typeof props.pagination === 'object' && props.data.length > pageSize.value
           ? h(AppPagination, {
-              class: 'justify-end pt-3',
+              class: 'shrink-0 justify-end pt-3',
               page: currentPage.value,
               pageSize: pageSize.value,
               itemCount: props.data.length,
