@@ -48,6 +48,54 @@ func TestSettingsPersistCPAMCURL(t *testing.T) {
 	}, cookies, http.StatusUnprocessableEntity)
 }
 
+func TestSettingsPersistAndExposeBranding(t *testing.T) {
+	t.Setenv("CPA_HELPER_DATA_DIR", t.TempDir())
+
+	app, err := backendApp.New()
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	defer app.Close()
+
+	handler := app.Routes()
+	var branding struct {
+		BrandNameZH     string `json:"brand_name_zh"`
+		BrandNameEN     string `json:"brand_name_en"`
+		BrandSubtitleZH string `json:"brand_subtitle_zh"`
+		BrandSubtitleEN string `json:"brand_subtitle_en"`
+	}
+	requestJSON(t, handler, http.MethodGet, "/api/branding", nil, nil, &branding)
+	if branding.BrandNameZH != "CPA-Helper" || branding.BrandNameEN != "CPA-Helper" {
+		t.Fatalf("default brand names = %q / %q", branding.BrandNameZH, branding.BrandNameEN)
+	}
+	if branding.BrandSubtitleZH != "边缘网关管理平台" || branding.BrandSubtitleEN != "Edge Gateway Management Platform" {
+		t.Fatalf("default brand subtitles = %q / %q", branding.BrandSubtitleZH, branding.BrandSubtitleEN)
+	}
+
+	cookies := requestJSON(t, handler, http.MethodPost, "/api/auth/setup", map[string]any{
+		"username": "admin",
+		"password": "test-password",
+		"nickname": "Admin",
+	}, nil, nil)
+	requestJSON(t, handler, http.MethodPut, "/api/settings", map[string]any{
+		"brand_name_zh":     " 边缘助手 ",
+		"brand_name_en":     " Edge Helper ",
+		"brand_subtitle_zh": " 智能网关控制台 ",
+		"brand_subtitle_en": " Intelligent Gateway Console ",
+	}, cookies, &branding)
+	if branding.BrandNameZH != "边缘助手" || branding.BrandNameEN != "Edge Helper" {
+		t.Fatalf("updated brand names = %q / %q", branding.BrandNameZH, branding.BrandNameEN)
+	}
+	requestJSON(t, handler, http.MethodGet, "/api/branding", nil, nil, &branding)
+	if branding.BrandSubtitleZH != "智能网关控制台" || branding.BrandSubtitleEN != "Intelligent Gateway Console" {
+		t.Fatalf("public brand subtitles = %q / %q", branding.BrandSubtitleZH, branding.BrandSubtitleEN)
+	}
+
+	requestJSONExpectStatus(t, handler, http.MethodPut, "/api/settings", map[string]any{
+		"brand_name_zh": "  ",
+	}, cookies, http.StatusUnprocessableEntity)
+}
+
 func TestSettingsRequireAtLeastThirtyOneRetentionDays(t *testing.T) {
 	t.Setenv("CPA_HELPER_DATA_DIR", t.TempDir())
 

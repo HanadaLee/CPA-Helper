@@ -269,6 +269,10 @@ type settingsUpdateRequest struct {
 	ModelRequestURL            *string                      `json:"model_request_url"`
 	ModelRequestExtraEndpoints *[]ModelRequestExtraEndpoint `json:"model_request_extra_endpoints"`
 	CPAMCURL                   *string                      `json:"cpamc_url"`
+	BrandNameZH                *string                      `json:"brand_name_zh"`
+	BrandNameEN                *string                      `json:"brand_name_en"`
+	BrandSubtitleZH            *string                      `json:"brand_subtitle_zh"`
+	BrandSubtitleEN            *string                      `json:"brand_subtitle_en"`
 	ManagementKey              *string                      `json:"management_key"`
 	CollectorEnabled           *bool                        `json:"collector_enabled"`
 	QueueName                  *string                      `json:"queue_name"`
@@ -278,6 +282,29 @@ type settingsUpdateRequest struct {
 	AllowUserAccountStatus     *bool                        `json:"allow_user_account_status"`
 	AllowUserUsageHistory      *bool                        `json:"allow_user_usage_history"`
 	UsageDetailRetentionDays   *int                         `json:"usage_detail_retention_days"`
+}
+
+func normalizeBrandingText(value, label string, maxLength int) (string, error) {
+	normalized := strings.TrimSpace(value)
+	if normalized == "" {
+		return "", validationError(label + "不能为空")
+	}
+	if len([]rune(normalized)) > maxLength {
+		return "", validationError(fmt.Sprintf("%s不能超过 %d 个字符", label, maxLength))
+	}
+	return normalized, nil
+}
+
+func (a *App) handleBranding(w http.ResponseWriter, r *http.Request) error {
+	if err := requireMethod(r, http.MethodGet); err != nil {
+		return err
+	}
+	cfg, err := a.loadConfig(r.Context())
+	if err != nil {
+		return err
+	}
+	writeJSON(w, http.StatusOK, brandingResponse(cfg))
+	return nil
 }
 
 type modelRequestTestPayload struct {
@@ -345,6 +372,34 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) error {
 			}
 			cfg.CPAMCURL = value
 		}
+		if payload.BrandNameZH != nil {
+			value, err := normalizeBrandingText(*payload.BrandNameZH, "中文名称", 80)
+			if err != nil {
+				return err
+			}
+			cfg.BrandNameZH = value
+		}
+		if payload.BrandNameEN != nil {
+			value, err := normalizeBrandingText(*payload.BrandNameEN, "英文名称", 80)
+			if err != nil {
+				return err
+			}
+			cfg.BrandNameEN = value
+		}
+		if payload.BrandSubtitleZH != nil {
+			value, err := normalizeBrandingText(*payload.BrandSubtitleZH, "中文小标题", 120)
+			if err != nil {
+				return err
+			}
+			cfg.BrandSubtitleZH = value
+		}
+		if payload.BrandSubtitleEN != nil {
+			value, err := normalizeBrandingText(*payload.BrandSubtitleEN, "英文小标题", 120)
+			if err != nil {
+				return err
+			}
+			cfg.BrandSubtitleEN = value
+		}
 		if payload.ManagementKey != nil {
 			cfg.Collector.ManagementKey = strings.TrimSpace(*payload.ManagementKey)
 		}
@@ -405,6 +460,10 @@ func settingsResponse(cfg AppConfig) map[string]any {
 		"model_request_url":             cfg.ModelRequestURL,
 		"model_request_extra_endpoints": cfg.ModelRequestExtraEndpoints,
 		"cpamc_url":                     cfg.CPAMCURL,
+		"brand_name_zh":                 cfg.BrandNameZH,
+		"brand_name_en":                 cfg.BrandNameEN,
+		"brand_subtitle_zh":             cfg.BrandSubtitleZH,
+		"brand_subtitle_en":             cfg.BrandSubtitleEN,
 		"management_key":                collector.ManagementKey,
 		"management_key_set":            strings.TrimSpace(collector.ManagementKey) != "",
 		"collector_enabled":             collector.Enabled,
@@ -415,6 +474,15 @@ func settingsResponse(cfg AppConfig) map[string]any {
 		"allow_user_account_status":     cfg.AllowUserAccountStatus,
 		"allow_user_usage_history":      cfg.AllowUserUsageHistory,
 		"usage_detail_retention_days":   cfg.UsageDetailRetentionDays,
+	}
+}
+
+func brandingResponse(cfg AppConfig) map[string]string {
+	return map[string]string{
+		"brand_name_zh":     cfg.BrandNameZH,
+		"brand_name_en":     cfg.BrandNameEN,
+		"brand_subtitle_zh": cfg.BrandSubtitleZH,
+		"brand_subtitle_en": cfg.BrandSubtitleEN,
 	}
 }
 

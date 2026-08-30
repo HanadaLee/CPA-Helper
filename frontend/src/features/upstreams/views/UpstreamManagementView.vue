@@ -661,30 +661,38 @@ void loadUpstreams()
                 <p>{{ activeDefinition?.description }}</p>
               </div>
             </div>
-            <div class="provider-panel__actions">
-              <InputGroup class="provider-search">
-                <InputGroupAddon>
-                  <Search :size="16" aria-hidden="true" />
-                </InputGroupAddon>
-                <InputGroupInput
-                  v-model="searchText"
-                  :placeholder="t('搜索密钥、地址或前缀', 'Search keys, URLs, or prefixes')"
-                />
-                <InputGroupAddon v-if="searchText" align="inline-end">
-                  <InputGroupButton
-                    :aria-label="t('清空搜索', 'Clear search')"
-                    :title="t('清空搜索', 'Clear search')"
-                    @click="searchText = ''"
-                  >
-                    <X :size="14" aria-hidden="true" />
-                  </InputGroupButton>
-                </InputGroupAddon>
-              </InputGroup>
-              <AppButton type="primary" :disabled="isLoading" @click="openEditor()">
-                <template #icon><AppIcon :component="Plus" /></template>
-                {{ t('新建', 'New') }}
-              </AppButton>
-            </div>
+            <AppBadge size="small" round :bordered="false">
+              {{ sections[activeSection].length }}
+            </AppBadge>
+          </div>
+
+          <div class="provider-panel__toolbar">
+            <InputGroup class="provider-search">
+              <InputGroupAddon>
+                <Search :size="16" aria-hidden="true" />
+              </InputGroupAddon>
+              <InputGroupInput
+                v-model="searchText"
+                class="h-full"
+                :placeholder="t('搜索密钥、地址或前缀', 'Search keys, URLs, or prefixes')"
+              />
+              <InputGroupAddon v-if="searchText" align="inline-end">
+                <InputGroupButton
+                  :aria-label="t('清空搜索', 'Clear search')"
+                  :title="t('清空搜索', 'Clear search')"
+                  @click="searchText = ''"
+                >
+                  <X :size="14" aria-hidden="true" />
+                </InputGroupButton>
+              </InputGroupAddon>
+            </InputGroup>
+            <span class="provider-result-count">
+              {{ t(`显示 ${filteredRows.length} 项`, `${filteredRows.length} shown`) }}
+            </span>
+            <AppButton class="provider-create-button" type="primary" :disabled="isLoading" @click="openEditor()">
+              <template #icon><AppIcon :component="Plus" /></template>
+              {{ t('新建', 'New') }}
+            </AppButton>
           </div>
 
           <div class="provider-table-shell">
@@ -868,7 +876,7 @@ void loadUpstreams()
 
 .workbench-layout {
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
+  grid-template-columns: 236px minmax(0, 1fr);
   min-height: 520px;
 }
 
@@ -909,13 +917,15 @@ void loadUpstreams()
 .provider-nav__copy strong { font-size: 13px; }
 .provider-nav__copy small { overflow: hidden; color: var(--cpa-text-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 
-.provider-panel { min-width: 0; }
-.provider-panel__header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 18px; border-bottom: 1px solid var(--cpa-border); }
+.provider-panel { display: grid; min-width: 0; grid-template-rows: auto auto minmax(0, 1fr); }
+.provider-panel__header { display: flex; min-height: 72px; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 18px; border-bottom: 1px solid var(--cpa-border); }
 .provider-panel__title { display: flex; align-items: center; gap: 10px; }
 .provider-panel__title h2 { margin: 0; font-size: 17px; }
 .provider-panel__title p { margin: 2px 0 0; color: var(--cpa-text-muted); font-size: 11px; }
-.provider-panel__actions { display: flex; flex: 0 1 380px; align-items: center; justify-content: flex-end; gap: 8px; margin-left: auto; }
-.provider-search { min-width: 220px; }
+.provider-panel__toolbar { display: flex; min-width: 0; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--cpa-border); background: color-mix(in srgb, var(--cpa-surface-muted) 72%, transparent); }
+.provider-search { width: min(100%, 520px); height: 36px; min-width: 260px; }
+.provider-result-count { color: var(--cpa-text-muted); font-size: 12px; white-space: nowrap; }
+.provider-create-button { height: 36px; margin-left: auto; }
 .provider-table-shell { min-width: 0; padding: 16px; }
 :global(.upstream-row-actions) { width: 100%; justify-content: flex-end; }
 
@@ -946,8 +956,10 @@ void loadUpstreams()
 }
 
 @media (max-width: 700px) {
-  .provider-panel__header { align-items: stretch; flex-direction: column; }
-  .provider-panel__actions { width: 100%; }
+  .provider-panel__toolbar { align-items: center; flex-wrap: wrap; }
+  .provider-search { width: 100%; max-width: none; min-width: 0; }
+  .provider-result-count { order: 2; }
+  .provider-create-button { order: 3; }
   .form-grid, .repeat-row, .repeat-row--keys, .repeat-row--models { grid-template-columns: 1fr; }
   .repeat-row :deep(.n-button) { justify-self: end; }
 }

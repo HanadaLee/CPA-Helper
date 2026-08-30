@@ -48,6 +48,10 @@ const settingsForm = reactive({
   model_request_url: 'http://127.0.0.1:8317',
   model_request_extra_endpoints: [] as ModelRequestExtraEndpoint[],
   cpamc_url: '/management.html',
+  brand_name_zh: 'CPA-Helper',
+  brand_name_en: 'CPA-Helper',
+  brand_subtitle_zh: '边缘网关管理平台',
+  brand_subtitle_en: 'Edge Gateway Management Platform',
   management_key: '',
   collector_enabled: false,
   batch_size: 100,
@@ -100,6 +104,10 @@ async function refresh() {
     settingsForm.model_request_url = settings.model_request_url
     settingsForm.model_request_extra_endpoints = (settings.model_request_extra_endpoints ?? []).map((endpoint) => ({ ...endpoint }))
     settingsForm.cpamc_url = settings.cpamc_url
+    settingsForm.brand_name_zh = settings.brand_name_zh
+    settingsForm.brand_name_en = settings.brand_name_en
+    settingsForm.brand_subtitle_zh = settings.brand_subtitle_zh
+    settingsForm.brand_subtitle_en = settings.brand_subtitle_en
     settingsForm.management_key = settings.management_key
     settingsForm.collector_enabled = settings.collector_enabled
     settingsForm.batch_size = settings.batch_size
@@ -130,6 +138,10 @@ async function saveSettings() {
       model_request_url: settingsForm.model_request_url,
       model_request_extra_endpoints: settingsForm.model_request_extra_endpoints.map((endpoint) => ({ ...endpoint })),
       cpamc_url: settingsForm.cpamc_url,
+      brand_name_zh: settingsForm.brand_name_zh,
+      brand_name_en: settingsForm.brand_name_en,
+      brand_subtitle_zh: settingsForm.brand_subtitle_zh,
+      brand_subtitle_en: settingsForm.brand_subtitle_en,
       management_key: settingsForm.management_key,
       collector_enabled: settingsForm.collector_enabled,
       batch_size: settingsForm.batch_size,
@@ -144,6 +156,14 @@ async function saveSettings() {
       keeperPanel.saveSettings(),
     ])
     settingsForm.management_key = saved.management_key
+    window.dispatchEvent(new CustomEvent('cpa:branding-updated', {
+      detail: {
+        brand_name_zh: saved.brand_name_zh,
+        brand_name_en: saved.brand_name_en,
+        brand_subtitle_zh: saved.brand_subtitle_zh,
+        brand_subtitle_en: saved.brand_subtitle_en,
+      },
+    }))
     message.success(t('设置已保存', 'Settings saved'))
     await refresh()
   } catch (error) {
@@ -207,6 +227,25 @@ onMounted(refresh)
           <h2 class="section-title">{{ t('系统配置', 'System Settings') }}</h2>
           <AppForm :model="settingsForm" label-placement="top">
             <FieldGroup class="settings-form">
+              <FieldSet class="settings-section">
+                <FieldLegend>{{ t('界面品牌', 'Interface branding') }}</FieldLegend>
+                <FieldDescription>{{ t('分别配置中文和英文界面左上角显示的名称与小标题。', 'Configure the name and subtitle shown at the top left for the Chinese and English interfaces.') }}</FieldDescription>
+                <FieldGroup class="form-grid">
+                  <AppFormItem :label="t('名称（中文）', 'Name (Chinese)')">
+                    <AppInput v-model:value="settingsForm.brand_name_zh" :maxlength="80" />
+                  </AppFormItem>
+                  <AppFormItem :label="t('名称（英文）', 'Name (English)')">
+                    <AppInput v-model:value="settingsForm.brand_name_en" :maxlength="80" />
+                  </AppFormItem>
+                  <AppFormItem :label="t('小标题（中文）', 'Subtitle (Chinese)')">
+                    <AppInput v-model:value="settingsForm.brand_subtitle_zh" :maxlength="120" />
+                  </AppFormItem>
+                  <AppFormItem :label="t('小标题（英文）', 'Subtitle (English)')">
+                    <AppInput v-model:value="settingsForm.brand_subtitle_en" :maxlength="120" />
+                  </AppFormItem>
+                </FieldGroup>
+              </FieldSet>
+
               <FieldSet class="settings-section">
                 <FieldLegend>{{ t('连接与入口', 'Connections and endpoints') }}</FieldLegend>
                 <FieldDescription>{{ t('配置 CPA 管理接口、模型请求入口与管理页面地址。', 'Configure CPA management APIs, model request endpoints, and the management page.') }}</FieldDescription>
@@ -367,7 +406,7 @@ onMounted(refresh)
 
 .extra-endpoint-row {
   display: grid;
-  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
   align-items: start;
   gap: 8px;
 }

@@ -1060,15 +1060,17 @@ onMounted(refresh)
 }
 
 .api-endpoint-type-options {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  width: 100%;
+  display: inline-flex;
+  width: auto;
   max-width: 100%;
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: wrap;
 }
 
 .api-endpoint-type-options :deep(.n-radio-button) {
   justify-content: center;
-  min-width: 0;
+  min-width: max-content;
   padding-inline: 8px;
   text-align: center;
   white-space: nowrap;
@@ -1153,8 +1155,7 @@ onMounted(refresh)
 }
 
 .api-endpoint-panel .request-endpoint-switch {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  justify-content: flex-start;
 }
 
 .request-guide-list {
@@ -1375,11 +1376,14 @@ onMounted(refresh)
   }
 
   .api-endpoint-panel .request-endpoint-switch {
-    grid-template-columns: 1fr;
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .api-endpoint-type-options {
+    display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
   }
 
   .request-example-head,

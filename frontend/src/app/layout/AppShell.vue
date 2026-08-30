@@ -52,8 +52,10 @@ import {
 
 import { getMe, isAuthUser, logout } from '@/features/auth/api/authApi'
 import { useCurrentUser } from '@/features/auth/state/currentUser'
+import { getBranding } from '@/features/settings/api/settingsApi'
 import { useThemePreference } from '@/shared/composables/useThemePreference'
 import { useI18n } from '@/shared/i18n'
+import type { BrandingResponse } from '@/shared/types/api'
 import { logoUrl } from '@/shared/utils/assets'
 
 const route = useRoute()
@@ -65,6 +67,12 @@ const { currentUser, setCurrentUser } = useCurrentUser()
 const hasLoadedUser = ref(currentUser.value !== null)
 const { isDark, preference, setThemePreference } = useThemePreference()
 const { language, t, toggleLanguage } = useI18n()
+const branding = ref<BrandingResponse>({
+  brand_name_zh: 'CPA-Helper',
+  brand_name_en: 'CPA-Helper',
+  brand_subtitle_zh: '边缘网关管理平台',
+  brand_subtitle_en: 'Edge Gateway Management Platform',
+})
 const contentScroll = ref<HTMLElement | null>(null)
 const showStickyLocation = ref(false)
 let navigationFeedbackTimer: number | undefined
@@ -133,8 +141,27 @@ async function refreshCurrentUser() {
   }
 }
 
+function applyBranding(value: Partial<BrandingResponse> | null | undefined) {
+  if (!value) return
+  for (const key of ['brand_name_zh', 'brand_name_en', 'brand_subtitle_zh', 'brand_subtitle_en'] as const) {
+    const nextValue = value[key]
+    if (typeof nextValue === 'string' && nextValue.trim()) {
+      branding.value[key] = nextValue.trim()
+    }
+  }
+}
+
+async function refreshBranding() {
+  try {
+    applyBranding(await getBranding())
+  } catch {
+    // Keep the built-in branding when the public setting cannot be loaded.
+  }
+}
+
 onMounted(() => {
   void refreshCurrentUser()
+  void refreshBranding()
   refreshPageTitleObserver()
 })
 
@@ -148,9 +175,15 @@ function handleAccountUpdated(event: Event) {
   void refreshCurrentUser()
 }
 
+function handleBrandingUpdated(event: Event) {
+  applyBranding((event as CustomEvent<Partial<BrandingResponse>>).detail)
+}
+
 window.addEventListener('cpa:account-updated', handleAccountUpdated)
+window.addEventListener('cpa:branding-updated', handleBrandingUpdated)
 onBeforeUnmount(() => {
   window.removeEventListener('cpa:account-updated', handleAccountUpdated)
+  window.removeEventListener('cpa:branding-updated', handleBrandingUpdated)
 })
 
 interface NavigationItem {
@@ -202,6 +235,8 @@ const isAdmin = computed(() => {
 })
 const roleText = computed(() => (isAdmin.value ? t('管理员', 'Admin') : t('普通用户', 'User')))
 const accountText = computed(() => currentUser.value?.username || t('当前账号', 'Current account'))
+const brandName = computed(() => language.value === 'zh' ? branding.value.brand_name_zh : branding.value.brand_name_en)
+const brandSubtitle = computed(() => language.value === 'zh' ? branding.value.brand_subtitle_zh : branding.value.brand_subtitle_en)
 
 function formatAppVersion(value: string | undefined): string {
   const version = value?.trim()
@@ -227,7 +262,7 @@ const selectedKey = computed(() => {
   return matched ? String(matched.key) : isAdmin.value ? '/admin/usage' : '/account/usage'
 })
 const currentNavigationLabel = computed(
-  () => leafMenuOptions.value.find((item) => item.key === selectedKey.value)?.label ?? 'CPA-Helper',
+  () => leafMenuOptions.value.find((item) => item.key === selectedKey.value)?.label ?? brandName.value,
 )
 const isMenuNavigationPending = computed(() => navigationTarget.value !== null)
 const recordsRoutePaths = ['/admin/records', '/account/records'] as const
@@ -330,8 +365,8 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
                 <img :src="logoUrl" alt="">
               </span>
               <span class="brand-copy group-data-[collapsible=icon]:hidden">
-                <strong>CPA-Helper</strong>
-                <span>{{ t('边缘网关管理平台', 'Edge Gateway Management Platform') }}</span>
+                <strong>{{ brandName }}</strong>
+                <span>{{ brandSubtitle }}</span>
               </span>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -420,11 +455,11 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
         <div class="desktop-location" :class="{ 'is-visible': showStickyLocation }">
           {{ currentNavigationLabel }}
         </div>
-        <div class="mobile-brand" :aria-label="t('CPA-Helper 账号信息', 'CPA-Helper account info')">
+        <div class="mobile-brand" :aria-label="`${brandName} · ${accountText}`">
           <img class="mobile-brand-logo" :src="logoUrl" alt="" aria-hidden="true">
           <div class="mobile-brand-copy">
             <div class="mobile-title-row">
-              <strong>CPA-Helper</strong>
+              <strong>{{ brandName }}</strong>
               <span class="mobile-version-badge">{{ appVersion }}</span>
             </div>
             <span>{{ accountText }} · {{ roleText }}</span>

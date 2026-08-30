@@ -660,7 +660,7 @@ export const AppBadge = defineComponent({
           default: () => [
             h('span', { class: 'n-tag__content' }, renderSlot(slots)),
             props.closable
-              ? h('button', { type: 'button', onClick: () => emit('close'), disabled: props.disabled }, h(XIcon, { class: 'size-3' }))
+              ? h('button', { type: 'button', class: 'cursor-pointer disabled:cursor-not-allowed', onClick: () => emit('close'), disabled: props.disabled }, h(XIcon, { class: 'size-3' }))
               : null,
           ],
         },
@@ -1044,7 +1044,7 @@ export const AppRadioButton = defineComponent({
   setup(props, { attrs, slots }) {
     const id = `radio-${Math.random().toString(36).slice(2)}`
     return () =>
-      h('label', { class: cn('n-radio-button inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-md border border-transparent px-3 py-1.5 text-sm font-medium text-muted-foreground transition-[color,background-color,box-shadow] hover:text-foreground has-[[data-state=checked]]:bg-background has-[[data-state=checked]]:text-primary has-[[data-state=checked]]:shadow-xs', attrs.class as HTMLAttributes['class']) }, [
+      h('label', { class: cn('n-radio-button inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-md border border-transparent px-3 py-1.5 text-sm font-medium text-muted-foreground transition-[color,background-color,box-shadow] hover:text-foreground has-[[data-state=checked]]:bg-background has-[[data-state=checked]]:text-primary has-[[data-state=checked]]:shadow-xs', props.disabled && 'cursor-not-allowed opacity-50', attrs.class as HTMLAttributes['class']) }, [
         h(RadioGroupItem, { id, value: String(props.value), disabled: props.disabled, class: 'sr-only' } as never),
         renderSlot(slots),
       ])

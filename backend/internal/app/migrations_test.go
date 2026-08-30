@@ -112,6 +112,11 @@ func TestRunMigrationsCreatesGooseVersionAndFinalSchema(t *testing.T) {
 	if !testColumnExists(t, app.db, "app_settings", "usage_detail_retention_days") {
 		t.Fatal("app_settings.usage_detail_retention_days was not created")
 	}
+	for _, column := range []string{"brand_name_zh", "brand_name_en", "brand_subtitle_zh", "brand_subtitle_en"} {
+		if !testColumnExists(t, app.db, "app_settings", column) {
+			t.Fatalf("app_settings.%s was not created", column)
+		}
+	}
 	var cpamcURL string
 	if err := app.db.QueryRow(`SELECT cpamc_url FROM app_settings WHERE id = 1`).Scan(&cpamcURL); err != nil {
 		t.Fatalf("query app_settings.cpamc_url: %v", err)
@@ -146,6 +151,16 @@ func TestRunMigrationsCreatesGooseVersionAndFinalSchema(t *testing.T) {
 	}
 	if retentionDays != 90 {
 		t.Fatalf("default usage detail retention = %d, want 90", retentionDays)
+	}
+	var brandNameZH, brandNameEN, brandSubtitleZH, brandSubtitleEN string
+	if err := app.db.QueryRow(`
+		SELECT brand_name_zh, brand_name_en, brand_subtitle_zh, brand_subtitle_en
+		FROM app_settings WHERE id = 1
+	`).Scan(&brandNameZH, &brandNameEN, &brandSubtitleZH, &brandSubtitleEN); err != nil {
+		t.Fatalf("query branding settings: %v", err)
+	}
+	if brandNameZH != "CPA-Helper" || brandNameEN != "CPA-Helper" || brandSubtitleZH != "边缘网关管理平台" || brandSubtitleEN != "Edge Gateway Management Platform" {
+		t.Fatalf("default branding = %q / %q / %q / %q", brandNameZH, brandNameEN, brandSubtitleZH, brandSubtitleEN)
 	}
 	if !testColumnExists(t, app.db, "users", "quota_lifetime_usd") {
 		t.Fatal("users.quota_lifetime_usd was not created")

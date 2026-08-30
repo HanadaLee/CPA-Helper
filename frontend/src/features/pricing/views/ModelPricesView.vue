@@ -101,6 +101,7 @@ const dialog = useDialog()
 const { errorText, serverText, t } = useI18n()
 const isLoading = ref(false)
 const isSyncing = ref(false)
+const isPriceSaving = ref(false)
 const modalOpen = ref(false)
 const proxyModalOpen = ref(false)
 const isProxyLoading = ref(false)
@@ -472,6 +473,7 @@ async function savePrice() {
     message.error(t('image 模型需要填写每次调用价格', 'Image models require a per-call price'))
     return
   }
+  isPriceSaving.value = true
   try {
     if (editingId.value === null) {
       await createModelPrice(payload)
@@ -484,6 +486,8 @@ async function savePrice() {
     await refresh()
   } catch (error) {
     message.error(errorText(error, '保存模型价格失败', 'Failed to save model price'))
+  } finally {
+    isPriceSaving.value = false
   }
 }
 
@@ -913,8 +917,8 @@ onBeforeUnmount(() => {
       <p class="price-save-hint">{{ priceSaveHint }}</p>
       <template #footer>
         <AppStack justify="end">
-          <AppButton @click="modalOpen = false">{{ t('取消', 'Cancel') }}</AppButton>
-          <AppButton type="primary" @click="savePrice">{{ t('保存', 'Save') }}</AppButton>
+          <AppButton secondary :disabled="isPriceSaving" @click="modalOpen = false">{{ t('取消', 'Cancel') }}</AppButton>
+          <AppButton type="primary" :loading="isPriceSaving" @click="savePrice">{{ t('保存', 'Save') }}</AppButton>
         </AppStack>
       </template>
     </AppModal>

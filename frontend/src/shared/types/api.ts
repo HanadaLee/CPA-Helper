@@ -34,7 +34,14 @@ export interface ModelRequestExtraEndpoint {
   description: string
 }
 
-export interface SettingsResponse {
+export interface BrandingResponse {
+  brand_name_zh: string
+  brand_name_en: string
+  brand_subtitle_zh: string
+  brand_subtitle_en: string
+}
+
+export interface SettingsResponse extends BrandingResponse {
   cliaproxy_url: string
   model_request_url: string
   model_request_extra_endpoints: ModelRequestExtraEndpoint[]
@@ -56,6 +63,10 @@ export interface SettingsUpdatePayload {
   model_request_url?: string
   model_request_extra_endpoints?: ModelRequestExtraEndpoint[]
   cpamc_url?: string
+  brand_name_zh?: string
+  brand_name_en?: string
+  brand_subtitle_zh?: string
+  brand_subtitle_en?: string
   management_key?: string
   collector_enabled?: boolean
   queue_name?: string

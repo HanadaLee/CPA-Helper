@@ -1,5 +1,9 @@
 import { apiClient } from '@/shared/api/apiClient'
-import type { CollectorStatus, SettingsResponse, SettingsUpdatePayload } from '@/shared/types/api'
+import type { BrandingResponse, CollectorStatus, SettingsResponse, SettingsUpdatePayload } from '@/shared/types/api'
+
+export function getBranding(): Promise<BrandingResponse> {
+  return apiClient.get<BrandingResponse>('/branding')
+}
 
 export function getSettings(): Promise<SettingsResponse> {
   return apiClient.get<SettingsResponse>('/settings')
