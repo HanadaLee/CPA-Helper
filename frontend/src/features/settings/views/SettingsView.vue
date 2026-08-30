@@ -1,20 +1,20 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import {
-  NAlert,
-  NButton,
-  NDescriptions,
-  NDescriptionsItem,
-  NForm,
-  NFormItem,
-  NInput,
-  NInputNumber,
-  NSpace,
-  NSwitch,
-  NTag,
+  AppAlert,
+  AppButton,
+  AppDescriptions,
+  AppDescriptionsItem,
+  AppForm,
+  AppFormItem,
+  AppInput,
+  AppNumberInput,
+  AppStack,
+  AppSwitch,
+  AppBadge,
   useMessage,
-} from 'naive-ui'
-import { Activity, Database, Power, Server } from 'lucide-vue-next'
+} from '@/shared/ui/app-kit'
+import { Activity, Database, Power, Server } from '@lucide/vue'
 
 import CodexKeeperSettingsPanel from '@/features/codex-keeper/components/CodexKeeperSettingsPanel.vue'
 import {
@@ -153,10 +153,10 @@ onMounted(refresh)
         <h1 class="page-title">{{ t('系统设置', 'System Settings') }}</h1>
         <p class="page-subtitle">{{ t('集中管理系统、采集与账号巡检配置', 'Manage system, collection, and account inspection settings in one place') }}</p>
       </div>
-      <NSpace>
-        <NButton secondary :loading="isLoading" @click="refresh">{{ t('刷新', 'Refresh') }}</NButton>
-        <NButton type="primary" :loading="isSaving" @click="saveSettings">{{ t('保存设置', 'Save settings') }}</NButton>
-      </NSpace>
+      <AppStack>
+        <AppButton secondary :loading="isLoading" @click="refresh">{{ t('刷新', 'Refresh') }}</AppButton>
+        <AppButton type="primary" :loading="isSaving" @click="saveSettings">{{ t('保存设置', 'Save settings') }}</AppButton>
+      </AppStack>
     </div>
 
     <div class="metric-grid settings-metrics">
@@ -198,16 +198,16 @@ onMounted(refresh)
       <section class="panel">
         <div class="panel-inner">
           <h2 class="section-title">{{ t('系统配置', 'System Settings') }}</h2>
-          <NForm :model="settingsForm" label-placement="top">
+          <AppForm :model="settingsForm" label-placement="top">
             <div class="form-grid">
               <div class="field-stack">
                 <div class="field-label">{{ t('CLIProxyAPI 地址', 'CLIProxyAPI URL') }}</div>
-                <NInput v-model:value="settingsForm.cliaproxy_url" />
+                <AppInput v-model:value="settingsForm.cliaproxy_url" />
                 <div class="form-help">{{ t('用于采集队列、API Key 同步和管理接口。', 'Used for collection queues, API key sync, and management APIs.') }}</div>
               </div>
               <div class="field-stack">
                 <div class="field-label">{{ t('模型请求地址（例如：填写CPA外网地址）', 'Model request URL (for example, CPA public URL)') }}</div>
-                <NInput
+                <AppInput
                   v-model:value="settingsForm.model_request_url"
                   :placeholder="t('例如：http://192.168.26.50:8317', 'Example: http://192.168.26.50:8317')"
                 />
@@ -219,7 +219,7 @@ onMounted(refresh)
                     <div class="field-label">{{ t('额外 API Endpoint', 'Additional API endpoints') }}</div>
                     <div class="form-help">{{ t('仅展示在 API 密钥页，不参与请求测试。填写基础地址和独立说明后，将生成基础、聊天补全、Responses、Claude 四类 URL。', 'Shown only on the API keys page and never used for request tests. Enter a base URL and description to generate Base, Chat Completions, Responses, and Claude URLs.') }}</div>
                   </div>
-                  <NButton
+                  <AppButton
                     size="small"
                     type="primary"
                     secondary
@@ -227,7 +227,7 @@ onMounted(refresh)
                     @click="addModelRequestExtraEndpoint"
                   >
                     {{ t('追加 Endpoint', 'Add endpoint') }}
-                  </NButton>
+                  </AppButton>
                 </div>
                 <div v-if="settingsForm.model_request_extra_endpoints.length === 0" class="extra-endpoints-empty">
                   {{ t('暂无额外 Endpoint', 'No additional endpoints') }}
@@ -238,108 +238,108 @@ onMounted(refresh)
                     :key="index"
                     class="extra-endpoint-row"
                   >
-                    <NInput
+                    <AppInput
                       v-model:value="endpoint.url"
                       :placeholder="t('Endpoint 基础 URL，例如：https://api.example.com/v1', 'Endpoint base URL, for example: https://api.example.com/v1')"
                     />
-                    <NInput
+                    <AppInput
                       v-model:value="endpoint.description"
                       :placeholder="t('Endpoint 说明，例如：备用线路', 'Endpoint description, for example: Backup route')"
                       :maxlength="200"
                       show-count
                     />
-                    <NButton
+                    <AppButton
                       type="error"
                       secondary
                       @click="removeModelRequestExtraEndpoint(index)"
                     >
                       {{ t('移除', 'Remove') }}
-                    </NButton>
+                    </AppButton>
                   </div>
                 </div>
               </div>
               <div class="field-stack">
                 <div class="field-label">{{ t('CPAMC 页面地址', 'CPAMC page URL') }}</div>
-                <NInput
+                <AppInput
                   v-model:value="settingsForm.cpamc_url"
                   :placeholder="t('例如：/management.html', 'Example: /management.html')"
                 />
                 <div class="form-help">{{ t('用于 CPAMC 页面内嵌 iframe，支持站内路径或完整 URL。', 'Used by the embedded iframe on the CPAMC page. Supports site paths or full URLs.') }}</div>
               </div>
-              <NFormItem :label="t('管理密钥', 'Management key')">
-                <NInput
+              <AppFormItem :label="t('管理密钥', 'Management key')">
+                <AppInput
                   v-model:value="settingsForm.management_key"
                   type="password"
                   show-password-on="mousedown"
                   :placeholder="t('请输入 CLIProxyAPI 管理密钥', 'Enter the CLIProxyAPI management key')"
                 />
-              </NFormItem>
-              <NFormItem :label="t('开启本地采集', 'Enable local collection')">
-                <NSwitch v-model:value="settingsForm.collector_enabled" />
-              </NFormItem>
-              <NFormItem :label="t('允许普通用户查看账号状态', 'Allow standard users to view account status')">
-                <NSwitch v-model:value="settingsForm.allow_user_account_status" />
-              </NFormItem>
-              <NFormItem :label="t('允许用户查看历史用量', 'Allow users to view usage history')">
-                <NSwitch v-model:value="settingsForm.allow_user_usage_history" />
-              </NFormItem>
-              <NFormItem :label="t('批量读取数', 'Batch size')">
-                <NInputNumber v-model:value="settingsForm.batch_size" :min="1" :max="1000" />
-              </NFormItem>
-              <NFormItem :label="t('轮询间隔（秒）', 'Poll interval (seconds)')">
-                <NInputNumber v-model:value="settingsForm.poll_interval_seconds" :min="0.2" />
-              </NFormItem>
-              <NFormItem :label="t('重试间隔（秒）', 'Retry interval (seconds)')">
-                <NInputNumber v-model:value="settingsForm.retry_interval_seconds" :min="1" />
-              </NFormItem>
-              <NFormItem :label="t('用量明细保留天数', 'Usage detail retention days')">
+              </AppFormItem>
+              <AppFormItem :label="t('开启本地采集', 'Enable local collection')">
+                <AppSwitch v-model:value="settingsForm.collector_enabled" />
+              </AppFormItem>
+              <AppFormItem :label="t('允许普通用户查看账号状态', 'Allow standard users to view account status')">
+                <AppSwitch v-model:value="settingsForm.allow_user_account_status" />
+              </AppFormItem>
+              <AppFormItem :label="t('允许用户查看历史用量', 'Allow users to view usage history')">
+                <AppSwitch v-model:value="settingsForm.allow_user_usage_history" />
+              </AppFormItem>
+              <AppFormItem :label="t('批量读取数', 'Batch size')">
+                <AppNumberInput v-model:value="settingsForm.batch_size" :min="1" :max="1000" />
+              </AppFormItem>
+              <AppFormItem :label="t('轮询间隔（秒）', 'Poll interval (seconds)')">
+                <AppNumberInput v-model:value="settingsForm.poll_interval_seconds" :min="0.2" />
+              </AppFormItem>
+              <AppFormItem :label="t('重试间隔（秒）', 'Retry interval (seconds)')">
+                <AppNumberInput v-model:value="settingsForm.retry_interval_seconds" :min="1" />
+              </AppFormItem>
+              <AppFormItem :label="t('用量明细保留天数', 'Usage detail retention days')">
                 <div class="field-stack">
-                  <NInputNumber v-model:value="settingsForm.usage_detail_retention_days" :min="31" :precision="0" />
+                  <AppNumberInput v-model:value="settingsForm.usage_detail_retention_days" :min="31" :precision="0" />
                   <div class="form-help">{{ t('最低 31 天。超过保留期的请求明细会在完成小时聚合后自动清理，历史表盘仍可查看。', 'Minimum 31 days. Expired request details are removed after hourly aggregation, while historical dashboards remain available.') }}</div>
                 </div>
-              </NFormItem>
+              </AppFormItem>
             </div>
-          </NForm>
+          </AppForm>
         </div>
       </section>
 
       <section class="panel">
         <div class="panel-inner">
           <h2 class="section-title">{{ t('采集状态', 'Collection Status') }}</h2>
-          <NDescriptions label-placement="left" :column="1" size="small" bordered>
-            <NDescriptionsItem :label="t('本地采集', 'Local collection')">
-              <NTag :type="collectorStatus?.enabled ? 'success' : 'default'" size="small">
+          <AppDescriptions label-placement="left" :column="1" size="small" bordered>
+            <AppDescriptionsItem :label="t('本地采集', 'Local collection')">
+              <AppBadge :type="collectorStatus?.enabled ? 'success' : 'default'" size="small">
                 {{ collectorStatus?.enabled ? t('开启', 'On') : t('关闭', 'Off') }}
-              </NTag>
-            </NDescriptionsItem>
-            <NDescriptionsItem :label="t('运行状态', 'Run status')">
-              <NTag :type="collectorStatus?.running ? 'success' : 'default'" size="small">
+              </AppBadge>
+            </AppDescriptionsItem>
+            <AppDescriptionsItem :label="t('运行状态', 'Run status')">
+              <AppBadge :type="collectorStatus?.running ? 'success' : 'default'" size="small">
                 {{ collectorStatus?.running ? t('运行中', 'Running') : t('空闲', 'Idle') }}
-              </NTag>
-            </NDescriptionsItem>
-            <NDescriptionsItem :label="t('远端开关', 'Remote switch')">
-              <NTag :type="remoteStatusType" size="small">
+              </AppBadge>
+            </AppDescriptionsItem>
+            <AppDescriptionsItem :label="t('远端开关', 'Remote switch')">
+              <AppBadge :type="remoteStatusType" size="small">
                 {{ remoteStatusText }}
-              </NTag>
-            </NDescriptionsItem>
-            <NDescriptionsItem :label="t('累计写入', 'Records written')">
+              </AppBadge>
+            </AppDescriptionsItem>
+            <AppDescriptionsItem :label="t('累计写入', 'Records written')">
               {{ formatInteger(collectorStatus?.records_collected ?? 0) }}
-            </NDescriptionsItem>
-            <NDescriptionsItem :label="t('最后轮询', 'Last poll')">
+            </AppDescriptionsItem>
+            <AppDescriptionsItem :label="t('最后轮询', 'Last poll')">
               {{ formatDateTime(collectorStatus?.last_poll_at ?? null) }}
-            </NDescriptionsItem>
-            <NDescriptionsItem :label="t('最后成功', 'Last success')">
+            </AppDescriptionsItem>
+            <AppDescriptionsItem :label="t('最后成功', 'Last success')">
               {{ formatDateTime(collectorStatus?.last_success_at ?? null) }}
-            </NDescriptionsItem>
-          </NDescriptions>
-          <NAlert
+            </AppDescriptionsItem>
+          </AppDescriptions>
+          <AppAlert
             v-if="collectorStatus?.last_error"
             type="warning"
             :bordered="false"
             class="status-alert"
           >
             {{ serverText(collectorStatus.last_error, '采集异常', 'Collector error') }}
-          </NAlert>
+          </AppAlert>
         </div>
       </section>
     </div>

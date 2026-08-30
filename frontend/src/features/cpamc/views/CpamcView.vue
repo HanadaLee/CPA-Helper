@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { NAlert, NButton, NSpin } from 'naive-ui'
+import { AppAlert, AppButton, AppSpinner } from '@/shared/ui/app-kit'
 
 import { getSettings } from '@/features/settings/api/settingsApi'
 import { useI18n } from '@/shared/i18n'
@@ -38,16 +38,16 @@ onMounted(loadCPAMC)
         <h1 class="page-title">CPAMC</h1>
         <p class="page-subtitle">{{ t('CLIProxyAPI 管理中心', 'CLIProxyAPI Management Center') }}</p>
       </div>
-      <NButton secondary :loading="isLoading" @click="loadCPAMC">
+      <AppButton secondary :loading="isLoading" @click="loadCPAMC">
         {{ t('刷新', 'Refresh') }}
-      </NButton>
+      </AppButton>
     </div>
 
     <div v-if="loadError" class="cpamc-error">
-      <NAlert type="error" :title="t('无法打开 CPAMC', 'Unable to open CPAMC')">
+      <AppAlert type="error" :title="t('无法打开 CPAMC', 'Unable to open CPAMC')">
         {{ loadError }}
-      </NAlert>
-      <NButton type="primary" @click="loadCPAMC">{{ t('重试', 'Retry') }}</NButton>
+      </AppAlert>
+      <AppButton type="primary" @click="loadCPAMC">{{ t('重试', 'Retry') }}</AppButton>
     </div>
 
     <div v-else class="cpamc-frame-shell">
@@ -60,7 +60,7 @@ onMounted(loadCPAMC)
         @load="isFrameLoading = false"
       />
       <div v-if="isLoading || isFrameLoading" class="cpamc-loading">
-        <NSpin size="large" />
+        <AppSpinner size="large" />
       </div>
     </div>
   </section>

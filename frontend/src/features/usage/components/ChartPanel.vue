@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { NEmpty, NSpin } from 'naive-ui'
+import { AppEmpty, AppSpinner } from '@/shared/ui/app-kit'
 import * as echarts from 'echarts/core'
 import { BarChart, LineChart, PieChart } from 'echarts/charts'
 import {
@@ -163,17 +163,17 @@ onBeforeUnmount(() => {
         <slot name="actions" />
       </div>
     </div>
-    <NSpin :show="loading ?? false">
+    <AppSpinner :show="loading ?? false">
       <div class="chart-body">
         <div ref="chartEl" class="chart-surface" :class="{ 'is-empty': empty }" />
         <div v-if="empty" class="chart-empty">
-          <NEmpty :description="t('暂无数据', 'No data')" />
+          <AppEmpty :description="t('暂无数据', 'No data')" />
         </div>
       </div>
       <div v-if="$slots.default" class="chart-footer">
         <slot />
       </div>
-    </NSpin>
+    </AppSpinner>
   </section>
 </template>
 

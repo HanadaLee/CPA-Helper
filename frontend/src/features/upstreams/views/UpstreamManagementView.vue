@@ -1,29 +1,29 @@
 <script setup lang="ts">
 import { computed, h, reactive, ref } from 'vue'
 import {
-  NAlert,
-  NButton,
-  NCard,
-  NDataTable,
-  NDescriptions,
-  NDescriptionsItem,
-  NDrawer,
-  NDrawerContent,
-  NForm,
-  NFormItem,
-  NIcon,
-  NInput,
-  NInputNumber,
-  NSelect,
-  NSpace,
-  NSpin,
-  NSwitch,
-  NTag,
+  AppAlert,
+  AppButton,
+  AppCard,
+  AppDataTable,
+  AppDescriptions,
+  AppDescriptionsItem,
+  AppDrawer,
+  AppDrawerContent,
+  AppForm,
+  AppFormItem,
+  AppIcon,
+  AppInput,
+  AppNumberInput,
+  AppSelect,
+  AppStack,
+  AppSpinner,
+  AppSwitch,
+  AppBadge,
   useDialog,
   useMessage,
   type DataTableColumns,
-} from 'naive-ui'
-import { Eye, Pencil, Plus, RefreshCw, Search, ServerCog, Trash2 } from 'lucide-vue-next'
+} from '@/shared/ui/app-kit'
+import { Eye, Pencil, Plus, RefreshCw, Search, ServerCog, Trash2 } from '@lucide/vue'
 
 import {
   listUpstreamSections,
@@ -183,9 +183,9 @@ const tableColumns = computed<DataTableColumns<UpstreamTableRow>>(() => [
     key: 'metrics',
     width: 160,
     render: (row) =>
-      h(NSpace, { size: 6, wrap: false }, () => [
-        h(NTag, { size: 'small', bordered: false }, () => t(`模型 ${modelCount(row.item)}`, `Models ${modelCount(row.item)}`)),
-        h(NTag, { size: 'small', bordered: false }, () => t(`头 ${headerCount(row.item)}`, `Headers ${headerCount(row.item)}`)),
+      h(AppStack, { size: 6, wrap: false }, () => [
+        h(AppBadge, { size: 'small', bordered: false }, () => t(`模型 ${modelCount(row.item)}`, `Models ${modelCount(row.item)}`)),
+        h(AppBadge, { size: 'small', bordered: false }, () => t(`头 ${headerCount(row.item)}`, `Headers ${headerCount(row.item)}`)),
       ]),
   },
   {
@@ -200,7 +200,7 @@ const tableColumns = computed<DataTableColumns<UpstreamTableRow>>(() => [
     key: 'status',
     width: 116,
     render: (row) =>
-      h(NSwitch, {
+      h(AppSwitch, {
         value: !upstreamDisabled(activeSection.value, row.item),
         loading: mutatingKey.value === row.key,
         disabled: isSaving.value || isLoading.value,
@@ -213,7 +213,7 @@ const tableColumns = computed<DataTableColumns<UpstreamTableRow>>(() => [
     width: 150,
     fixed: 'right',
     render: (row) =>
-      h(NSpace, { size: 2, wrap: false }, () => [
+      h(AppStack, { size: 2, wrap: false }, () => [
         iconButton(Eye, t('详情', 'Details'), () => openDetail(row)),
         iconButton(Pencil, t('编辑', 'Edit'), () => openEditor(row)),
         iconButton(Trash2, t('删除', 'Delete'), () => confirmDelete(row), true),
@@ -324,14 +324,14 @@ function upstreamSearchText(item: UpstreamItem): string {
 
 function iconButton(icon: typeof Eye, label: string, onClick: () => void, danger = false) {
   return h(
-    NButton,
+    AppButton,
     { text: true, type: danger ? 'error' : 'default', title: label, 'aria-label': label, onClick },
-    { icon: () => h(NIcon, { component: icon, size: 17 }) },
+    { icon: () => h(AppIcon, { component: icon, size: 17 }) },
   )
 }
 
 function renderSearchIcon() {
-  return h(NIcon, { component: Search })
+  return h(AppIcon, { component: Search })
 }
 
 function selectSection(name: UpstreamSection) {
@@ -605,10 +605,10 @@ void loadUpstreams()
         <h1 class="page-title">{{ t('上游管理', 'Upstream Management') }}</h1>
         <p class="page-subtitle">{{ t('管理 CLIProxyAPI 的 AI 提供商和路由凭据', 'Manage CLIProxyAPI AI providers and routing credentials') }}</p>
       </div>
-      <NButton secondary :loading="isLoading" @click="loadUpstreams(true)">
-        <template #icon><NIcon :component="RefreshCw" /></template>
+      <AppButton secondary :loading="isLoading" @click="loadUpstreams(true)">
+        <template #icon><AppIcon :component="RefreshCw" /></template>
         {{ t('刷新', 'Refresh') }}
-      </NButton>
+      </AppButton>
     </div>
 
     <div class="metric-grid">
@@ -626,11 +626,11 @@ void loadUpstreams()
       </div>
     </div>
 
-    <NAlert v-if="loadError" type="error" :title="t('无法加载上游配置', 'Unable to load upstream configurations')">
+    <AppAlert v-if="loadError" type="error" :title="t('无法加载上游配置', 'Unable to load upstream configurations')">
       {{ loadError }}
-    </NAlert>
+    </AppAlert>
 
-    <NCard class="upstream-workbench" :bordered="false" content-style="padding: 0; min-height: 0;">
+    <AppCard class="upstream-workbench" :bordered="false" content-style="padding: 0; min-height: 0;">
       <div class="workbench-layout">
         <aside class="provider-nav">
           <p class="provider-nav__title">{{ t('提供商', 'Providers') }}</p>
@@ -646,35 +646,35 @@ void loadUpstreams()
               <strong>{{ definition.label }}</strong>
               <small>{{ definition.description }}</small>
             </span>
-            <NTag size="small" round :bordered="false">
+            <AppBadge size="small" round :bordered="false">
               {{ sections[definition.name].filter((item) => !upstreamDisabled(definition.name, item)).length }}/{{ sections[definition.name].length }}
-            </NTag>
+            </AppBadge>
           </button>
         </aside>
 
         <div class="provider-panel">
           <div class="provider-panel__header">
             <div class="provider-panel__title">
-              <NIcon :component="ServerCog" :size="22" />
+              <AppIcon :component="ServerCog" :size="22" />
               <div>
                 <h2>{{ activeDefinition?.label }}</h2>
                 <p>{{ activeDefinition?.description }}</p>
               </div>
             </div>
             <div class="provider-panel__actions">
-              <NInput v-model:value="searchText" clearable :placeholder="t('搜索密钥、地址或前缀', 'Search keys, URLs, or prefixes')">
+              <AppInput v-model:value="searchText" clearable :placeholder="t('搜索密钥、地址或前缀', 'Search keys, URLs, or prefixes')">
                 <template #prefix><component :is="renderSearchIcon" /></template>
-              </NInput>
-              <NButton type="primary" :disabled="isLoading" @click="openEditor()">
-                <template #icon><NIcon :component="Plus" /></template>
+              </AppInput>
+              <AppButton type="primary" :disabled="isLoading" @click="openEditor()">
+                <template #icon><AppIcon :component="Plus" /></template>
                 {{ t('新建', 'New') }}
-              </NButton>
+              </AppButton>
             </div>
           </div>
 
           <div class="provider-table-shell">
-            <NSpin :show="isLoading">
-              <NDataTable
+            <AppSpinner :show="isLoading">
+              <AppDataTable
                 :columns="tableColumns"
                 :data="filteredRows"
                 :row-key="(row: UpstreamTableRow) => row.key"
@@ -682,126 +682,126 @@ void loadUpstreams()
                 :scroll-x="1040"
                 :bordered="false"
               />
-            </NSpin>
+            </AppSpinner>
           </div>
         </div>
       </div>
-    </NCard>
+    </AppCard>
 
-    <NDrawer v-model:show="drawerOpen" placement="right" :width="drawerMode === 'detail' ? 460 : 720">
-      <NDrawerContent :title="drawerTitle" closable>
+    <AppDrawer v-model:show="drawerOpen" placement="right" :width="drawerMode === 'detail' ? 460 : 720">
+      <AppDrawerContent :title="drawerTitle" closable>
         <template v-if="drawerMode === 'detail' && selectedItem">
-          <NDescriptions label-placement="top" :column="1" bordered>
-            <NDescriptionsItem :label="isOpenAISection ? t('提供商', 'Provider') : t('API 密钥', 'API key')">
+          <AppDescriptions label-placement="top" :column="1" bordered>
+            <AppDescriptionsItem :label="isOpenAISection ? t('提供商', 'Provider') : t('API 密钥', 'API key')">
               {{ isOpenAISection ? readString(selectedItem, 'name') || '-' : maskSecret(primaryAPIKey(activeSection, selectedItem)) }}
-            </NDescriptionsItem>
-            <NDescriptionsItem :label="t('服务地址', 'Base URL')">
+            </AppDescriptionsItem>
+            <AppDescriptionsItem :label="t('服务地址', 'Base URL')">
               <code>{{ readString(selectedItem, 'base-url') || '-' }}</code>
-            </NDescriptionsItem>
-            <NDescriptionsItem :label="t('代理 URL', 'Proxy URL')">
+            </AppDescriptionsItem>
+            <AppDescriptionsItem :label="t('代理 URL', 'Proxy URL')">
               <code>{{ readString(selectedItem, 'proxy-url') || '-' }}</code>
-            </NDescriptionsItem>
-            <NDescriptionsItem :label="t('前缀', 'Prefix')">{{ readString(selectedItem, 'prefix') || '-' }}</NDescriptionsItem>
-            <NDescriptionsItem :label="t('优先级', 'Priority')">{{ readNumber(selectedItem, 'priority') ?? '-' }}</NDescriptionsItem>
-            <NDescriptionsItem :label="t('模型 / 请求头 / 密钥', 'Models / Headers / Keys')">
+            </AppDescriptionsItem>
+            <AppDescriptionsItem :label="t('前缀', 'Prefix')">{{ readString(selectedItem, 'prefix') || '-' }}</AppDescriptionsItem>
+            <AppDescriptionsItem :label="t('优先级', 'Priority')">{{ readNumber(selectedItem, 'priority') ?? '-' }}</AppDescriptionsItem>
+            <AppDescriptionsItem :label="t('模型 / 请求头 / 密钥', 'Models / Headers / Keys')">
               {{ modelCount(selectedItem) }} / {{ headerCount(selectedItem) }} /
               {{ isOpenAISection ? readObjectArray(selectedItem, 'api-key-entries').length : 1 }}
-            </NDescriptionsItem>
-            <NDescriptionsItem :label="t('状态', 'Status')">
-              <NTag :type="upstreamDisabled(activeSection, selectedItem) ? 'warning' : 'success'" size="small">
+            </AppDescriptionsItem>
+            <AppDescriptionsItem :label="t('状态', 'Status')">
+              <AppBadge :type="upstreamDisabled(activeSection, selectedItem) ? 'warning' : 'success'" size="small">
                 {{ upstreamDisabled(activeSection, selectedItem) ? t('已停用', 'Disabled') : t('活跃', 'Active') }}
-              </NTag>
-            </NDescriptionsItem>
-          </NDescriptions>
-          <NButton type="primary" block class="detail-edit-button" @click="openEditor({ key: '', index: editingIndex, item: selectedItem })">
-            <template #icon><NIcon :component="Pencil" /></template>
+              </AppBadge>
+            </AppDescriptionsItem>
+          </AppDescriptions>
+          <AppButton type="primary" block class="detail-edit-button" @click="openEditor({ key: '', index: editingIndex, item: selectedItem })">
+            <template #icon><AppIcon :component="Pencil" /></template>
             {{ t('编辑', 'Edit') }}
-          </NButton>
+          </AppButton>
         </template>
 
-        <NForm v-else label-placement="top" class="upstream-form">
-          <NFormItem v-if="isOpenAISection" :label="t('名称', 'Name')" required>
-            <NInput v-model:value="form.name" :placeholder="t('例如 OpenRouter', 'e.g. OpenRouter')" />
-          </NFormItem>
-          <NFormItem v-else :label="t('API 密钥', 'API key')" required>
-            <NInput v-model:value="form.apiKey" type="password" show-password-on="click" />
-          </NFormItem>
+        <AppForm v-else label-placement="top" class="upstream-form">
+          <AppFormItem v-if="isOpenAISection" :label="t('名称', 'Name')" required>
+            <AppInput v-model:value="form.name" :placeholder="t('例如 OpenRouter', 'e.g. OpenRouter')" />
+          </AppFormItem>
+          <AppFormItem v-else :label="t('API 密钥', 'API key')" required>
+            <AppInput v-model:value="form.apiKey" type="password" show-password-on="click" />
+          </AppFormItem>
 
           <div class="form-grid">
-            <NFormItem :label="t('服务地址', 'Base URL')" :required="isOpenAISection || activeSection === 'codex-api-key' || activeSection === 'xai-api-key'">
-              <NInput v-model:value="form.baseUrl" placeholder="https://api.example.com/v1" />
-            </NFormItem>
-            <NFormItem v-if="!isOpenAISection" :label="t('代理 URL', 'Proxy URL')">
-              <NInput v-model:value="form.proxyUrl" placeholder="socks5://127.0.0.1:1080" />
-            </NFormItem>
-            <NFormItem :label="t('前缀', 'Prefix')">
-              <NInput v-model:value="form.prefix" />
-            </NFormItem>
-            <NFormItem :label="t('优先级', 'Priority')">
-              <NInputNumber v-model:value="form.priority" clearable :precision="0" />
-            </NFormItem>
+            <AppFormItem :label="t('服务地址', 'Base URL')" :required="isOpenAISection || activeSection === 'codex-api-key' || activeSection === 'xai-api-key'">
+              <AppInput v-model:value="form.baseUrl" placeholder="https://api.example.com/v1" />
+            </AppFormItem>
+            <AppFormItem v-if="!isOpenAISection" :label="t('代理 URL', 'Proxy URL')">
+              <AppInput v-model:value="form.proxyUrl" placeholder="socks5://127.0.0.1:1080" />
+            </AppFormItem>
+            <AppFormItem :label="t('前缀', 'Prefix')">
+              <AppInput v-model:value="form.prefix" />
+            </AppFormItem>
+            <AppFormItem :label="t('优先级', 'Priority')">
+              <AppNumberInput v-model:value="form.priority" clearable :precision="0" />
+            </AppFormItem>
           </div>
 
           <div class="switch-grid">
-            <label><NSwitch v-model:value="form.disabled" /> <span>{{ t('停用此上游', 'Disable this upstream') }}</span></label>
+            <label><AppSwitch v-model:value="form.disabled" /> <span>{{ t('停用此上游', 'Disable this upstream') }}</span></label>
             <label v-if="activeSection === 'codex-api-key' || activeSection === 'xai-api-key'">
-              <NSwitch v-model:value="form.websockets" /> <span>{{ t('启用 WebSockets', 'Enable WebSockets') }}</span>
+              <AppSwitch v-model:value="form.websockets" /> <span>{{ t('启用 WebSockets', 'Enable WebSockets') }}</span>
             </label>
-            <label><NSwitch v-model:value="form.disableCooling" /> <span>{{ t('禁用冷却调度', 'Disable cooldown scheduling') }}</span></label>
+            <label><AppSwitch v-model:value="form.disableCooling" /> <span>{{ t('禁用冷却调度', 'Disable cooldown scheduling') }}</span></label>
           </div>
 
           <section v-if="isOpenAISection" class="form-section">
             <div class="form-section__header">
               <div><h3>{{ t('API 密钥条目', 'API key entries') }}</h3><p>{{ t('一个提供商可以配置多个密钥和独立代理。', 'A provider can use multiple keys and per-key proxies.') }}</p></div>
-              <NButton size="small" secondary @click="addAPIKeyEntry">{{ t('添加密钥', 'Add key') }}</NButton>
+              <AppButton size="small" secondary @click="addAPIKeyEntry">{{ t('添加密钥', 'Add key') }}</AppButton>
             </div>
             <div v-for="(entry, index) in form.apiKeyEntries" :key="index" class="repeat-row repeat-row--keys">
-              <NInput v-model:value="entry.apiKey" type="password" show-password-on="click" :placeholder="t(`API 密钥 #${index + 1}`, `API key #${index + 1}`)" />
-              <NInput v-model:value="entry.proxyUrl" :placeholder="t('代理 URL（可选）', 'Proxy URL (optional)')" />
-              <NButton text type="error" :disabled="form.apiKeyEntries.length <= 1" @click="form.apiKeyEntries.splice(index, 1)">
-                <NIcon :component="Trash2" />
-              </NButton>
+              <AppInput v-model:value="entry.apiKey" type="password" show-password-on="click" :placeholder="t(`API 密钥 #${index + 1}`, `API key #${index + 1}`)" />
+              <AppInput v-model:value="entry.proxyUrl" :placeholder="t('代理 URL（可选）', 'Proxy URL (optional)')" />
+              <AppButton text type="error" :disabled="form.apiKeyEntries.length <= 1" @click="form.apiKeyEntries.splice(index, 1)">
+                <AppIcon :component="Trash2" />
+              </AppButton>
             </div>
           </section>
 
           <section class="form-section">
             <div class="form-section__header">
               <div><h3>{{ t('自定义请求头', 'Custom headers') }}</h3><p>{{ t('请求上游时附加的 Header。', 'Headers appended to upstream requests.') }}</p></div>
-              <NButton size="small" secondary @click="addHeader">{{ t('添加请求头', 'Add header') }}</NButton>
+              <AppButton size="small" secondary @click="addHeader">{{ t('添加请求头', 'Add header') }}</AppButton>
             </div>
             <div v-if="form.headers.length === 0" class="form-empty">{{ t('未配置请求头', 'No custom headers') }}</div>
             <div v-for="(header, index) in form.headers" :key="index" class="repeat-row">
-              <NInput v-model:value="header.key" placeholder="Header-Name" />
-              <NInput v-model:value="header.value" :placeholder="t('值', 'Value')" />
-              <NButton text type="error" @click="form.headers.splice(index, 1)"><NIcon :component="Trash2" /></NButton>
+              <AppInput v-model:value="header.key" placeholder="Header-Name" />
+              <AppInput v-model:value="header.value" :placeholder="t('值', 'Value')" />
+              <AppButton text type="error" @click="form.headers.splice(index, 1)"><AppIcon :component="Trash2" /></AppButton>
             </div>
           </section>
 
           <section class="form-section">
             <div class="form-section__header">
               <div><h3>{{ t('自定义模型', 'Custom models') }}</h3><p>{{ t('配置上游模型名称、路由别名和显示名称。', 'Configure upstream model names, routing aliases, and display names.') }}</p></div>
-              <NButton size="small" secondary @click="addModel">{{ t('添加模型', 'Add model') }}</NButton>
+              <AppButton size="small" secondary @click="addModel">{{ t('添加模型', 'Add model') }}</AppButton>
             </div>
             <div v-if="form.models.length === 0" class="form-empty">{{ t('未限制自定义模型', 'No custom model list') }}</div>
             <div v-for="(model, index) in form.models" :key="index" class="repeat-row repeat-row--models">
-              <NInput v-model:value="model.name" :placeholder="t('上游模型名称', 'Upstream model name')" />
-              <NInput v-model:value="model.alias" :placeholder="t('路由别名（可选）', 'Routing alias (optional)')" />
-              <NInput v-model:value="model.displayName" :placeholder="t('显示名称（可选）', 'Display name (optional)')" />
-              <NButton text type="error" @click="form.models.splice(index, 1)"><NIcon :component="Trash2" /></NButton>
+              <AppInput v-model:value="model.name" :placeholder="t('上游模型名称', 'Upstream model name')" />
+              <AppInput v-model:value="model.alias" :placeholder="t('路由别名（可选）', 'Routing alias (optional)')" />
+              <AppInput v-model:value="model.displayName" :placeholder="t('显示名称（可选）', 'Display name (optional)')" />
+              <AppButton text type="error" @click="form.models.splice(index, 1)"><AppIcon :component="Trash2" /></AppButton>
             </div>
           </section>
 
-          <NFormItem v-if="!isOpenAISection" :label="t('排除模型', 'Excluded models')">
-            <NInput v-model:value="form.excludedModels" type="textarea" :rows="4" :placeholder="t('每行一个模型或通配规则', 'One model or wildcard rule per line')" />
-          </NFormItem>
+          <AppFormItem v-if="!isOpenAISection" :label="t('排除模型', 'Excluded models')">
+            <AppInput v-model:value="form.excludedModels" type="textarea" :rows="4" :placeholder="t('每行一个模型或通配规则', 'One model or wildcard rule per line')" />
+          </AppFormItem>
 
           <section v-if="isClaudeSection" class="form-section">
             <div class="form-section__header">
               <div><h3>Cloak</h3><p>{{ t('Claude 请求混淆与缓存设置。', 'Claude request cloaking and cache settings.') }}</p></div>
             </div>
             <div class="form-grid">
-              <NFormItem :label="t('模式', 'Mode')">
-                <NSelect
+              <AppFormItem :label="t('模式', 'Mode')">
+                <AppSelect
                   v-model:value="form.cloakMode"
                   clearable
                   :options="[
@@ -810,27 +810,27 @@ void loadUpstreams()
                     { label: t('从不', 'Never'), value: 'never' },
                   ]"
                 />
-              </NFormItem>
-              <NFormItem :label="t('敏感词', 'Sensitive words')">
-                <NInput v-model:value="form.cloakSensitiveWords" type="textarea" :rows="3" :placeholder="t('每行一个敏感词', 'One sensitive word per line')" />
-              </NFormItem>
+              </AppFormItem>
+              <AppFormItem :label="t('敏感词', 'Sensitive words')">
+                <AppInput v-model:value="form.cloakSensitiveWords" type="textarea" :rows="3" :placeholder="t('每行一个敏感词', 'One sensitive word per line')" />
+              </AppFormItem>
             </div>
             <div class="switch-grid">
-              <label><NSwitch v-model:value="form.cloakStrict" /> <span>{{ t('严格模式', 'Strict mode') }}</span></label>
-              <label><NSwitch v-model:value="form.cloakCacheUserId" /> <span>{{ t('缓存 user_id', 'Cache user_id') }}</span></label>
-              <label><NSwitch v-model:value="form.experimentalCCHSigning" /> <span>{{ t('实验性 CCH 签名', 'Experimental CCH signing') }}</span></label>
+              <label><AppSwitch v-model:value="form.cloakStrict" /> <span>{{ t('严格模式', 'Strict mode') }}</span></label>
+              <label><AppSwitch v-model:value="form.cloakCacheUserId" /> <span>{{ t('缓存 user_id', 'Cache user_id') }}</span></label>
+              <label><AppSwitch v-model:value="form.experimentalCCHSigning" /> <span>{{ t('实验性 CCH 签名', 'Experimental CCH signing') }}</span></label>
             </div>
           </section>
-        </NForm>
+        </AppForm>
 
         <template v-if="drawerMode !== 'detail'" #footer>
-          <NSpace justify="end">
-            <NButton :disabled="isSaving" @click="drawerOpen = false">{{ t('取消', 'Cancel') }}</NButton>
-            <NButton type="primary" :loading="isSaving" @click="saveUpstream">{{ drawerMode === 'create' ? t('创建', 'Create') : t('保存', 'Save') }}</NButton>
-          </NSpace>
+          <AppStack justify="end">
+            <AppButton :disabled="isSaving" @click="drawerOpen = false">{{ t('取消', 'Cancel') }}</AppButton>
+            <AppButton type="primary" :loading="isSaving" @click="saveUpstream">{{ drawerMode === 'create' ? t('创建', 'Create') : t('保存', 'Save') }}</AppButton>
+          </AppStack>
         </template>
-      </NDrawerContent>
-    </NDrawer>
+      </AppDrawerContent>
+    </AppDrawer>
   </section>
 </template>
 

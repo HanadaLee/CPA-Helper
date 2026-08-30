@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { NButton, NIcon, NSpace, useMessage } from 'naive-ui'
-import { Copy, Trash2 } from 'lucide-vue-next'
+import { AppButton, AppIcon, AppStack, useMessage } from '@/shared/ui/app-kit'
+import { Copy, Trash2 } from '@lucide/vue'
 
 import { clearCodexKeeperLogs } from '@/features/codex-keeper/api/codexKeeperApi'
 import { useI18n } from '@/shared/i18n'
@@ -190,20 +190,20 @@ async function clearLogs() {
     <div class="panel-inner log-panel-inner">
       <div class="section-heading">
         <h2 class="section-title">{{ t('维护日志', 'Maintenance Logs') }}</h2>
-        <NSpace class="log-actions" size="small">
-          <NButton secondary :disabled="!logText" @click="copyLogText">
+        <AppStack class="log-actions" size="small">
+          <AppButton secondary :disabled="!logText" @click="copyLogText">
             <template #icon>
-              <NIcon :component="Copy" />
+              <AppIcon :component="Copy" />
             </template>
             {{ t('复制日志', 'Copy Logs') }}
-          </NButton>
-          <NButton secondary :loading="isClearing" @click="clearLogs">
+          </AppButton>
+          <AppButton secondary :loading="isClearing" @click="clearLogs">
             <template #icon>
-              <NIcon :component="Trash2" />
+              <AppIcon :component="Trash2" />
             </template>
             {{ t('清空日志', 'Clear Logs') }}
-          </NButton>
-        </NSpace>
+          </AppButton>
+        </AppStack>
       </div>
       <div
         ref="logBodyRef"

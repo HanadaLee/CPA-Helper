@@ -1,3 +1,41 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+  --font-sans: "Aptos", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "Helvetica Neue", sans-serif;
+}
+
 :root {
   color-scheme: light;
   font-family:
@@ -51,6 +89,33 @@
   --cpa-shadow-soft: 0 5px 14px rgb(30 56 62 / 4%);
   --cpa-shadow-card: 0 1px 2px rgb(30 56 62 / 2%);
   --cpa-shadow-hairline: inset 0 1px 0 rgb(255 255 255 / 90%);
+  --background: var(--cpa-bg);
+  --foreground: var(--cpa-text);
+  --card: var(--cpa-surface);
+  --card-foreground: var(--cpa-text);
+  --popover: var(--cpa-surface-raised);
+  --popover-foreground: var(--cpa-text);
+  --primary: var(--cpa-primary);
+  --primary-foreground: #ffffff;
+  --secondary: var(--cpa-surface-muted);
+  --secondary-foreground: var(--cpa-text-strong);
+  --muted: var(--cpa-surface-muted);
+  --muted-foreground: var(--cpa-text-muted);
+  --accent: var(--cpa-primary-weak);
+  --accent-foreground: var(--cpa-primary-pressed);
+  --destructive: var(--cpa-danger);
+  --border: var(--cpa-border);
+  --input: var(--cpa-border-strong);
+  --ring: var(--cpa-primary);
+  --sidebar: var(--cpa-bg-soft);
+  --sidebar-foreground: var(--cpa-text);
+  --sidebar-primary: var(--cpa-primary);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: var(--cpa-primary-wash);
+  --sidebar-accent-foreground: var(--cpa-primary-pressed);
+  --sidebar-border: var(--cpa-border);
+  --sidebar-ring: var(--cpa-primary);
+  --radius: var(--cpa-radius);
 }
 
 :root.dark {

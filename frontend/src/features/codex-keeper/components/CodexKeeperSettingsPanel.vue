@@ -1,18 +1,18 @@
 <script setup lang="ts">
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import {
-  NButton,
-  NDataTable,
-  NForm,
-  NFormItem,
-  NInput,
-  NInputNumber,
-  NSelect,
-  NSpace,
-  NSwitch,
+  AppButton,
+  AppDataTable,
+  AppForm,
+  AppFormItem,
+  AppInput,
+  AppNumberInput,
+  AppSelect,
+  AppStack,
+  AppSwitch,
   useMessage,
   type DataTableColumns,
-} from 'naive-ui'
+} from '@/shared/ui/app-kit'
 
 import {
   getCodexKeeperSettings,
@@ -224,7 +224,7 @@ const priorityColumns = computed<DataTableColumns<CodexKeeperPriorityRule>>(() =
     key: 'account_type',
     minWidth: 132,
     render: (row) =>
-      h(NInput, {
+      h(AppInput, {
         size: 'small',
         value: row.account_type,
         placeholder: t('例如 pro_20x', 'For example, pro_20x'),
@@ -238,7 +238,7 @@ const priorityColumns = computed<DataTableColumns<CodexKeeperPriorityRule>>(() =
     key: 'priority',
     width: 112,
     render: (row) =>
-      h(NInputNumber, {
+      h(AppNumberInput, {
         size: 'small',
         value: row.priority,
         min: 0,
@@ -254,7 +254,7 @@ const priorityColumns = computed<DataTableColumns<CodexKeeperPriorityRule>>(() =
     width: 58,
     render: (row) =>
       h(
-        NButton,
+        AppButton,
         { size: 'tiny', quaternary: true, type: 'error', onClick: () => removeRule(row) },
         { default: () => t('移除', 'Remove') },
       ),
@@ -288,11 +288,11 @@ onBeforeUnmount(() => {
       <div class="panel-inner config-panel-inner">
         <div class="section-heading">
           <h2 class="section-title">{{ t('巡检配置', 'Inspection Configuration') }}</h2>
-          <NSpace class="config-actions" size="small" wrap>
-            <NButton size="small" secondary :loading="isLoading" @click="loadAll">
+          <AppStack class="config-actions" size="small" wrap>
+            <AppButton size="small" secondary :loading="isLoading" @click="loadAll">
               {{ t('重新加载', 'Reload') }}
-            </NButton>
-            <NButton
+            </AppButton>
+            <AppButton
               size="small"
               secondary
               :loading="isActing"
@@ -300,8 +300,8 @@ onBeforeUnmount(() => {
               @click="runAction(runCodexKeeperOnce, t('已开始执行一轮', 'Started one inspection run'))"
             >
               {{ t('执行一轮', 'Run Once') }}
-            </NButton>
-            <NButton
+            </AppButton>
+            <AppButton
               size="small"
               type="primary"
               secondary
@@ -310,8 +310,8 @@ onBeforeUnmount(() => {
               @click="runAction(startCodexKeeper, t('已开始自动巡检', 'Automatic inspection started'))"
             >
               {{ t('开始自动巡检', 'Start Automatic Inspection') }}
-            </NButton>
-            <NButton
+            </AppButton>
+            <AppButton
               size="small"
               secondary
               type="warning"
@@ -320,17 +320,17 @@ onBeforeUnmount(() => {
               @click="runAction(stopCodexKeeper, t('已请求停止', 'Stop requested'))"
             >
               {{ t('停止', 'Stop') }}
-            </NButton>
-          </NSpace>
+            </AppButton>
+          </AppStack>
         </div>
-        <NForm class="config-form" :model="form" label-placement="top" size="small">
+        <AppForm class="config-form" :model="form" label-placement="top" size="small">
           <div class="config-sections">
             <section class="config-block">
               <h3 class="config-block-title">{{ t('调度', 'Schedule') }}</h3>
               <div class="schedule-grid">
-                <NFormItem :label="t('Cron 表达式', 'Cron Expression')">
-                  <NInput v-model:value="form.schedule_cron" :placeholder="t('例如 */30 * * * *', 'For example, */30 * * * *')" />
-                </NFormItem>
+                <AppFormItem :label="t('Cron 表达式', 'Cron Expression')">
+                  <AppInput v-model:value="form.schedule_cron" :placeholder="t('例如 */30 * * * *', 'For example, */30 * * * *')" />
+                </AppFormItem>
                 <div class="schedule-preview">
                   <div class="preview-title">{{ t('后续 5 次调用', 'Next 5 Runs') }}</div>
                   <div v-if="schedulePreviewError" class="preview-error">
@@ -345,19 +345,19 @@ onBeforeUnmount(() => {
                 </div>
               </div>
               <div class="conditional-refresh-grid">
-                <NFormItem :label="t('按条件扫描间隔', 'Conditional Scan Interval')">
-                  <NSelect
+                <AppFormItem :label="t('按条件扫描间隔', 'Conditional Scan Interval')">
+                  <AppSelect
                     v-model:value="form.conditional_refresh_interval_seconds"
                     :options="conditionalRefreshIntervalOptions"
                   />
-                </NFormItem>
-                <NFormItem :label="t('账号刷新缓存（分钟）', 'Account Refresh Cache (minutes)')">
-                  <NInputNumber
+                </AppFormItem>
+                <AppFormItem :label="t('账号刷新缓存（分钟）', 'Account Refresh Cache (minutes)')">
+                  <AppNumberInput
                     v-model:value="form.account_refresh_cache_minutes"
                     :min="1"
                     :precision="0"
                   />
-                </NFormItem>
+                </AppFormItem>
               </div>
               <div class="conditional-refresh-help">
                 <p>
@@ -372,33 +372,33 @@ onBeforeUnmount(() => {
             <section class="config-block">
               <h3 class="config-block-title">{{ t('执行参数', 'Execution Parameters') }}</h3>
               <div class="params-grid">
-                <NFormItem :label="t('额度阈值（%）', 'Quota Threshold (%)')">
-                  <NInputNumber v-model:value="form.quota_threshold" :min="0" :max="100" />
-                </NFormItem>
-                <NFormItem :label="t('额度检测超时（秒）', 'Quota Check Timeout (seconds)')">
-                  <NInputNumber v-model:value="form.usage_timeout_seconds" :min="1" />
-                </NFormItem>
-                <NFormItem :label="t('账号管理接口超时（秒）', 'Account API Timeout (seconds)')">
-                  <NInputNumber v-model:value="form.cpa_timeout_seconds" :min="1" />
-                </NFormItem>
-                <NFormItem :label="t('失败重试次数', 'Failure Retries')">
-                  <NInputNumber v-model:value="form.max_retries" :min="0" :max="5" />
-                </NFormItem>
-                <NFormItem :label="t('账号处理并发数', 'Account Processing Concurrency')">
-                  <NInputNumber v-model:value="form.worker_threads" :min="1" :max="64" />
-                </NFormItem>
+                <AppFormItem :label="t('额度阈值（%）', 'Quota Threshold (%)')">
+                  <AppNumberInput v-model:value="form.quota_threshold" :min="0" :max="100" />
+                </AppFormItem>
+                <AppFormItem :label="t('额度检测超时（秒）', 'Quota Check Timeout (seconds)')">
+                  <AppNumberInput v-model:value="form.usage_timeout_seconds" :min="1" />
+                </AppFormItem>
+                <AppFormItem :label="t('账号管理接口超时（秒）', 'Account API Timeout (seconds)')">
+                  <AppNumberInput v-model:value="form.cpa_timeout_seconds" :min="1" />
+                </AppFormItem>
+                <AppFormItem :label="t('失败重试次数', 'Failure Retries')">
+                  <AppNumberInput v-model:value="form.max_retries" :min="0" :max="5" />
+                </AppFormItem>
+                <AppFormItem :label="t('账号处理并发数', 'Account Processing Concurrency')">
+                  <AppNumberInput v-model:value="form.worker_threads" :min="1" :max="64" />
+                </AppFormItem>
               </div>
               <div class="switch-row">
-                <NFormItem class="switch-form-item">
+                <AppFormItem class="switch-form-item">
                   <div class="switch-setting">
                     <div class="switch-copy">
                       <span class="switch-title">{{ t('只检查不修改', 'Check Only') }}</span>
                       <p class="switch-help">{{ t('开启后只模拟处理，不会禁用账号或调整优先级。', 'When enabled, processing is simulated and accounts are not disabled or reprioritized.') }}</p>
                     </div>
-                    <NSwitch v-model:value="form.dry_run" class="switch-control" />
+                    <AppSwitch v-model:value="form.dry_run" class="switch-control" />
                   </div>
-                </NFormItem>
-                <NFormItem class="switch-form-item">
+                </AppFormItem>
+                <AppFormItem class="switch-form-item">
                   <div class="switch-setting">
                     <div class="switch-copy">
                       <span class="switch-title">{{ t('启用凭证 WebSocket', 'Enable Credential WebSocket') }}</span>
@@ -406,25 +406,25 @@ onBeforeUnmount(() => {
                         {{ t('刷新时为每个 Codex 凭证写入 websockets=true，用于 Responses API 的 WebSocket 传输。', 'During refresh, write websockets=true to each Codex credential for Responses API WebSocket transport.') }}
                       </p>
                     </div>
-                    <NSwitch
+                    <AppSwitch
                       v-model:value="form.enable_credential_websockets"
                       class="switch-control"
                     />
                   </div>
-                </NFormItem>
-                <NFormItem class="switch-form-item">
+                </AppFormItem>
+                <AppFormItem class="switch-form-item">
                   <div class="switch-setting">
                     <div class="switch-copy">
                       <span class="switch-title">{{ t('启动后自动巡检', 'Auto Inspect on Startup') }}</span>
                       <p class="switch-help">{{ t('每次 CPA-Helper 启动后，自动按上面的计划检查账号。', 'Automatically inspect accounts using the schedule above whenever CPA-Helper starts.') }}</p>
                     </div>
-                    <NSwitch v-model:value="form.auto_start_daemon" class="switch-control" />
+                    <AppSwitch v-model:value="form.auto_start_daemon" class="switch-control" />
                   </div>
-                </NFormItem>
+                </AppFormItem>
               </div>
             </section>
           </div>
-        </NForm>
+        </AppForm>
         <section class="config-block runtime-block">
           <h3 class="config-block-title">{{ t('运行信息', 'Runtime Information') }}</h3>
           <div class="runtime-info-grid">
@@ -455,12 +455,12 @@ onBeforeUnmount(() => {
       <div class="panel-inner">
         <div class="section-heading">
           <h2 class="section-title">{{ t('账号类型优先级', 'Account Type Priorities') }}</h2>
-          <NButton size="small" secondary @click="addRule">{{ t('新增规则', 'Add Rule') }}</NButton>
+          <AppButton size="small" secondary @click="addRule">{{ t('新增规则', 'Add Rule') }}</AppButton>
         </div>
         <p class="section-hint">
           {{ t('账号当前优先级超过 20 时视为手动优先，巡检不会覆盖；0 ~ 20 会按这里的账号类型规则维护。', 'Current account priorities above 20 are treated as manual priority and will not be overwritten. Priorities from 0 to 20 are maintained using the account type rules here.') }}
         </p>
-        <NDataTable
+        <AppDataTable
           class="priority-table"
           size="small"
           :columns="priorityColumns"

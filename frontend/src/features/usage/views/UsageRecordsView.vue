@@ -2,17 +2,17 @@
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  NButton,
-  NDataTable,
-  NDatePicker,
-  NDrawer,
-  NDrawerContent,
-  NPagination,
-  NSelect,
-  NTag,
+  AppButton,
+  AppDataTable,
+  AppDateTimeRange,
+  AppDrawer,
+  AppDrawerContent,
+  AppPagination,
+  AppSelect,
+  AppBadge,
   useMessage,
   type DataTableColumns,
-} from 'naive-ui'
+} from '@/shared/ui/app-kit'
 
 import { getUsageOptions, getUsageRecord, getUsageRecords } from '@/features/usage/api/usageApi'
 import type {
@@ -818,7 +818,7 @@ const columns = computed<DataTableColumns<UsageRecordListItem>>(() => [
     width: RECORDS_TABLE_COLUMN_WIDTHS.failed,
     render: (row) =>
       h(
-        NTag,
+        AppBadge,
         { type: row.failed ? 'error' : 'success', size: 'small', bordered: false },
         { default: () => (row.failed ? t('失败', 'Failed') : t('成功', 'Success')) },
       ),
@@ -896,7 +896,7 @@ const columns = computed<DataTableColumns<UsageRecordListItem>>(() => [
     fixed: 'right',
     render: (row) =>
       h(
-        NButton,
+        AppButton,
         { size: 'small', quaternary: true, onClick: () => void openRecord(row) },
         { default: () => t('详情', 'Details') },
       ),
@@ -947,7 +947,7 @@ onBeforeUnmount(() => {
       <div class="panel-inner filter-toolbar">
         <div class="time-row">
           <div class="quick-ranges" role="group" :aria-label="t('快捷时间范围', 'Quick time ranges')">
-            <NButton
+            <AppButton
               v-for="option in quickRangeOptions"
               :key="option.key"
               class="quick-range-button"
@@ -957,9 +957,9 @@ onBeforeUnmount(() => {
               @click="applyQuickRange(option.key)"
             >
               {{ option.label }}
-            </NButton>
+            </AppButton>
           </div>
-          <NDatePicker
+          <AppDateTimeRange
             :value="dateRange"
             class="range-picker"
             type="datetimerange"
@@ -968,7 +968,7 @@ onBeforeUnmount(() => {
           />
         </div>
         <div class="field-row" :class="{ 'is-account-scope': isAccountScope }">
-          <NSelect
+          <AppSelect
             v-if="!isAccountScope"
             :value="filterForm.user_id"
             :options="selectOptions.users"
@@ -977,7 +977,7 @@ onBeforeUnmount(() => {
             :placeholder="t('用户昵称', 'User nickname')"
             @update:value="handleUserChange"
           />
-          <NSelect
+          <AppSelect
             :value="filterForm.api_key_description"
             :options="selectOptions.apiKeyDescriptions"
             clearable
@@ -985,7 +985,7 @@ onBeforeUnmount(() => {
             :placeholder="t('KEY 描述', 'Key description')"
             @update:value="handleApiKeyChange"
           />
-          <NSelect
+          <AppSelect
             :value="filterForm.provider"
             :options="selectOptions.providers"
             clearable
@@ -993,7 +993,7 @@ onBeforeUnmount(() => {
             :placeholder="t('服务商', 'Provider')"
             @update:value="handleProviderChange"
           />
-          <NSelect
+          <AppSelect
             :value="filterForm.model"
             :options="selectOptions.models"
             clearable
@@ -1001,7 +1001,7 @@ onBeforeUnmount(() => {
             :placeholder="t('模型', 'Model')"
             @update:value="handleModelChange"
           />
-          <NSelect
+          <AppSelect
             v-if="!isAccountScope"
             :value="filterForm.source_key"
             :options="selectOptions.sources"
@@ -1010,7 +1010,7 @@ onBeforeUnmount(() => {
             :placeholder="t('来源', 'Source')"
             @update:value="handleSourceChange"
           />
-          <NSelect
+          <AppSelect
             :value="filterForm.endpoint"
             :options="selectOptions.endpoints"
             clearable
@@ -1019,22 +1019,22 @@ onBeforeUnmount(() => {
             @update:value="handleEndpointChange"
           />
           <div class="status-actions">
-            <NSelect
+            <AppSelect
               :value="filterForm.failed"
               class="status-select"
               :options="failedFilterOptions"
               @update:value="handleFailedChange"
             />
-            <NButton secondary :loading="isLoading" @click="refresh({ resetPage: true })">
+            <AppButton secondary :loading="isLoading" @click="refresh({ resetPage: true })">
               {{ t('筛选', 'Filter') }}
-            </NButton>
+            </AppButton>
           </div>
         </div>
       </div>
     </section>
 
     <section class="panel table-panel records-table-panel">
-      <NDataTable
+      <AppDataTable
         class="records-table"
         v-bind="recordsTableLayoutProps"
         remote
@@ -1050,7 +1050,7 @@ onBeforeUnmount(() => {
         :scroll-x="recordsTableScrollX"
       />
       <div class="pagination-row">
-        <NPagination
+        <AppPagination
           v-model:page="page"
           v-model:page-size="pageSize"
           show-size-picker
@@ -1062,8 +1062,8 @@ onBeforeUnmount(() => {
       </div>
     </section>
 
-    <NDrawer v-model:show="drawerOpen" placement="right" width="min(760px, 100vw)">
-      <NDrawerContent :title="t('请求事件详情', 'Request event details')">
+    <AppDrawer v-model:show="drawerOpen" placement="right" width="min(760px, 100vw)">
+      <AppDrawerContent :title="t('请求事件详情', 'Request event details')">
         <h3 class="drawer-section-title">{{ t('结构化信息', 'Structured information') }}</h3>
         <div class="detail-grid">
           <div v-for="row in detailRows" :key="row.label" class="detail-item">
@@ -1073,8 +1073,8 @@ onBeforeUnmount(() => {
         </div>
         <h3 class="drawer-section-title">{{ t('原始数据', 'Raw data') }}</h3>
         <pre class="mono-json">{{ jsonPretty(selectedRecord?.raw_json ?? {}) }}</pre>
-      </NDrawerContent>
-    </NDrawer>
+      </AppDrawerContent>
+    </AppDrawer>
   </section>
 </template>
 

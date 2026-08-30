@@ -3,6 +3,8 @@ backend/.venv/
 backend/local_migrations/
 frontend/node_modules/
 frontend/dist/
+frontend/test-results/
+frontend/playwright-report/
 .vite/
 backend/dist/
 backend/build/

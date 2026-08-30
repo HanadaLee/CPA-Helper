@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { NAlert, NButton, NIcon, NInput, NModal, NSelect, NSpin, NSwitch, NTag } from 'naive-ui'
+import { AppAlert, AppButton, AppIcon, AppInput, AppModal, AppSelect, AppSpinner, AppSwitch, AppBadge } from '@/shared/ui/app-kit'
 import {
   AlertTriangle,
   Clock3,
@@ -17,7 +17,7 @@ import {
   Star,
   Store,
   Trash2,
-} from 'lucide-vue-next'
+} from '@lucide/vue'
 
 import {
   getCardShopFavorites,
@@ -788,42 +788,42 @@ function telegramHref(value: string | null | undefined): string | null {
           {{ t('同步公开卡网店铺与商品快照，用于检索和甄别。', 'Browse public card-shop and product snapshots for lookup and screening.') }}
         </p>
       </div>
-      <NButton type="primary" :loading="isLoading" @click="refresh">
+      <AppButton type="primary" :loading="isLoading" @click="refresh">
         <template #icon>
-          <NIcon :component="RefreshCw" />
+          <AppIcon :component="RefreshCw" />
         </template>
         {{ t('刷新', 'Refresh') }}
-      </NButton>
+      </AppButton>
     </div>
 
-    <NAlert class="risk-alert" type="warning" :show-icon="false">
+    <AppAlert class="risk-alert" type="warning" :show-icon="false">
       <div class="risk-alert-content">
-        <NIcon :component="AlertTriangle" :size="18" />
+        <AppIcon :component="AlertTriangle" :size="18" />
         <span>{{ t('仅做公开店铺信息收录，不参与交易，也不对店铺商品、售后和风险负责。使用前请自行甄别。', 'This only indexes public shop information. CPA-Helper does not participate in transactions and is not responsible for products, after-sales service, or risk. Assess independently before use.') }}</span>
       </div>
-    </NAlert>
+    </AppAlert>
 
     <section class="panel">
       <div class="panel-inner card-shop-toolbar">
         <div class="search-row">
-          <NInput
+          <AppInput
             v-model:value="searchDraft"
             clearable
             :placeholder="t('商品标题名', 'Product title')"
             @keydown.enter.prevent="addSearchDraft"
           >
             <template #prefix>
-              <NIcon :component="Search" />
+              <AppIcon :component="Search" />
             </template>
-          </NInput>
+          </AppInput>
           <div class="sort-control">
             <span>{{ t('排序', 'Sort') }}</span>
-            <NSelect v-model:value="sortKey" :options="sortOptions" />
+            <AppSelect v-model:value="sortKey" :options="sortOptions" />
           </div>
           <label class="favorite-filter">
             <span>{{ t('收藏筛选', 'Favorites') }}</span>
             <span class="favorite-switch-line">
-              <NSwitch v-model:value="favoriteOnly" />
+              <AppSwitch v-model:value="favoriteOnly" />
               <span>
                 {{ t(`仅看收藏 ${formatInteger(favoriteShopCount)}`, `Favorites only ${formatInteger(favoriteShopCount)}`) }}
               </span>
@@ -832,7 +832,7 @@ function telegramHref(value: string | null | undefined): string | null {
         </div>
         <div class="tag-row">
           <span>{{ t('快速搜索标签:', 'Quick search tags:') }}</span>
-          <NButton
+          <AppButton
             v-for="tag in quickTags"
             :key="tag"
             size="small"
@@ -841,17 +841,17 @@ function telegramHref(value: string | null | undefined): string | null {
             @click="applyQuickTag(tag)"
           >
             {{ tag }}
-          </NButton>
-          <NButton class="tag-manage-button" size="small" secondary @click="openTagManager">
+          </AppButton>
+          <AppButton class="tag-manage-button" size="small" secondary @click="openTagManager">
             <template #icon>
-              <NIcon :component="Settings2" />
+              <AppIcon :component="Settings2" />
             </template>
             {{ t('管理标签', 'Manage tags') }}
-          </NButton>
+          </AppButton>
         </div>
         <div v-if="searchTerms.length > 0" class="selected-term-row">
           <span>{{ t('已选条件:', 'Selected filters:') }}</span>
-          <NTag
+          <AppBadge
             v-for="term in searchTerms"
             :key="term"
             size="small"
@@ -861,22 +861,22 @@ function telegramHref(value: string | null | undefined): string | null {
             @close="removeSearchTerm(term)"
           >
             {{ term }}
-          </NTag>
-          <NButton size="tiny" quaternary @click="clearSearchFilters">
+          </AppBadge>
+          <AppButton size="tiny" quaternary @click="clearSearchFilters">
             {{ t('清空', 'Clear') }}
-          </NButton>
+          </AppButton>
         </div>
       </div>
     </section>
 
-    <NAlert v-if="favoriteError" class="favorite-error" type="error" :show-icon="false">
+    <AppAlert v-if="favoriteError" class="favorite-error" type="error" :show-icon="false">
       {{ favoriteError }}
-    </NAlert>
+    </AppAlert>
 
     <div class="metric-grid card-shop-metrics">
       <div v-for="metric in metricItems" :key="metric.key" class="metric-card card-shop-metric" :class="metric.tone">
         <div class="metric-icon">
-          <NIcon :component="metric.icon" :size="24" />
+          <AppIcon :component="metric.icon" :size="24" />
         </div>
         <div class="metric-label">{{ metric.label }}</div>
         <div class="metric-value">{{ metric.value }}</div>
@@ -887,16 +887,16 @@ function telegramHref(value: string | null | undefined): string | null {
     <section v-if="loadError" class="panel error-panel">
       <div class="panel-inner error-state">
         <strong>{{ loadError }}</strong>
-        <NButton secondary :loading="isLoading" @click="refresh">
+        <AppButton secondary :loading="isLoading" @click="refresh">
           <template #icon>
-            <NIcon :component="RefreshCw" />
+            <AppIcon :component="RefreshCw" />
           </template>
           {{ t('重试', 'Retry') }}
-        </NButton>
+        </AppButton>
       </div>
     </section>
 
-    <NSpin :show="isLoading && shops.length === 0">
+    <AppSpinner :show="isLoading && shops.length === 0">
       <section v-if="!loadError && rows.length > 0" class="shop-list">
         <article v-for="row in rows" :key="row.shopKey" class="panel shop-card" :class="{ 'is-favorite': row.isFavorite }">
           <div class="shop-card-head">
@@ -911,7 +911,7 @@ function telegramHref(value: string | null | undefined): string | null {
                   rel="noreferrer"
                   :aria-label="t('打开店铺链接', 'Open shop link')"
                 >
-                  <NIcon :component="ExternalLink" :size="16" />
+                  <AppIcon :component="ExternalLink" :size="16" />
                 </a>
               </div>
               <a
@@ -925,7 +925,7 @@ function telegramHref(value: string | null | undefined): string | null {
               </a>
             </div>
             <div class="shop-actions">
-              <NButton
+              <AppButton
                 size="small"
                 secondary
                 :type="row.isFavorite ? 'warning' : 'default'"
@@ -933,27 +933,27 @@ function telegramHref(value: string | null | undefined): string | null {
                 @click="toggleFavorite(row)"
               >
                 <template #icon>
-                  <NIcon :component="Star" />
+                  <AppIcon :component="Star" />
                 </template>
                 {{ row.isFavorite ? t('已收藏', 'Favorited') : t('收藏', 'Favorite') }}
-              </NButton>
+              </AppButton>
               <div class="shop-tags">
-                <NTag size="small" type="success" :bordered="false">
+                <AppBadge size="small" type="success" :bordered="false">
                   {{ t(`销量 ${formatCount(row.shop.shopSellCount)}`, `Sales ${formatCount(row.shop.shopSellCount)}`) }}
-                </NTag>
-                <NTag size="small" type="info" :bordered="false">
+                </AppBadge>
+                <AppBadge size="small" type="info" :bordered="false">
                   {{ t(`商品 ${formatInteger(row.productCount)}`, `${formatInteger(row.productCount)} products`) }}
-                </NTag>
-                <NTag size="small" :bordered="false">
+                </AppBadge>
+                <AppBadge size="small" :bordered="false">
                   {{ t(`库存 ${formatInteger(row.totalStock)}`, `Stock ${formatInteger(row.totalStock)}`) }}
-                </NTag>
+                </AppBadge>
               </div>
             </div>
           </div>
 
           <div class="shop-meta-row">
             <span>
-              <NIcon :component="MessageCircle" :size="15" />
+              <AppIcon :component="MessageCircle" :size="15" />
               <a
                 v-if="telegramHref(row.shop.telegram)"
                 :href="telegramHref(row.shop.telegram) ?? undefined"
@@ -965,11 +965,11 @@ function telegramHref(value: string | null | undefined): string | null {
               <template v-else>{{ displayText(row.shop.telegram) }}</template>
             </span>
             <span>
-              <NIcon :component="Clock3" :size="15" />
+              <AppIcon :component="Clock3" :size="15" />
               {{ formatDateTime(row.shop.updatedAt ?? null, { includeSecond: false }) }}
             </span>
             <span>
-              <NIcon :component="ShoppingBag" :size="15" />
+              <AppIcon :component="ShoppingBag" :size="15" />
               {{ t(`展示 ${formatInteger(row.matchedProductCount)} 个商品`, `${formatInteger(row.matchedProductCount)} products shown`) }}
             </span>
           </div>
@@ -1011,9 +1011,9 @@ function telegramHref(value: string | null | undefined): string | null {
           {{ t('当前筛选下暂无店铺', 'No shops match the current filters') }}
         </div>
       </section>
-    </NSpin>
+    </AppSpinner>
 
-    <NModal
+    <AppModal
       v-model:show="isTagModalOpen"
       preset="card"
       :title="t('管理快速搜索标签', 'Manage quick search tags')"
@@ -1025,7 +1025,7 @@ function telegramHref(value: string | null | undefined): string | null {
     >
       <div class="quick-tag-editor">
         <div class="quick-tag-add-row">
-          <NInput
+          <AppInput
             v-model:value="newTagDraft"
             clearable
             :maxlength="MAX_QUICK_TAG_LENGTH"
@@ -1033,17 +1033,17 @@ function telegramHref(value: string | null | undefined): string | null {
             :placeholder="t('新增标签', 'New tag')"
             @keydown.enter.prevent="addEditableTag"
           />
-          <NButton secondary :disabled="editableTags.length >= MAX_QUICK_TAGS" @click="addEditableTag">
+          <AppButton secondary :disabled="editableTags.length >= MAX_QUICK_TAGS" @click="addEditableTag">
             <template #icon>
-              <NIcon :component="PlusIcon" />
+              <AppIcon :component="PlusIcon" />
             </template>
             {{ t('新增', 'Add') }}
-          </NButton>
+          </AppButton>
         </div>
 
-        <NAlert v-if="tagEditorError" type="error" :show-icon="false">
+        <AppAlert v-if="tagEditorError" type="error" :show-icon="false">
           {{ tagEditorError }}
-        </NAlert>
+        </AppAlert>
 
         <div v-if="editableTags.length > 0" class="quick-tag-list">
           <div
@@ -1062,19 +1062,19 @@ function telegramHref(value: string | null | undefined): string | null {
               @dragstart="startTagDrag(index, $event)"
               @dragend="endTagDrag"
             >
-              <NIcon :component="GripVertical" />
+              <AppIcon :component="GripVertical" />
             </button>
-            <NInput
+            <AppInput
               :value="tag"
               clearable
               :maxlength="MAX_QUICK_TAG_LENGTH"
               @update:value="updateEditableTag(index, $event)"
             />
-            <NButton size="small" quaternary type="error" :aria-label="t('删除', 'Delete')" @click="removeEditableTag(index)">
+            <AppButton size="small" quaternary type="error" :aria-label="t('删除', 'Delete')" @click="removeEditableTag(index)">
               <template #icon>
-                <NIcon :component="Trash2" />
+                <AppIcon :component="Trash2" />
               </template>
-            </NButton>
+            </AppButton>
           </div>
         </div>
         <div v-else class="quick-tag-empty">
@@ -1082,23 +1082,23 @@ function telegramHref(value: string | null | undefined): string | null {
         </div>
 
         <div class="quick-tag-footer">
-          <NButton secondary @click="restoreDefaultTags">
+          <AppButton secondary @click="restoreDefaultTags">
             <template #icon>
-              <NIcon :component="RotateCcw" />
+              <AppIcon :component="RotateCcw" />
             </template>
             {{ t('恢复默认', 'Restore default') }}
-          </NButton>
+          </AppButton>
           <div class="quick-tag-footer-actions">
-            <NButton quaternary :disabled="isSavingTags" @click="closeTagManager">
+            <AppButton quaternary :disabled="isSavingTags" @click="closeTagManager">
               {{ t('取消', 'Cancel') }}
-            </NButton>
-            <NButton type="primary" :loading="isSavingTags" @click="saveQuickTags">
+            </AppButton>
+            <AppButton type="primary" :loading="isSavingTags" @click="saveQuickTags">
               {{ t('保存', 'Save') }}
-            </NButton>
+            </AppButton>
           </div>
         </div>
       </div>
-    </NModal>
+    </AppModal>
   </section>
 </template>
 

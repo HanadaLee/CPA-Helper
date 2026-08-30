@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { NAlert, NButton, NCard, NForm, NFormItem, NInput, useMessage } from 'naive-ui'
+import { AppAlert, AppButton, AppCard, AppForm, AppFormItem, AppInput, useMessage } from '@/shared/ui/app-kit'
 
 import { changeCredentials, getMe } from '@/features/auth/api/authApi'
 import { setCurrentUser } from '@/features/auth/state/currentUser'
@@ -61,42 +61,42 @@ async function handleSubmit() {
         <img :src="logoUrl" alt="">
       </div>
 
-      <NCard class="auth-card" :bordered="true">
+      <AppCard class="auth-card" :bordered="true">
         <div class="auth-heading">
           <h1>{{ t('修改密码', 'Change password') }}</h1>
           <p>{{ t('首次登录后需要完成密码更新', 'Update your password after first sign-in') }}</p>
         </div>
 
-        <NAlert v-if="errorMessage" type="error" :bordered="false" class="auth-alert">
+        <AppAlert v-if="errorMessage" type="error" :bordered="false" class="auth-alert">
           {{ errorMessage }}
-        </NAlert>
+        </AppAlert>
 
-        <NForm :model="form" label-placement="top" @submit.prevent="handleSubmit">
-          <NFormItem :label="t('账号', 'Account')" path="username">
-            <NInput v-model:value="form.username" autocomplete="username" disabled />
-          </NFormItem>
-          <NFormItem :label="t('新密码', 'New password')" path="password">
-            <NInput
+        <AppForm :model="form" label-placement="top" @submit.prevent="handleSubmit">
+          <AppFormItem :label="t('账号', 'Account')" path="username">
+            <AppInput v-model:value="form.username" autocomplete="username" disabled />
+          </AppFormItem>
+          <AppFormItem :label="t('新密码', 'New password')" path="password">
+            <AppInput
               v-model:value="form.password"
               type="password"
               show-password-on="mousedown"
               autocomplete="new-password"
             />
-          </NFormItem>
-          <NFormItem :label="t('当前密码', 'Current password')" path="current_password">
-            <NInput
+          </AppFormItem>
+          <AppFormItem :label="t('当前密码', 'Current password')" path="current_password">
+            <AppInput
               v-model:value="form.current_password"
               type="password"
               show-password-on="mousedown"
               autocomplete="current-password"
               @keyup.enter="handleSubmit"
             />
-          </NFormItem>
-          <NButton type="primary" block attr-type="submit" :loading="isLoading">
+          </AppFormItem>
+          <AppButton type="primary" block attr-type="submit" :loading="isLoading">
             {{ t('保存', 'Save') }}
-          </NButton>
-        </NForm>
-      </NCard>
+          </AppButton>
+        </AppForm>
+      </AppCard>
     </section>
   </main>
 </template>

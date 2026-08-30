@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { NButton, NForm, NFormItem, NInput, NSpace, useMessage } from 'naive-ui'
-import { ShieldCheck, UserRound } from 'lucide-vue-next'
+import { AppButton, AppForm, AppFormItem, AppInput, AppStack, useMessage } from '@/shared/ui/app-kit'
+import { ShieldCheck, UserRound } from '@lucide/vue'
 
 import { changeCredentials, getMe } from '@/features/auth/api/authApi'
 import { setCurrentUser } from '@/features/auth/state/currentUser'
@@ -64,10 +64,10 @@ onMounted(refresh)
         <h1 class="page-title">{{ t('账户设置', 'Account Settings') }}</h1>
         <p class="page-subtitle">{{ t('查看账号并更新当前登录密码', 'View your account and update the current sign-in password') }}</p>
       </div>
-      <NSpace>
-        <NButton secondary :loading="isLoading" @click="refresh">{{ t('刷新', 'Refresh') }}</NButton>
-        <NButton type="primary" :loading="isSaving" @click="saveAccount">{{ t('保存账户', 'Save account') }}</NButton>
-      </NSpace>
+      <AppStack>
+        <AppButton secondary :loading="isLoading" @click="refresh">{{ t('刷新', 'Refresh') }}</AppButton>
+        <AppButton type="primary" :loading="isSaving" @click="saveAccount">{{ t('保存账户', 'Save account') }}</AppButton>
+      </AppStack>
     </div>
 
     <div class="metric-grid account-settings-metrics">
@@ -92,30 +92,30 @@ onMounted(refresh)
     <section class="panel">
       <div class="panel-inner">
         <h2 class="section-title">{{ t('账号与密码', 'Account and Password') }}</h2>
-        <NForm :model="accountForm" label-placement="top">
+        <AppForm :model="accountForm" label-placement="top">
           <div class="form-grid">
-            <NFormItem :label="t('账号', 'Account')">
-              <NInput v-model:value="accountForm.username" autocomplete="username" disabled />
-            </NFormItem>
-            <NFormItem :label="t('当前密码', 'Current password')">
-              <NInput
+            <AppFormItem :label="t('账号', 'Account')">
+              <AppInput v-model:value="accountForm.username" autocomplete="username" disabled />
+            </AppFormItem>
+            <AppFormItem :label="t('当前密码', 'Current password')">
+              <AppInput
                 v-model:value="accountForm.current_password"
                 type="password"
                 show-password-on="mousedown"
                 autocomplete="current-password"
               />
-            </NFormItem>
-            <NFormItem :label="t('新密码', 'New password')">
-              <NInput
+            </AppFormItem>
+            <AppFormItem :label="t('新密码', 'New password')">
+              <AppInput
                 v-model:value="accountForm.password"
                 type="password"
                 show-password-on="mousedown"
                 autocomplete="new-password"
                 @keyup.enter="saveAccount"
               />
-            </NFormItem>
+            </AppFormItem>
           </div>
-        </NForm>
+        </AppForm>
       </div>
     </section>
   </section>

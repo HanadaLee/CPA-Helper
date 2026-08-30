@@ -1,0 +1,24 @@
+{
+  "$schema": "https://shadcn-vue.com/schema.json",
+  "style": "reka-nova",
+  "typescript": true,
+  "tailwind": {
+    "config": "",
+    "css": "src/styles/tokens.css",
+    "baseColor": "neutral",
+    "cssVariables": true,
+    "prefix": ""
+  },
+  "aliases": {
+    "components": "@/components",
+    "utils": "@/lib/utils",
+    "ui": "@/components/ui",
+    "composables": "@/composables",
+    "lib": "@/lib"
+  },
+  "iconLibrary": "lucide",
+  "menuColor": "default",
+  "menuAccent": "subtle",
+  "rtl": false,
+  "pointer": true
+}

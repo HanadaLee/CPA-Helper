@@ -1,26 +1,26 @@
 <script setup lang="ts">
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import {
-  NButton,
-  NDataTable,
-  NDescriptions,
-  NDescriptionsItem,
-  NDrawer,
-  NDrawerContent,
-  NDropdown,
-  NIcon,
-  NInput,
-  NInputNumber,
-  NModal,
-  NPagination,
-  NSelect,
-  NSpace,
-  NSwitch,
-  NTag,
+  AppButton,
+  AppDataTable,
+  AppDescriptions,
+  AppDescriptionsItem,
+  AppDrawer,
+  AppDrawerContent,
+  AppDropdown,
+  AppIcon,
+  AppInput,
+  AppNumberInput,
+  AppModal,
+  AppPagination,
+  AppSelect,
+  AppStack,
+  AppSwitch,
+  AppBadge,
   useMessage,
   type DataTableColumns,
   type DataTableRowKey,
-} from 'naive-ui'
+} from '@/shared/ui/app-kit'
 import {
   Activity,
   ArrowLeft,
@@ -36,7 +36,7 @@ import {
   Trash2,
   Upload,
   Users,
-} from 'lucide-vue-next'
+} from '@lucide/vue'
 
 import {
   bulkDeleteCodexKeeperAccounts,
@@ -2301,17 +2301,17 @@ const manageActionColumn = computed<DataTableColumns<CodexKeeperAccount>[number]
   fixed: 'right',
   render: (row: CodexKeeperAccount) => {
     return h(
-      NSpace,
+      AppStack,
       { class: 'account-actions', size: 4, wrap: false },
       {
         default: () => [
           h(
-            NButton,
+            AppButton,
             { size: 'small', quaternary: true, onClick: () => openDetail(row) },
             { default: () => t('详情', 'Details') },
           ),
           h(
-            NButton,
+            AppButton,
             {
               size: 'small',
               quaternary: true,
@@ -2323,7 +2323,7 @@ const manageActionColumn = computed<DataTableColumns<CodexKeeperAccount>[number]
             { default: () => row.disabled ? t('启用', 'Enable') : t('禁用', 'Disable') },
           ),
           h(
-            NButton,
+            AppButton,
             {
               size: 'small',
               quaternary: true,
@@ -2335,7 +2335,7 @@ const manageActionColumn = computed<DataTableColumns<CodexKeeperAccount>[number]
             { default: () => t('删除', 'Delete') },
           ),
           h(
-            NButton,
+            AppButton,
             {
               size: 'small',
               quaternary: true,
@@ -2359,7 +2359,7 @@ const readOnlyActionColumn = computed<DataTableColumns<CodexKeeperAccount>[numbe
   fixed: 'right',
   render: (row: CodexKeeperAccount) =>
     h(
-      NButton,
+      AppButton,
       { size: 'small', quaternary: true, onClick: () => openDetail(row) },
       { default: () => t('详情', 'Details') },
     ),
@@ -2427,28 +2427,28 @@ onBeforeUnmount(() => {
         <p class="page-subtitle">{{ accountPageSubtitle }}</p>
       </div>
       <div class="header-actions">
-        <NButton
+        <AppButton
           v-if="canManageAccounts"
           type="primary"
           @click="openCodexOAuthDialog"
         >
           <template #icon>
-            <NIcon :component="LogIn" />
+            <AppIcon :component="LogIn" />
           </template>
           {{ t('OAuth 登录', 'OAuth Login') }}
-        </NButton>
-        <NButton
+        </AppButton>
+        <AppButton
           v-if="canManageAccounts"
           type="primary"
           :loading="isUploadingAuthFiles"
           @click="triggerAuthFileUpload"
         >
           <template #icon>
-            <NIcon :component="Upload" />
+            <AppIcon :component="Upload" />
           </template>
           {{ t('上传文件', 'Upload Files') }}
-        </NButton>
-        <NButton
+        </AppButton>
+        <AppButton
           v-if="canManageAccounts"
           type="primary"
           :loading="isStartingAccountInspection || isAccountInspectionRunning"
@@ -2456,16 +2456,16 @@ onBeforeUnmount(() => {
           @click="startAccountInspection"
         >
           <template #icon>
-            <NIcon :component="ShieldCheck" />
+            <AppIcon :component="ShieldCheck" />
           </template>
           {{ t('账号巡检', 'Inspect Accounts') }}
-        </NButton>
-        <NButton secondary :loading="isLoading" @click="reloadAccounts">
+        </AppButton>
+        <AppButton secondary :loading="isLoading" @click="reloadAccounts">
           <template #icon>
-            <NIcon :component="RefreshCw" />
+            <AppIcon :component="RefreshCw" />
           </template>
           {{ t('重新加载', 'Reload') }}
-        </NButton>
+        </AppButton>
         <input
           ref="authFileInput"
           class="auth-file-input"
@@ -2484,9 +2484,9 @@ onBeforeUnmount(() => {
         </div>
         <div class="metric-label">{{ t('运行状态', 'Run Status') }}</div>
         <div class="metric-value inspection-status-value" :title="keeperStatusDetailText">
-          <NTag class="inspection-status-tag" :type="keeperStateType" size="small" :bordered="false">
+          <AppBadge class="inspection-status-tag" :type="keeperStateType" size="small" :bordered="false">
             {{ keeperStatusDetailText }}
-          </NTag>
+          </AppBadge>
         </div>
         <div class="metric-footnote">{{ keeperStatusFootnoteText }}</div>
       </div>
@@ -2568,20 +2568,20 @@ onBeforeUnmount(() => {
               </template>
             </p>
           </div>
-          <NTag v-if="activeFilterCount > 0" size="small" type="info" :bordered="false">
+          <AppBadge v-if="activeFilterCount > 0" size="small" type="info" :bordered="false">
             {{ t(`已筛选 ${activeFilterCount} 项`, `${activeFilterCount} filters active`) }}
-          </NTag>
+          </AppBadge>
         </div>
         <div class="filter-grid">
-          <NInput v-model:value="filters.keyword" clearable :placeholder="t('搜索账号或邮箱', 'Search account or email')" />
-          <NSelect
+          <AppInput v-model:value="filters.keyword" clearable :placeholder="t('搜索账号或邮箱', 'Search account or email')" />
+          <AppSelect
             v-model:value="filters.accountType"
             :options="accountTypeOptions"
             clearable
             filterable
             :placeholder="t('账号类型', 'Account Type')"
           />
-          <NSelect
+          <AppSelect
             v-model:value="filters.priority"
             :options="priorityFilterOptions"
           />
@@ -2593,50 +2593,50 @@ onBeforeUnmount(() => {
           <div class="account-section-actions-row">
             <div class="sort-control-row" :aria-label="t('账号排序', 'Account Sorting')">
               <span class="sort-control-label">{{ t('排序', 'Sort') }}</span>
-              <NDropdown trigger="click" :options="quotaSortOptions" @select="handleQuotaSortSelect">
-                <NButton
+              <AppDropdown trigger="click" :options="quotaSortOptions" @select="handleQuotaSortSelect">
+                <AppButton
                   secondary
                   size="small"
                   :type="accountSort.key === 'quotaDay' || accountSort.key === 'quotaWeek' ? 'primary' : 'default'"
                 >
                   {{ activeQuotaSortLabel ? t(`额度窗口：${activeQuotaSortLabel} ${sortDirectionMark}`, `Quota Window: ${activeQuotaSortLabel} ${sortDirectionMark}`) : t('额度窗口', 'Quota Window') }}
-                </NButton>
-              </NDropdown>
-              <NButton
+                </AppButton>
+              </AppDropdown>
+              <AppButton
                 secondary
                 size="small"
                 :type="isAccountSortActive('accountType') ? 'primary' : 'default'"
                 @click="toggleAccountSort('accountType')"
               >
                 {{ t('类型', 'Type') }} {{ accountSortMark('accountType') }}
-              </NButton>
-              <NButton
+              </AppButton>
+              <AppButton
                 secondary
                 size="small"
                 :type="isAccountSortActive('status') ? 'primary' : 'default'"
                 @click="toggleAccountSort('status')"
               >
                 {{ t('状态', 'Status') }} {{ accountSortMark('status') }}
-              </NButton>
-              <NButton
+              </AppButton>
+              <AppButton
                 secondary
                 size="small"
                 :type="isAccountSortActive('priority') ? 'primary' : 'default'"
                 @click="toggleAccountSort('priority')"
               >
                 {{ t('优先级', 'Priority') }} {{ accountSortMark('priority') }}
-              </NButton>
-              <NButton
+              </AppButton>
+              <AppButton
                 secondary
                 size="small"
                 :type="isAccountSortActive('lastCheckedAt') ? 'primary' : 'default'"
                 @click="toggleAccountSort('lastCheckedAt')"
               >
                 {{ t('最近巡检', 'Last Inspection') }} {{ accountSortMark('lastCheckedAt') }}
-              </NButton>
+              </AppButton>
             </div>
             <div v-if="canManageAccounts" class="account-section-actions">
-              <NButton
+              <AppButton
                 secondary
                 type="primary"
                 size="small"
@@ -2645,11 +2645,11 @@ onBeforeUnmount(() => {
                 @click="confirmToggleSelectedAccounts('enable')"
               >
                 <template #icon>
-                  <NIcon :component="ShieldCheck" />
+                  <AppIcon :component="ShieldCheck" />
                 </template>
                 {{ t('启用', 'Enable') }}
-              </NButton>
-              <NButton
+              </AppButton>
+              <AppButton
                 secondary
                 type="warning"
                 size="small"
@@ -2658,11 +2658,11 @@ onBeforeUnmount(() => {
                 @click="confirmToggleSelectedAccounts('disable')"
               >
                 <template #icon>
-                  <NIcon :component="PauseCircle" />
+                  <AppIcon :component="PauseCircle" />
                 </template>
                 {{ t('禁用', 'Disable') }}
-              </NButton>
-              <NButton
+              </AppButton>
+              <AppButton
                 secondary
                 type="primary"
                 size="small"
@@ -2671,11 +2671,11 @@ onBeforeUnmount(() => {
                 @click="refreshSelectedAccounts"
               >
                 <template #icon>
-                  <NIcon :component="RefreshCw" />
+                  <AppIcon :component="RefreshCw" />
                 </template>
                 {{ t('刷新', 'Refresh') }}
-              </NButton>
-              <NButton
+              </AppButton>
+              <AppButton
                 secondary
                 type="error"
                 size="small"
@@ -2684,13 +2684,13 @@ onBeforeUnmount(() => {
                 @click="openBulkDeleteDialog"
               >
                 <template #icon>
-                  <NIcon :component="Trash2" />
+                  <AppIcon :component="Trash2" />
                 </template>
                 {{ t('删除', 'Delete') }}
-              </NButton>
+              </AppButton>
             </div>
           </div>
-          <NDataTable
+          <AppDataTable
             class="account-table"
             size="small"
             :loading="tableLoading"
@@ -2708,7 +2708,7 @@ onBeforeUnmount(() => {
                 {{ showListLoadingState ? t('账号加载中...', 'Loading accounts...') : t('当前筛选下暂无账号', 'No accounts match the current filter') }}
               </div>
             </template>
-          </NDataTable>
+          </AppDataTable>
         </section>
       </div>
 
@@ -2720,7 +2720,7 @@ onBeforeUnmount(() => {
           </span>
           <div class="page-size-control">
             <span>{{ t('每页显示', 'Show') }}</span>
-            <NSelect
+            <AppSelect
               v-model:value="accountDisplaySize"
               class="display-size-select"
               size="small"
@@ -2729,7 +2729,7 @@ onBeforeUnmount(() => {
             <span>{{ t('条', 'per page') }}</span>
           </div>
         </div>
-        <NPagination
+        <AppPagination
           v-if="showAccountPagination"
           v-model:page="accountListPage"
           size="small"
@@ -2745,66 +2745,66 @@ onBeforeUnmount(() => {
       @refresh="loadKeeperStatus"
     />
 
-    <NDrawer v-model:show="detailOpen" placement="right" :width="420">
-      <NDrawerContent>
+    <AppDrawer v-model:show="detailOpen" placement="right" :width="420">
+      <AppDrawerContent>
         <template #header>
           <div class="detail-drawer-header">
-            <NButton quaternary size="small" class="detail-back-button" @click="detailOpen = false">
+            <AppButton quaternary size="small" class="detail-back-button" @click="detailOpen = false">
               <template #icon>
-                <NIcon :component="ArrowLeft" />
+                <AppIcon :component="ArrowLeft" />
               </template>
               {{ t('返回', 'Back') }}
-            </NButton>
+            </AppButton>
             <span class="detail-drawer-title">{{ t('账号详情', 'Account Details') }}</span>
           </div>
         </template>
-        <NDescriptions v-if="selectedAccount" label-placement="left" :column="1" size="small" bordered>
-          <NDescriptionsItem :label="t('账号', 'Account')">{{ selectedAccount.name }}</NDescriptionsItem>
-          <NDescriptionsItem :label="t('邮箱', 'Email')">{{ selectedAccount.email ?? '-' }}</NDescriptionsItem>
-          <NDescriptionsItem v-if="canManageAccounts" :label="t('备注', 'Note')">
+        <AppDescriptions v-if="selectedAccount" label-placement="left" :column="1" size="small" bordered>
+          <AppDescriptionsItem :label="t('账号', 'Account')">{{ selectedAccount.name }}</AppDescriptionsItem>
+          <AppDescriptionsItem :label="t('邮箱', 'Email')">{{ selectedAccount.email ?? '-' }}</AppDescriptionsItem>
+          <AppDescriptionsItem v-if="canManageAccounts" :label="t('备注', 'Note')">
             {{ isSelectedAccountNoteLoading ? t('加载中...', 'Loading...') : (selectedAccountNote ?? '-') }}
-          </NDescriptionsItem>
-          <NDescriptionsItem :label="t('账号类型', 'Account Type')">
+          </AppDescriptionsItem>
+          <AppDescriptionsItem :label="t('账号类型', 'Account Type')">
             {{ accountTypeLabel(selectedAccount.account_type) }}
-          </NDescriptionsItem>
-          <NDescriptionsItem :label="t('启用状态', 'Enabled Status')">
+          </AppDescriptionsItem>
+          <AppDescriptionsItem :label="t('启用状态', 'Enabled Status')">
             {{ selectedAccount.disabled ? t('已禁用', 'Disabled') : t('启用中', 'Enabled') }}
-          </NDescriptionsItem>
-          <NDescriptionsItem :label="t('当前优先级', 'Current Priority')">
+          </AppDescriptionsItem>
+          <AppDescriptionsItem :label="t('当前优先级', 'Current Priority')">
             {{ accountPriority(selectedAccount) }}
-          </NDescriptionsItem>
-          <NDescriptionsItem :label="t('类型默认优先级', 'Type Default Priority')">
+          </AppDescriptionsItem>
+          <AppDescriptionsItem :label="t('类型默认优先级', 'Type Default Priority')">
             {{ defaultPriority(selectedAccount) ?? '-' }}
-          </NDescriptionsItem>
-          <NDescriptionsItem v-if="shouldShowQuotaWindow(selectedAccount)" :label="t('额度窗口', 'Quota Window')">
+          </AppDescriptionsItem>
+          <AppDescriptionsItem v-if="shouldShowQuotaWindow(selectedAccount)" :label="t('额度窗口', 'Quota Window')">
             {{ quotaText(selectedAccount) }}
-          </NDescriptionsItem>
-          <NDescriptionsItem :label="t('状态码', 'Status Code')">
+          </AppDescriptionsItem>
+          <AppDescriptionsItem :label="t('状态码', 'Status Code')">
             {{ selectedAccount.last_status_code ?? '-' }}
-          </NDescriptionsItem>
-          <NDescriptionsItem :label="t('最近健康', 'Last Healthy')">
+          </AppDescriptionsItem>
+          <AppDescriptionsItem :label="t('最近健康', 'Last Healthy')">
             {{ formatDateTime(selectedAccount.last_healthy_at) }}
-          </NDescriptionsItem>
-          <NDescriptionsItem :label="t('最近巡检', 'Last Inspection')">
+          </AppDescriptionsItem>
+          <AppDescriptionsItem :label="t('最近巡检', 'Last Inspection')">
             {{ formatDateTime(selectedAccount.last_checked_at) }}
-          </NDescriptionsItem>
-          <NDescriptionsItem :label="t('最近操作', 'Latest Action')">
+          </AppDescriptionsItem>
+          <AppDescriptionsItem :label="t('最近操作', 'Latest Action')">
             {{ latestActionText(selectedAccount) }}
-          </NDescriptionsItem>
-        </NDescriptions>
+          </AppDescriptionsItem>
+        </AppDescriptions>
         <div v-if="selectedAccount && canManageAccounts" class="detail-action-row">
-          <NSpace :size="8" wrap>
-            <NButton
+          <AppStack :size="8" wrap>
+            <AppButton
               size="small"
               secondary
               @click="openAuthFileEditor(selectedAccount)"
             >
               <template #icon>
-                <NIcon :component="Pencil" />
+                <AppIcon :component="Pencil" />
               </template>
               {{ t('认证文件详情 / 编辑', 'Auth File Details / Edit') }}
-            </NButton>
-            <NButton
+            </AppButton>
+            <AppButton
               size="small"
               type="primary"
               secondary
@@ -2813,8 +2813,8 @@ onBeforeUnmount(() => {
               @click="refreshAccount(selectedAccount, { closeDetail: true })"
             >
               {{ t('刷新', 'Refresh') }}
-            </NButton>
-            <NButton
+            </AppButton>
+            <AppButton
               v-if="selectedAccount.disabled"
               size="small"
               type="primary"
@@ -2824,8 +2824,8 @@ onBeforeUnmount(() => {
               @click="confirmEnableAccount(selectedAccount)"
             >
               {{ t('启用', 'Enable') }}
-            </NButton>
-            <NButton
+            </AppButton>
+            <AppButton
               v-else
               size="small"
               type="warning"
@@ -2835,8 +2835,8 @@ onBeforeUnmount(() => {
               @click="confirmDisableAccount(selectedAccount)"
             >
               {{ t('禁用', 'Disable') }}
-            </NButton>
-            <NButton
+            </AppButton>
+            <AppButton
               size="small"
               secondary
               :disabled="isRowActing(selectedAccount) || isBulkOperationRunning"
@@ -2844,8 +2844,8 @@ onBeforeUnmount(() => {
               @click="openPriorityDialog(selectedAccount)"
             >
               {{ t('修改优先级', 'Change Priority') }}
-            </NButton>
-            <NButton
+            </AppButton>
+            <AppButton
               size="small"
               type="error"
               secondary
@@ -2854,13 +2854,13 @@ onBeforeUnmount(() => {
               @click="confirmDeleteAccount(selectedAccount)"
             >
               {{ t('删除', 'Delete') }}
-            </NButton>
-          </NSpace>
+            </AppButton>
+          </AppStack>
         </div>
-      </NDrawerContent>
-    </NDrawer>
+      </AppDrawerContent>
+    </AppDrawer>
 
-    <NModal
+    <AppModal
       v-if="canManageAccounts"
       :show="oauthDialogOpen"
       preset="card"
@@ -2875,9 +2875,9 @@ onBeforeUnmount(() => {
         </p>
         <div class="oauth-status-row">
           <span>{{ t('认证状态', 'Authentication status') }}</span>
-          <NTag :type="oauthStatusType" size="small" :bordered="false">
+          <AppBadge :type="oauthStatusType" size="small" :bordered="false">
             {{ oauthStatusText }}
-          </NTag>
+          </AppBadge>
         </div>
         <p
           v-if="oauthError"
@@ -2886,49 +2886,49 @@ onBeforeUnmount(() => {
         >
           {{ oauthError }}
         </p>
-        <NButton
+        <AppButton
           v-if="oauthDialogStatus === 'idle'"
           type="primary"
           :loading="isStartingOAuth"
           @click="startCodexOAuth"
         >
           {{ t('开始 Codex 登录', 'Start Codex Login') }}
-        </NButton>
+        </AppButton>
         <div v-if="oauthAuthURL" class="oauth-dialog-section">
           <label>{{ t('授权链接', 'Authorization link') }}</label>
-          <NInput
+          <AppInput
             type="textarea"
             readonly
             :value="oauthAuthURL"
             :autosize="{ minRows: 2, maxRows: 4 }"
           />
-          <NSpace>
-            <NButton type="primary" secondary @click="openCodexOAuthURL">
+          <AppStack>
+            <AppButton type="primary" secondary @click="openCodexOAuthURL">
               <template #icon>
-                <NIcon :component="ExternalLink" />
+                <AppIcon :component="ExternalLink" />
               </template>
               {{ t('打开链接', 'Open Link') }}
-            </NButton>
-            <NButton secondary @click="copyCodexOAuthURL">
+            </AppButton>
+            <AppButton secondary @click="copyCodexOAuthURL">
               <template #icon>
-                <NIcon :component="Copy" />
+                <AppIcon :component="Copy" />
               </template>
               {{ t('复制链接', 'Copy Link') }}
-            </NButton>
-          </NSpace>
+            </AppButton>
+          </AppStack>
         </div>
         <div v-if="oauthDialogStatus === 'waiting'" class="oauth-dialog-section">
           <label>{{ t('回调 URL', 'Callback URL') }}</label>
           <p class="oauth-dialog-hint">
             {{ t('如果当前浏览器无法访问 localhost 回调地址，请复制浏览器最终跳转后的完整 URL 并粘贴到这里。', 'If this browser cannot reach the localhost callback, paste the complete URL from the browser after its final redirect here.') }}
           </p>
-          <NInput
+          <AppInput
             v-model:value="oauthCallbackURL"
             type="textarea"
             :autosize="{ minRows: 3, maxRows: 5 }"
             :placeholder="t('粘贴完整回调 URL', 'Paste the complete callback URL')"
           />
-          <NButton
+          <AppButton
             type="primary"
             secondary
             :disabled="!oauthCallbackURL.trim()"
@@ -2936,30 +2936,30 @@ onBeforeUnmount(() => {
             @click="submitCodexOAuthCallbackURL"
           >
             {{ t('提交回调 URL', 'Submit Callback URL') }}
-          </NButton>
+          </AppButton>
         </div>
-        <NButton
+        <AppButton
           v-if="oauthDialogStatus === 'success' || oauthDialogStatus === 'error'"
           secondary
           :loading="isStartingOAuth"
           @click="startCodexOAuth"
         >
           {{ t('登录另一个账号', 'Sign in to another account') }}
-        </NButton>
+        </AppButton>
       </div>
       <template #footer>
-        <NSpace justify="end">
-          <NButton
+        <AppStack justify="end">
+          <AppButton
             :disabled="isStartingOAuth || isSubmittingOAuthCallback"
             @click="closeCodexOAuthDialog"
           >
             {{ t('关闭', 'Close') }}
-          </NButton>
-        </NSpace>
+          </AppButton>
+        </AppStack>
       </template>
-    </NModal>
+    </AppModal>
 
-    <NModal
+    <AppModal
       v-if="canManageAccounts"
       :show="authFileEditor !== null"
       preset="card"
@@ -2978,7 +2978,7 @@ onBeforeUnmount(() => {
           </div>
           <div class="auth-file-editor-json-block">
             <label>{{ t('认证文件信息（info）', 'Auth file info (info)') }}</label>
-            <NInput
+            <AppInput
               type="textarea"
               readonly
               :value="authFileEditor.fileInfoText"
@@ -2991,7 +2991,7 @@ onBeforeUnmount(() => {
                 ? t('认证文件 JSON（预览）', 'Auth file JSON (preview)')
                 : t('下载内容（已截断）', 'Downloaded content (truncated)') }}
             </label>
-            <NInput
+            <AppInput
               v-if="authFileEditor.json"
               type="textarea"
               readonly
@@ -3003,24 +3003,24 @@ onBeforeUnmount(() => {
           <div v-if="authFileEditor.json" class="auth-file-editor-fields">
             <div class="auth-file-editor-field">
               <label>{{ t('前缀（prefix）', 'Prefix (prefix)') }}</label>
-              <NInput v-model:value="authFileEditor.prefix" />
+              <AppInput v-model:value="authFileEditor.prefix" />
             </div>
             <div class="auth-file-editor-field">
               <label>{{ t('代理 URL（proxy_url）', 'Proxy URL (proxy_url)') }}</label>
-              <NInput v-model:value="authFileEditor.proxyUrl" :placeholder="t('socks5://username:password@proxy_ip:port/', 'socks5://username:password@proxy_ip:port/')" />
+              <AppInput v-model:value="authFileEditor.proxyUrl" :placeholder="t('socks5://username:password@proxy_ip:port/', 'socks5://username:password@proxy_ip:port/')" />
             </div>
             <div class="auth-file-editor-field">
               <label>{{ t('优先级（priority）', 'Priority (priority)') }}</label>
-              <NInput v-model:value="authFileEditor.priority" :placeholder="t('例如：10 或 -1', 'For example: 10 or -1')" />
+              <AppInput v-model:value="authFileEditor.priority" :placeholder="t('例如：10 或 -1', 'For example: 10 or -1')" />
               <span class="auth-file-editor-hint">{{ t('仅支持整数；数值越大优先级越高。', 'Integers only; higher values have higher priority.') }}</span>
             </div>
             <div class="auth-file-editor-field auth-file-editor-switch-field">
               <label>{{ t('WebSockets（websockets）', 'WebSockets (websockets)') }}</label>
-              <NSwitch v-model:value="authFileEditor.websockets" @update:value="authFileEditor.websocketsTouched = true" />
+              <AppSwitch v-model:value="authFileEditor.websockets" @update:value="authFileEditor.websocketsTouched = true" />
             </div>
             <div class="auth-file-editor-field auth-file-editor-wide-field">
               <label>{{ t('自定义请求头（headers）', 'Custom headers (headers)') }}</label>
-              <NInput
+              <AppInput
                 type="textarea"
                 :value="authFileEditor.headersText"
                 :placeholder="'{\n  &quot;Header-Name&quot;: &quot;value&quot;\n}'"
@@ -3032,7 +3032,7 @@ onBeforeUnmount(() => {
             </div>
             <div class="auth-file-editor-field auth-file-editor-wide-field">
               <label>{{ t('备注（note）', 'Note (note)') }}</label>
-              <NInput
+              <AppInput
                 v-model:value="authFileEditor.note"
                 type="textarea"
                 :autosize="{ minRows: 2, maxRows: 4 }"
@@ -3044,30 +3044,30 @@ onBeforeUnmount(() => {
         </template>
       </div>
       <template #footer>
-        <NSpace justify="end">
-          <NButton :disabled="authFileEditor?.saving === true" @click="closeAuthFileEditor">
+        <AppStack justify="end">
+          <AppButton :disabled="authFileEditor?.saving === true" @click="closeAuthFileEditor">
             {{ authFileEditorDirty ? t('取消', 'Cancel') : t('关闭', 'Close') }}
-          </NButton>
-          <NButton
+          </AppButton>
+          <AppButton
             secondary
             :disabled="authFileEditor?.saving === true || !authFileEditorUpdatedText"
             @click="copyAuthFileEditorText"
           >
             {{ t('复制', 'Copy') }}
-          </NButton>
-          <NButton
+          </AppButton>
+          <AppButton
             type="primary"
             :loading="authFileEditor?.saving === true"
             :disabled="!authFileEditorDirty || !!authFileEditor?.headersError || authFileEditor?.loading === true"
             @click="saveAuthFileEditor"
           >
             {{ t('保存', 'Save') }}
-          </NButton>
-        </NSpace>
+          </AppButton>
+        </AppStack>
       </template>
-    </NModal>
+    </AppModal>
 
-    <NModal
+    <AppModal
       v-if="canManageAccounts"
       v-model:show="accountConfirmDialog.show"
       preset="dialog"
@@ -3076,22 +3076,22 @@ onBeforeUnmount(() => {
     >
       <p class="account-confirm-content">{{ accountConfirmDialog.content }}</p>
       <template #action>
-        <NSpace justify="end">
-          <NButton :disabled="isAccountConfirmSubmitting" @click="accountConfirmDialog.show = false">
+        <AppStack justify="end">
+          <AppButton :disabled="isAccountConfirmSubmitting" @click="accountConfirmDialog.show = false">
             {{ t('取消', 'Cancel') }}
-          </NButton>
-          <NButton
+          </AppButton>
+          <AppButton
             :type="accountConfirmDialog.type"
             :loading="isAccountConfirmSubmitting"
             @click="submitAccountConfirm"
           >
             {{ accountConfirmDialog.positiveText }}
-          </NButton>
-        </NSpace>
+          </AppButton>
+        </AppStack>
       </template>
-    </NModal>
+    </AppModal>
 
-    <NModal
+    <AppModal
       v-if="canManageAccounts"
       v-model:show="bulkDeleteDialog.show"
       preset="dialog"
@@ -3108,21 +3108,21 @@ onBeforeUnmount(() => {
         </div>
       </div>
       <template #action>
-        <NSpace justify="end">
-          <NButton :disabled="isBulkDeleting" @click="bulkDeleteDialog.show = false">{{ t('取消', 'Cancel') }}</NButton>
-          <NButton
+        <AppStack justify="end">
+          <AppButton :disabled="isBulkDeleting" @click="bulkDeleteDialog.show = false">{{ t('取消', 'Cancel') }}</AppButton>
+          <AppButton
             type="error"
             :disabled="selectedAccountCount === 0"
             :loading="isBulkDeleting"
             @click="submitBulkDelete"
           >
             {{ t('确认删除', 'Confirm Delete') }}
-          </NButton>
-        </NSpace>
+          </AppButton>
+        </AppStack>
       </template>
-    </NModal>
+    </AppModal>
 
-    <NModal
+    <AppModal
       v-if="canManageAccounts"
       v-model:show="priorityDialog.show"
       preset="dialog"
@@ -3130,12 +3130,12 @@ onBeforeUnmount(() => {
       :style="{ width: 'min(460px, calc(100vw - 32px))' }"
     >
       <div class="priority-dialog">
-        <NSelect
+        <AppSelect
           :value="priorityDialog.mode"
           :options="priorityModeOptions"
           @update:value="(value) => setPriorityDialogMode(value as PriorityMode)"
         />
-        <NInputNumber
+        <AppNumberInput
           v-if="priorityDialog.mode !== 'default'"
           v-model:value="priorityDialog.value"
           :precision="0"
@@ -3144,9 +3144,9 @@ onBeforeUnmount(() => {
         <p class="priority-hint">{{ priorityDialogHint }}</p>
       </div>
       <template #action>
-        <NSpace justify="end">
-          <NButton @click="priorityDialog.show = false">{{ t('取消', 'Cancel') }}</NButton>
-          <NButton
+        <AppStack justify="end">
+          <AppButton @click="priorityDialog.show = false">{{ t('取消', 'Cancel') }}</AppButton>
+          <AppButton
             type="primary"
             :disabled="!canSubmitPriority"
             :loading="
@@ -3157,10 +3157,10 @@ onBeforeUnmount(() => {
             @click="submitPriorityDialog"
           >
             {{ t('确认', 'Confirm') }}
-          </NButton>
-        </NSpace>
+          </AppButton>
+        </AppStack>
       </template>
-    </NModal>
+    </AppModal>
   </section>
 </template>
 

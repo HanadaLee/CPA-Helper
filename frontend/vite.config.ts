@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath, URL } from 'node:url'
 
 import vue from '@vitejs/plugin-vue'
+import tailwindcss from '@tailwindcss/vite'
 import { defineConfig } from 'vite'
 
 function readAppVersion(): string {
@@ -15,6 +16,7 @@ const apiProxyTarget = process.env.CPA_HELPER_PROXY_TARGET?.trim() || 'http://12
 export default defineConfig({
   plugins: [
     vue(),
+    tailwindcss(),
     {
       name: 'cpa-helper-html-assets',
       transformIndexHtml: {

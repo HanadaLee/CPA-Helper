@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, type Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { NButton, NDatePicker, NSelect, NSpin, useMessage } from 'naive-ui'
+import { AppButton, AppDateTimeRange, AppSelect, AppSpinner, useMessage } from '@/shared/ui/app-kit'
 import {
   CircleDollarSign,
   ClipboardList,
   Gauge,
   Timer,
   Zap,
-} from 'lucide-vue-next'
+} from '@lucide/vue'
 
 import { getUsageOptions, getUsageOverview } from '@/features/usage/api/usageApi'
 import { getCurrentUserQuota } from '@/features/users/api/usersApi'
@@ -1252,7 +1252,7 @@ onBeforeUnmount(() => {
         <span class="refresh-status" :class="{ 'is-error': autoRefreshError }">
           {{ refreshStatusText }}
         </span>
-        <NButton v-if="canOpenRecords" secondary @click="goRecords()">{{ t('明细', 'Records') }}</NButton>
+        <AppButton v-if="canOpenRecords" secondary @click="goRecords()">{{ t('明细', 'Records') }}</AppButton>
       </div>
     </div>
 
@@ -1262,14 +1262,14 @@ onBeforeUnmount(() => {
           <strong>{{ t('筛选', 'Filters') }}</strong>
           <span>{{ dashboardRangeLabel }}</span>
         </div>
-        <NButton class="filter-toggle" secondary size="small" @click="filtersExpanded = !filtersExpanded">
+        <AppButton class="filter-toggle" secondary size="small" @click="filtersExpanded = !filtersExpanded">
           {{ filtersExpanded ? t('收起', 'Collapse') : t('展开', 'Expand') }}
-        </NButton>
+        </AppButton>
       </div>
       <div class="panel-inner filter-toolbar">
         <div class="time-row">
           <div class="quick-ranges" role="group" :aria-label="t('快捷时间范围', 'Quick time ranges')">
-            <NButton
+            <AppButton
               v-for="option in quickRangeOptions"
               :key="option.key"
               class="quick-range-button"
@@ -1279,9 +1279,9 @@ onBeforeUnmount(() => {
               @click="applyQuickRange(option.key)"
             >
               {{ option.label }}
-            </NButton>
+            </AppButton>
           </div>
-          <NDatePicker
+          <AppDateTimeRange
             :value="dateRange"
             class="range-picker"
             type="datetimerange"
@@ -1290,7 +1290,7 @@ onBeforeUnmount(() => {
           />
         </div>
         <div class="field-row" :class="{ 'is-account-scope': isAccountScope }">
-          <NSelect
+          <AppSelect
             v-if="!isAccountScope"
             :value="filterForm.user_id"
             :options="selectOptions.users"
@@ -1299,7 +1299,7 @@ onBeforeUnmount(() => {
             :placeholder="t('用户昵称', 'User nickname')"
             @update:value="handleUserChange"
           />
-          <NSelect
+          <AppSelect
             :value="filterForm.api_key_description"
             :options="selectOptions.apiKeyDescriptions"
             clearable
@@ -1307,7 +1307,7 @@ onBeforeUnmount(() => {
             :placeholder="t('KEY 描述', 'Key description')"
             @update:value="handleApiKeyChange"
           />
-          <NSelect
+          <AppSelect
             :value="filterForm.provider"
             :options="selectOptions.providers"
             clearable
@@ -1315,7 +1315,7 @@ onBeforeUnmount(() => {
             :placeholder="t('服务商', 'Provider')"
             @update:value="handleProviderChange"
           />
-          <NSelect
+          <AppSelect
             :value="filterForm.model"
             :options="selectOptions.models"
             clearable
@@ -1323,7 +1323,7 @@ onBeforeUnmount(() => {
             :placeholder="t('模型', 'Model')"
             @update:value="handleModelChange"
           />
-          <NSelect
+          <AppSelect
             :value="filterForm.endpoint"
             :options="selectOptions.endpoints"
             clearable
@@ -1332,19 +1332,19 @@ onBeforeUnmount(() => {
             @update:value="handleEndpointChange"
           />
           <div class="status-actions">
-            <NSelect
+            <AppSelect
               :value="filterForm.failed"
               class="status-select"
               :options="failedFilterOptions"
               @update:value="handleFailedChange"
             />
-            <NButton secondary :loading="isLoading" @click="refresh()">{{ t('筛选', 'Filter') }}</NButton>
+            <AppButton secondary :loading="isLoading" @click="refresh()">{{ t('筛选', 'Filter') }}</AppButton>
           </div>
         </div>
       </div>
     </section>
 
-    <NSpin :show="isLoading">
+    <AppSpinner :show="isLoading">
       <div class="metric-grid dashboard-metric-grid">
         <div
           v-for="metric in metricCards"
@@ -1500,7 +1500,7 @@ onBeforeUnmount(() => {
             <section class="panel anomaly-panel area-anomaly">
               <div class="panel-heading-row dashboard-panel-heading">
                 <h2 class="section-title">{{ t('异常概览', 'Anomaly overview') }}</h2>
-                <NButton v-if="canOpenRecords" size="small" quaternary @click="goRecords({ failed: true })">{{ t('更多', 'More') }}</NButton>
+                <AppButton v-if="canOpenRecords" size="small" quaternary @click="goRecords({ failed: true })">{{ t('更多', 'More') }}</AppButton>
               </div>
               <div class="panel-inner compact-panel-inner">
                 <div class="anomaly-stat-grid">
@@ -1577,7 +1577,7 @@ onBeforeUnmount(() => {
             <section class="panel ranking-panel area-primary-ranking">
               <div class="panel-heading-row dashboard-panel-heading">
                 <h2 class="section-title">{{ rankingTitle }}</h2>
-                <NSelect
+                <AppSelect
                   class="ranking-sort-select"
                   size="tiny"
                   :value="primaryRankingSort"
@@ -1608,9 +1608,9 @@ onBeforeUnmount(() => {
                       <strong>{{ rankingPrimaryText(row, primaryRankingSort) }}</strong>
                       <span>{{ t(`${formatInteger(row.records)} 次`, `${formatInteger(row.records)} requests`) }}</span>
                     </div>
-                    <NButton v-if="canOpenRecords" size="tiny" quaternary @click="goRecords(rankingFilters(row))">
+                    <AppButton v-if="canOpenRecords" size="tiny" quaternary @click="goRecords(rankingFilters(row))">
                       {{ t('明细', 'Records') }}
-                    </NButton>
+                    </AppButton>
                   </div>
                 </div>
               </div>
@@ -1619,7 +1619,7 @@ onBeforeUnmount(() => {
             <section class="panel ranking-panel area-model-ranking">
               <div class="panel-heading-row dashboard-panel-heading">
                 <h2 class="section-title">{{ t('模型排行', 'Model ranking') }}</h2>
-                <NSelect
+                <AppSelect
                   class="ranking-sort-select"
                   size="tiny"
                   :value="modelRankingSort"
@@ -1650,9 +1650,9 @@ onBeforeUnmount(() => {
                       <strong>{{ rankingPrimaryText(row, modelRankingSort) }}</strong>
                       <span>{{ t(`${formatInteger(row.records)} 次`, `${formatInteger(row.records)} requests`) }}</span>
                     </div>
-                    <NButton v-if="canOpenRecords" size="tiny" quaternary @click="goRecords(modelFilters(row))">
+                    <AppButton v-if="canOpenRecords" size="tiny" quaternary @click="goRecords(modelFilters(row))">
                       {{ t('明细', 'Records') }}
-                    </NButton>
+                    </AppButton>
                   </div>
                 </div>
               </div>
@@ -1660,7 +1660,7 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </div>
-    </NSpin>
+    </AppSpinner>
   </section>
 </template>
 

@@ -1,5 +1,4 @@
 import { computed, ref, watch } from 'vue'
-import { darkTheme } from 'naive-ui'
 
 import type { ThemePreference } from '@/shared/types/api'
 
@@ -12,9 +11,7 @@ const preference = ref<ThemePreference>(
 const prefersDark = ref(window.matchMedia('(prefers-color-scheme: dark)').matches)
 const media = window.matchMedia('(prefers-color-scheme: dark)')
 const root = document.documentElement
-const naiveThemeIsDark = ref(false)
 let themeSwitchingTimer: number | undefined
-let naiveThemeFrame: number | undefined
 
 function handleMediaChange(event: MediaQueryListEvent) {
   prefersDark.value = event.matches
@@ -29,16 +26,6 @@ function markThemeSwitching() {
     root.classList.remove(themeSwitchingClass)
     themeSwitchingTimer = undefined
   }, themeSwitchingDurationMs)
-}
-
-function syncNaiveTheme(value: boolean) {
-  if (naiveThemeFrame !== undefined) {
-    window.cancelAnimationFrame(naiveThemeFrame)
-  }
-  naiveThemeFrame = window.requestAnimationFrame(() => {
-    naiveThemeIsDark.value = value
-    naiveThemeFrame = undefined
-  })
 }
 
 media.addEventListener('change', handleMediaChange)
@@ -59,19 +46,14 @@ watch(
   isDark,
   (value, oldValue) => {
     root.classList.toggle('dark', value)
-    if (oldValue === undefined) {
-      naiveThemeIsDark.value = value
-      return
+    if (oldValue !== undefined) {
+      markThemeSwitching()
     }
-    markThemeSwitching()
-    syncNaiveTheme(value)
   },
   { immediate: true },
 )
 
 export function useThemePreference() {
-  const naiveTheme = computed(() => (naiveThemeIsDark.value ? darkTheme : null))
-
   function setThemePreference(value: ThemePreference) {
     preference.value = value
   }
@@ -82,8 +64,6 @@ export function useThemePreference() {
 
   return {
     isDark,
-    naiveTheme,
-    naiveThemeIsDark,
     preference,
     setThemePreference,
     toggleTheme,

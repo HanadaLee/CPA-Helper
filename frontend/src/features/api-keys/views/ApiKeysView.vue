@@ -2,23 +2,23 @@
 import type { Component } from 'vue'
 import { computed, h, onMounted, ref, watch } from 'vue'
 import {
-  NAlert,
-  NButton,
-  NDataTable,
-  NEllipsis,
-  NForm,
-  NFormItem,
-  NIcon,
-  NInput,
-  NModal,
-  NRadioButton,
-  NRadioGroup,
-  NSelect,
-  NSpace,
+  AppAlert,
+  AppButton,
+  AppDataTable,
+  AppEllipsis,
+  AppForm,
+  AppFormItem,
+  AppIcon,
+  AppInput,
+  AppModal,
+  AppRadioButton,
+  AppRadioGroup,
+  AppSelect,
+  AppStack,
   useDialog,
   useMessage,
   type DataTableColumns,
-} from 'naive-ui'
+} from '@/shared/ui/app-kit'
 import {
   Activity,
   CircleDollarSign,
@@ -28,7 +28,7 @@ import {
   KeyRound,
   Layers3,
   Send,
-} from 'lucide-vue-next'
+} from '@lucide/vue'
 
 import {
   createApiKey,
@@ -446,7 +446,7 @@ function maskDisplayedApiKey(apiKey: string | null | undefined): string {
 
 function renderMaskedKeyTitle() {
   return h('span', { class: 'api-key-title' }, [
-    h(NIcon, { class: 'api-key-mask-icon', component: EyeOff }),
+    h(AppIcon, { class: 'api-key-mask-icon', component: EyeOff }),
     h('span', t('密钥（点击复制）', 'Key (click to copy)')),
   ])
 }
@@ -706,7 +706,7 @@ const columns = computed<DataTableColumns<UserApiKeySummary>>(() => [
               onClick: () => toggleApiKeyVisibility(row),
             },
             [
-              h(NIcon, {
+              h(AppIcon, {
                 class: 'api-key-mask-icon',
                 component: isApiKeyVisible(row) ? Eye : EyeOff,
               }),
@@ -731,7 +731,7 @@ const columns = computed<DataTableColumns<UserApiKeySummary>>(() => [
     width: 160,
     render: (row) =>
       row.description
-        ? h(NEllipsis, { tooltip: true, style: { maxWidth: '100%' } }, { default: () => row.description })
+        ? h(AppEllipsis, { tooltip: true, style: { maxWidth: '100%' } }, { default: () => row.description })
         : '-',
   },
   {
@@ -746,23 +746,23 @@ const columns = computed<DataTableColumns<UserApiKeySummary>>(() => [
     width: 230,
     fixed: 'right',
     render: (row) =>
-      h(NSpace, { size: 4 }, {
+      h(AppStack, { size: 4 }, {
         default: () => [
           h(
-            NButton,
+            AppButton,
             { size: 'small', quaternary: true, onClick: () => openRequestTest(row) },
             {
-              icon: () => h(NIcon, { component: Send }),
+              icon: () => h(AppIcon, { component: Send }),
               default: () => t('请求测试', 'Request test'),
             },
           ),
           h(
-            NButton,
+            AppButton,
             { size: 'small', quaternary: true, onClick: () => editApiKey(row) },
             { default: () => t('编辑', 'Edit') },
           ),
           h(
-            NButton,
+            AppButton,
             { size: 'small', quaternary: true, type: 'error', onClick: () => confirmDelete(row) },
             { default: () => t('删除', 'Delete') },
           ),
@@ -781,12 +781,12 @@ onMounted(refresh)
         <h1 class="page-title">{{ t('API 密钥', 'API keys') }}</h1>
         <p class="page-subtitle">{{ t('仅管理当前账号自己的密钥', 'Manage only keys for the current account') }}</p>
       </div>
-      <NSpace>
-        <NButton secondary :loading="isLoading" @click="refresh">{{ t('刷新', 'Refresh') }}</NButton>
-        <NButton type="primary" :disabled="!canCreateApiKey" @click="openCreateDialog">
+      <AppStack>
+        <AppButton secondary :loading="isLoading" @click="refresh">{{ t('刷新', 'Refresh') }}</AppButton>
+        <AppButton type="primary" :disabled="!canCreateApiKey" @click="openCreateDialog">
           {{ t('新建 API 密钥', 'New API key') }}
-        </NButton>
-      </NSpace>
+        </AppButton>
+      </AppStack>
     </div>
 
     <div class="metric-grid api-key-metrics">
@@ -803,25 +803,25 @@ onMounted(refresh)
     <div class="grid-two api-key-content-grid">
       <section class="panel api-key-panel-shell">
         <div class="panel-inner api-key-panel">
-          <NAlert v-if="quotaStatus?.paused" type="error" :bordered="false" :title="t('额度已用尽', 'Quota exhausted')">
+          <AppAlert v-if="quotaStatus?.paused" type="error" :bordered="false" :title="t('额度已用尽', 'Quota exhausted')">
             {{ t('当前账号 API KEY 已从 CPA 暂停。补充额度或进入新的日、周、月周期后，系统会自动恢复可用 Key。', 'API keys for this account are paused in CPA. Available keys are restored automatically after quota is added or a new daily, weekly, or monthly period begins.') }}
-          </NAlert>
-          <NAlert v-else-if="quotaStatus?.unpriced_records" type="warning" :bordered="false">
+          </AppAlert>
+          <AppAlert v-else-if="quotaStatus?.unpriced_records" type="warning" :bordered="false">
             {{ t(`当前账号存在 ${formatInteger(quotaStatus.unpriced_records)} 条未定价用量，未计入额度扣减。`, `This account has ${formatInteger(quotaStatus.unpriced_records)} unpriced usage records that are not deducted from quota.`) }}
-          </NAlert>
+          </AppAlert>
 
           <div v-if="generatedApiKey" class="generated-key-box">
             <div class="generated-key-main">
               <div class="generated-key-title">{{ t('新创建的密钥', 'Newly created key') }}</div>
               <div class="generated-key-value">{{ generatedApiKey }}</div>
             </div>
-            <NSpace>
-              <NButton secondary @click="copyGeneratedApiKey">{{ t('复制', 'Copy') }}</NButton>
-              <NButton tertiary @click="closeGeneratedApiKey">{{ t('关闭', 'Close') }}</NButton>
-            </NSpace>
+            <AppStack>
+              <AppButton secondary @click="copyGeneratedApiKey">{{ t('复制', 'Copy') }}</AppButton>
+              <AppButton tertiary @click="closeGeneratedApiKey">{{ t('关闭', 'Close') }}</AppButton>
+            </AppStack>
           </div>
 
-          <NDataTable
+          <AppDataTable
             class="api-key-table"
             size="small"
             :loading="isLoading"
@@ -839,15 +839,15 @@ onMounted(refresh)
           <h2 class="section-title">API Endpoint</h2>
           <div class="request-endpoint-switch">
             <span class="request-endpoint-label">{{ t('URL 类型', 'URL type') }}</span>
-            <NRadioGroup v-model:value="publicRequestURLType" class="api-endpoint-type-options" size="small">
-              <NRadioButton
+            <AppRadioGroup v-model:value="publicRequestURLType" class="api-endpoint-type-options" size="small">
+              <AppRadioButton
                 v-for="option in publicRequestURLTypeOptions"
                 :key="option.value"
                 :value="option.value"
               >
                 {{ option.label }}
-              </NRadioButton>
-            </NRadioGroup>
+              </AppRadioButton>
+            </AppRadioGroup>
           </div>
           <div class="request-guide-list">
             <div v-for="endpoint in publicRequestEndpointRows" :key="endpoint.key" class="request-guide-row">
@@ -855,19 +855,19 @@ onMounted(refresh)
                 <div class="request-guide-label">{{ endpoint.label }}</div>
                 <code class="request-guide-value">{{ endpoint.url }}</code>
               </div>
-              <NButton size="small" secondary @click="copyRequestValue(endpoint.label, endpoint.url)">
+              <AppButton size="small" secondary @click="copyRequestValue(endpoint.label, endpoint.url)">
                 <template #icon>
-                  <NIcon :component="Copy" />
+                  <AppIcon :component="Copy" />
                 </template>
                 {{ t('复制', 'Copy') }}
-              </NButton>
+              </AppButton>
             </div>
           </div>
         </div>
       </section>
     </div>
 
-    <NModal
+    <AppModal
       v-model:show="editorVisible"
       preset="card"
       :mask-closable="false"
@@ -875,51 +875,51 @@ onMounted(refresh)
       :title="editingApiKeyHash ? t('编辑 API 密钥', 'Edit API key') : t('新建 API 密钥', 'New API key')"
       :style="{ width: 'min(520px, calc(100vw - 32px))' }"
     >
-      <NForm label-placement="top">
-        <NFormItem :label="t('API KEY 描述', 'API key description')">
-          <NInput
+      <AppForm label-placement="top">
+        <AppFormItem :label="t('API KEY 描述', 'API key description')">
+          <AppInput
             v-model:value="apiKeyDescription"
             :disabled="isSaving"
             :placeholder="t('例如：VSCode', 'Example: VSCode')"
             @keyup.enter="saveApiKey"
           />
-        </NFormItem>
+        </AppFormItem>
         <div class="modal-actions">
-          <NButton secondary :disabled="isSaving" @click="editorVisible = false">{{ t('取消', 'Cancel') }}</NButton>
-          <NButton
+          <AppButton secondary :disabled="isSaving" @click="editorVisible = false">{{ t('取消', 'Cancel') }}</AppButton>
+          <AppButton
             type="primary"
             :loading="isSaving"
             :disabled="isSaving || (!editingApiKeyHash && !canCreateApiKey)"
             @click="saveApiKey"
           >
             {{ editingApiKeyHash ? t('保存', 'Save') : t('创建', 'Create') }}
-          </NButton>
+          </AppButton>
         </div>
-      </NForm>
-    </NModal>
+      </AppForm>
+    </AppModal>
 
-    <NModal
+    <AppModal
       v-model:show="requestTestVisible"
       preset="card"
       :title="t('请求测试', 'Request test')"
       :style="{ width: 'min(760px, calc(100vw - 32px))' }"
     >
       <div class="request-test">
-        <NAlert type="info" :bordered="false">
+        <AppAlert type="info" :bordered="false">
           {{ t('这里提供当前 API KEY 的请求说明，也可以直接选择模型发起一次真实测试。', 'This shows request instructions for the current API key. You can also choose a model to run a real test request.') }}
-        </NAlert>
+        </AppAlert>
 
         <div class="request-endpoint-switch">
           <span class="request-endpoint-label">{{ t('请求格式', 'Request format') }}</span>
-          <NRadioGroup v-model:value="requestEndpoint" size="small">
-            <NRadioButton
+          <AppRadioGroup v-model:value="requestEndpoint" size="small">
+            <AppRadioButton
               v-for="option in requestEndpointOptions"
               :key="option.value"
               :value="option.value"
             >
               {{ option.label }}
-            </NRadioButton>
-          </NRadioGroup>
+            </AppRadioButton>
+          </AppRadioGroup>
         </div>
 
         <div class="request-guide-list">
@@ -928,57 +928,57 @@ onMounted(refresh)
               <div class="request-guide-label">{{ t('基础 URL', 'Base URL') }}</div>
               <code class="request-guide-value">{{ requestBaseURL }}</code>
             </div>
-            <NButton size="small" secondary @click="copyRequestValue(t('基础 URL', 'Base URL'), requestBaseURL)">
+            <AppButton size="small" secondary @click="copyRequestValue(t('基础 URL', 'Base URL'), requestBaseURL)">
               <template #icon>
-                <NIcon :component="Copy" />
+                <AppIcon :component="Copy" />
               </template>
               {{ t('复制', 'Copy') }}
-            </NButton>
+            </AppButton>
           </div>
           <div class="request-guide-row">
             <div>
               <div class="request-guide-label">{{ requestEndpointURLLabel }}</div>
               <code class="request-guide-value">{{ requestEndpointURL }}</code>
             </div>
-            <NButton size="small" secondary @click="copyRequestValue(t('请求 URL', 'Request URL'), requestEndpointURL)">
+            <AppButton size="small" secondary @click="copyRequestValue(t('请求 URL', 'Request URL'), requestEndpointURL)">
               <template #icon>
-                <NIcon :component="Copy" />
+                <AppIcon :component="Copy" />
               </template>
               {{ t('复制', 'Copy') }}
-            </NButton>
+            </AppButton>
           </div>
           <div class="request-guide-row">
             <div>
               <div class="request-guide-label">{{ t('请求 Header', 'Request headers') }}</div>
               <code class="request-guide-value request-guide-value-multiline">{{ requestHeadersText }}</code>
             </div>
-            <NButton size="small" secondary @click="copyRequestValue(t('请求 Header', 'Request headers'), requestHeadersText)">
+            <AppButton size="small" secondary @click="copyRequestValue(t('请求 Header', 'Request headers'), requestHeadersText)">
               <template #icon>
-                <NIcon :component="Copy" />
+                <AppIcon :component="Copy" />
               </template>
               {{ t('复制', 'Copy') }}
-            </NButton>
+            </AppButton>
           </div>
         </div>
 
         <div class="request-example">
           <div class="request-example-head">
             <span>{{ t('curl 示例', 'curl example') }}</span>
-            <NButton size="small" secondary @click="copyRequestValue(t('curl 示例', 'curl example'), sampleRequest)">
+            <AppButton size="small" secondary @click="copyRequestValue(t('curl 示例', 'curl example'), sampleRequest)">
               <template #icon>
-                <NIcon :component="Copy" />
+                <AppIcon :component="Copy" />
               </template>
               {{ t('复制示例', 'Copy example') }}
-            </NButton>
+            </AppButton>
           </div>
           <pre>{{ sampleRequest }}</pre>
         </div>
 
         <div class="request-test-section-title">{{ t('请求测试', 'Request test') }}</div>
 
-        <NForm label-placement="top" class="request-test-form">
-          <NFormItem :label="t('测试模型', 'Test model')">
-            <NSelect
+        <AppForm label-placement="top" class="request-test-form">
+          <AppFormItem :label="t('测试模型', 'Test model')">
+            <AppSelect
               v-model:value="requestTestModel"
               filterable
               clearable
@@ -986,45 +986,45 @@ onMounted(refresh)
               :options="requestTestModelOptions"
               :placeholder="t('选择当前 Key 可用的模型', 'Select a model available to this key')"
             />
-          </NFormItem>
-          <NFormItem :label="t('测试消息', 'Test message')">
-            <NInput
+          </AppFormItem>
+          <AppFormItem :label="t('测试消息', 'Test message')">
+            <AppInput
               v-model:value="requestTestMessage"
               type="textarea"
               :autosize="{ minRows: 3, maxRows: 5 }"
               :placeholder="t('输入要发送给模型的测试消息', 'Enter the test message to send to the model')"
             />
-          </NFormItem>
-        </NForm>
+          </AppFormItem>
+        </AppForm>
 
-        <NAlert
+        <AppAlert
           v-if="!isAvailableModelsLoading && requestTestModelOptions.length === 0"
           type="warning"
           :bordered="false"
         >
           {{ t('当前 Key 暂未查询到可选模型，可以先刷新模型列表，或到「可用模型」页面检查 Key 是否可用。', 'No selectable models were found for this key. Refresh the model list, or check whether the key is available on the Available models page.') }}
-        </NAlert>
+        </AppAlert>
 
         <div class="modal-actions request-test-actions">
-          <NButton secondary :loading="isAvailableModelsLoading" @click="loadAvailableModelsForTest">
+          <AppButton secondary :loading="isAvailableModelsLoading" @click="loadAvailableModelsForTest">
             {{ t('刷新模型', 'Refresh models') }}
-          </NButton>
-          <NButton
+          </AppButton>
+          <AppButton
             type="primary"
             :loading="isRequestTesting"
             :disabled="!requestTestModel || isAvailableModelsLoading"
             @click="runRequestTest"
           >
             <template #icon>
-              <NIcon :component="Send" />
+              <AppIcon :component="Send" />
             </template>
             {{ t('发送测试', 'Send test') }}
-          </NButton>
+          </AppButton>
         </div>
 
-        <NAlert v-if="requestTestError" type="error" :bordered="false">
+        <AppAlert v-if="requestTestError" type="error" :bordered="false">
           {{ requestTestError }}
-        </NAlert>
+        </AppAlert>
 
         <div v-if="requestTestResult" class="request-test-result">
           <div class="request-test-result-head">
@@ -1037,7 +1037,7 @@ onMounted(refresh)
           <pre>{{ requestTestReplyText }}</pre>
         </div>
       </div>
-    </NModal>
+    </AppModal>
   </section>
 </template>
 

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { NAlert, NButton, NCard, NForm, NFormItem, NInput, useMessage } from 'naive-ui'
+import { AppAlert, AppButton, AppCard, AppForm, AppFormItem, AppInput, useMessage } from '@/shared/ui/app-kit'
 
 import { getSetupState, login, setupFirstAdmin } from '@/features/auth/api/authApi'
 import { setCurrentUser } from '@/features/auth/state/currentUser'
@@ -86,41 +86,41 @@ async function handleSubmit() {
         <img :src="logoUrl" alt="">
       </div>
 
-      <NCard class="auth-card" :bordered="true">
+      <AppCard class="auth-card" :bordered="true">
         <div class="auth-heading">
           <h1>{{ headingTitle }}</h1>
           <p>{{ headingSubtitle }}</p>
         </div>
 
-        <NAlert v-if="errorMessage" type="error" :bordered="false" class="auth-alert">
+        <AppAlert v-if="errorMessage" type="error" :bordered="false" class="auth-alert">
           {{ errorMessage }}
-        </NAlert>
+        </AppAlert>
 
-        <NAlert v-if="setupRequired" type="warning" :bordered="false" class="auth-alert">
+        <AppAlert v-if="setupRequired" type="warning" :bordered="false" class="auth-alert">
           {{ t('账号一旦创建，不允许删除，只允许禁用，请谨慎操作。', 'Accounts cannot be deleted after creation. They can only be disabled, so proceed carefully.') }}
-        </NAlert>
+        </AppAlert>
 
-        <NForm :model="form" label-placement="top" @submit.prevent="handleSubmit">
-          <NFormItem :label="t('账号', 'Account')" path="username">
-            <NInput v-model:value="form.username" autocomplete="username" />
-          </NFormItem>
-          <NFormItem :label="t('密码', 'Password')" path="password">
-            <NInput
+        <AppForm :model="form" label-placement="top" @submit.prevent="handleSubmit">
+          <AppFormItem :label="t('账号', 'Account')" path="username">
+            <AppInput v-model:value="form.username" autocomplete="username" />
+          </AppFormItem>
+          <AppFormItem :label="t('密码', 'Password')" path="password">
+            <AppInput
               v-model:value="form.password"
               type="password"
               show-password-on="mousedown"
               autocomplete="current-password"
               @keyup.enter="handleSubmit"
             />
-          </NFormItem>
-          <NFormItem v-if="setupRequired" :label="t('用户昵称', 'User nickname')" path="nickname" required>
-            <NInput v-model:value="form.nickname" :placeholder="t('例如：研发用户', 'Example: Engineering user')" />
-          </NFormItem>
-          <NButton type="primary" block attr-type="submit" :loading="isLoading || isSetupLoading">
+          </AppFormItem>
+          <AppFormItem v-if="setupRequired" :label="t('用户昵称', 'User nickname')" path="nickname" required>
+            <AppInput v-model:value="form.nickname" :placeholder="t('例如：研发用户', 'Example: Engineering user')" />
+          </AppFormItem>
+          <AppButton type="primary" block attr-type="submit" :loading="isLoading || isSetupLoading">
             {{ submitText }}
-          </NButton>
-        </NForm>
-      </NCard>
+          </AppButton>
+        </AppForm>
+      </AppCard>
     </section>
   </main>
 </template>

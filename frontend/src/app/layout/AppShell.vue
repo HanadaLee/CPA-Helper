@@ -1,32 +1,45 @@
 <script setup lang="ts">
 import type { Component } from 'vue'
-import { computed, h, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { isNavigationFailure, NavigationFailureType, useRoute, useRouter } from 'vue-router'
 import {
-  NButton,
-  NDrawer,
-  NDrawerContent,
-  NIcon,
-  NLayout,
-  NLayoutContent,
-  NLayoutHeader,
-  NLayoutSider,
-  NMenu,
-  NTooltip,
   useMessage,
-  type MenuOption,
-} from 'naive-ui'
+} from '@/shared/ui/app-kit'
+import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarRail,
+  SidebarTrigger,
+} from '@/components/ui/sidebar'
 import {
   BarChart3,
+  ChevronUp,
   Cpu,
   DollarSign,
-  Github,
   KeyRound,
   Languages,
   List,
   ListChecks,
   LogOut,
-  Menu,
   Monitor,
   Moon,
   Network,
@@ -35,7 +48,7 @@ import {
   Sun,
   UserRound,
   Users,
-} from 'lucide-vue-next'
+} from '@lucide/vue'
 
 import { getMe, isAuthUser, logout } from '@/features/auth/api/authApi'
 import { useCurrentUser } from '@/features/auth/state/currentUser'
@@ -46,29 +59,16 @@ import { logoUrl } from '@/shared/utils/assets'
 const route = useRoute()
 const router = useRouter()
 const message = useMessage()
-const repositoryUrl = 'https://github.com/walkingddd/CPA-Helper'
-const mobileQuery = window.matchMedia('(max-width: 860px)')
-const isMobile = ref(mobileQuery.matches)
-const drawerOpen = ref(false)
 const navigationTarget = ref<string | null>(null)
 const isRouteTransitioning = ref(false)
 const { currentUser, setCurrentUser } = useCurrentUser()
 const hasLoadedUser = ref(currentUser.value !== null)
-const { isDark, preference, setThemePreference, toggleTheme } = useThemePreference()
+const { isDark, preference, setThemePreference } = useThemePreference()
 const { language, t, toggleLanguage } = useI18n()
 let navigationFeedbackTimer: number | undefined
 let routeTransitionReleaseTimer: number | undefined
 
-function handleMobileChange(event: MediaQueryListEvent) {
-  isMobile.value = event.matches
-  if (!event.matches) {
-    drawerOpen.value = false
-  }
-}
-
-mobileQuery.addEventListener('change', handleMobileChange)
 onBeforeUnmount(() => {
-  mobileQuery.removeEventListener('change', handleMobileChange)
   if (navigationFeedbackTimer !== undefined) {
     window.clearTimeout(navigationFeedbackTimer)
   }
@@ -106,26 +106,21 @@ onBeforeUnmount(() => {
   window.removeEventListener('cpa:account-updated', handleAccountUpdated)
 })
 
-function renderIcon(icon: Component) {
-  return () =>
-    h(
-      NIcon,
-      { size: 18 },
-      {
-        default: () => h(icon),
-      },
-    )
+interface NavigationItem {
+  label: string
+  key: string
+  icon: Component
 }
 
-const adminMenuItems = computed<MenuOption[]>(() => [
-  { label: t('历史用量', 'Usage History'), key: '/admin/usage', icon: renderIcon(BarChart3) },
-  { label: t('请求明细', 'Request Records'), key: '/admin/records', icon: renderIcon(List) },
-  { label: t('用户管理', 'Users'), key: '/admin/users', icon: renderIcon(Users) },
-  { label: t('模型价格', 'Model Prices'), key: '/admin/pricing', icon: renderIcon(DollarSign) },
-  { label: t('上游管理', 'Upstreams'), key: '/admin/upstreams', icon: renderIcon(Network) },
-  { label: t('账号管理', 'Account Management'), key: '/admin/account-mgmt', icon: renderIcon(ListChecks) },
-  { label: 'CPAMC', key: '/admin/cpamc', icon: renderIcon(Monitor) },
-  { label: t('系统设置', 'System Settings'), key: '/admin/settings', icon: renderIcon(Settings) },
+const adminMenuItems = computed<NavigationItem[]>(() => [
+  { label: t('历史用量', 'Usage History'), key: '/admin/usage', icon: BarChart3 },
+  { label: t('请求明细', 'Request Records'), key: '/admin/records', icon: List },
+  { label: t('用户管理', 'Users'), key: '/admin/users', icon: Users },
+  { label: t('模型价格', 'Model Prices'), key: '/admin/pricing', icon: DollarSign },
+  { label: t('上游管理', 'Upstreams'), key: '/admin/upstreams', icon: Network },
+  { label: t('账号管理', 'Account Management'), key: '/admin/account-mgmt', icon: ListChecks },
+  { label: 'CPAMC', key: '/admin/cpamc', icon: Monitor },
+  { label: t('系统设置', 'System Settings'), key: '/admin/settings', icon: Settings },
 ])
 
 const showAccountStatusForUser = computed(
@@ -135,18 +130,18 @@ const showUsageHistoryForUser = computed(
   () => currentUser.value?.is_admin === false && currentUser.value.can_view_usage_history,
 )
 
-const accountMenuItems = computed<MenuOption[]>(() => [
+const accountMenuItems = computed<NavigationItem[]>(() => [
   ...(showUsageHistoryForUser.value
-    ? [{ label: t('历史用量', 'Usage History'), key: '/account/history', icon: renderIcon(BarChart3) }]
+    ? [{ label: t('历史用量', 'Usage History'), key: '/account/history', icon: BarChart3 }]
     : []),
-  { label: t('我的用量', 'My Usage'), key: '/account/usage', icon: renderIcon(BarChart3) },
-  { label: t('我的明细', 'My Records'), key: '/account/records', icon: renderIcon(List) },
-  { label: t('API 密钥', 'API Keys'), key: '/account/keys', icon: renderIcon(KeyRound) },
-  { label: t('可用模型', 'Available Models'), key: '/account/models', icon: renderIcon(Cpu) },
+  { label: t('我的用量', 'My Usage'), key: '/account/usage', icon: BarChart3 },
+  { label: t('我的明细', 'My Records'), key: '/account/records', icon: List },
+  { label: t('API 密钥', 'API Keys'), key: '/account/keys', icon: KeyRound },
+  { label: t('可用模型', 'Available Models'), key: '/account/models', icon: Cpu },
   ...(showAccountStatusForUser.value
-    ? [{ label: t('账号状态', 'Account Status'), key: '/account/status', icon: renderIcon(ListChecks) }]
+    ? [{ label: t('账号状态', 'Account Status'), key: '/account/status', icon: ListChecks }]
     : []),
-  { label: t('账户设置', 'Account Settings'), key: '/account/settings', icon: renderIcon(UserRound) },
+  { label: t('账户设置', 'Account Settings'), key: '/account/settings', icon: UserRound },
 ])
 
 const isAdmin = computed(() => {
@@ -174,27 +169,6 @@ function formatAppVersion(value: string | undefined): string {
 
 const appVersion = formatAppVersion(import.meta.env.VITE_APP_VERSION)
 
-const menuOptions = computed<MenuOption[]>(() => {
-  const groups: MenuOption[] = []
-  if (isAdmin.value) {
-    groups.push({
-      type: 'group',
-      label: t('管理中心', 'Admin Center'),
-      key: 'admin-group',
-      icon: renderIcon(Shield),
-      children: adminMenuItems.value,
-    })
-  }
-  groups.push({
-    type: 'group',
-    label: t('我的账户', 'My Account'),
-    key: 'account-group',
-    icon: renderIcon(UserRound),
-    children: accountMenuItems.value,
-  })
-  return groups
-})
-
 const leafMenuOptions = computed(() =>
   isAdmin.value
     ? [...adminMenuItems.value, ...accountMenuItems.value]
@@ -205,6 +179,9 @@ const selectedKey = computed(() => {
   const matched = leafMenuOptions.value.find((item) => route.path.startsWith(String(item.key)))
   return matched ? String(matched.key) : isAdmin.value ? '/admin/usage' : '/account/usage'
 })
+const currentNavigationLabel = computed(
+  () => leafMenuOptions.value.find((item) => item.key === selectedKey.value)?.label ?? 'CPA-Helper',
+)
 const isMenuNavigationPending = computed(() => navigationTarget.value !== null)
 const recordsRoutePaths = ['/admin/records', '/account/records'] as const
 const isRecordsScrollMode = computed(
@@ -244,7 +221,6 @@ function finishRouteTransition() {
 }
 
 async function handleMenuUpdate(key: string) {
-  drawerOpen.value = false
   if (key === route.path) {
     return
   }
@@ -293,89 +269,115 @@ const themeIcon = computed(() => {
 const languageLabel = computed(() => (language.value === 'zh' ? 'EN' : 'CN'))
 const languageAriaLabel = computed(() => t('切换语言', 'Switch language'))
 const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
-const logoutAriaLabel = computed(() => t('退出登录', 'Sign out'))
 </script>
 
 <template>
-  <NLayout class="app-shell" has-sider>
-    <NLayoutSider
-      v-if="!isMobile"
-      class="app-sider"
-      bordered
-      :width="228"
-      collapse-mode="width"
-    >
-      <div class="brand">
-        <div class="brand-mark">
-          <img :src="logoUrl" alt="">
+  <SidebarProvider class="app-shell" :default-open="true">
+    <Sidebar class="app-sidebar" collapsible="icon">
+      <SidebarHeader class="sidebar-brand-header">
+        <div class="brand group-data-[collapsible=icon]:justify-center">
+          <div class="brand-mark">
+            <img :src="logoUrl" alt="">
+          </div>
+          <div class="brand-copy group-data-[collapsible=icon]:hidden">
+            <strong>CPA-Helper</strong>
+            <span>{{ t('智能网关管理面板', 'AI gateway console') }}</span>
+          </div>
         </div>
-        <div class="brand-copy">
-          <strong>CPA-Helper</strong>
-          <span>{{ accountText }} · {{ roleText }}</span>
-        </div>
-      </div>
-      <NMenu
-        class="sider-menu"
-        :value="selectedKey"
-        :options="menuOptions"
-        :root-indent="18"
-        :indent="12"
-        @update:value="handleMenuUpdate"
-      />
-      <div class="sider-footer">
-        <a
-          class="sider-version-link"
-          :href="repositoryUrl"
-          target="_blank"
-          rel="noreferrer"
-          :aria-label="t('在 GitHub 查看 CPA-Helper', 'View CPA-Helper on GitHub')"
-        >
-          <NIcon :component="Github" :size="20" />
-          <span class="sider-version-text">{{ appVersion }}</span>
-        </a>
-        <div class="sider-actions">
-          <NTooltip trigger="hover">
-            <template #trigger>
-              <NButton quaternary circle :aria-label="languageAriaLabel" @click="toggleLanguage">
-                <template #icon>
-                  <NIcon :component="Languages" />
-                </template>
-                <span class="sr-only">{{ languageLabel }}</span>
-              </NButton>
-            </template>
-            {{ language === 'zh' ? 'English' : '中文' }}
-          </NTooltip>
-          <NTooltip trigger="hover">
-            <template #trigger>
-              <NButton quaternary circle :aria-label="themeAriaLabel" @click="cycleTheme">
-                <template #icon>
-                  <NIcon :component="themeIcon" />
-                </template>
-              </NButton>
-            </template>
-            {{ t('主题', 'Theme') }}
-          </NTooltip>
-          <NTooltip trigger="hover">
-            <template #trigger>
-              <NButton quaternary circle :aria-label="logoutAriaLabel" @click="handleLogout">
-                <template #icon>
-                  <NIcon :component="LogOut" />
-                </template>
-              </NButton>
-            </template>
-            {{ t('退出', 'Sign out') }}
-          </NTooltip>
-        </div>
-      </div>
-    </NLayoutSider>
+      </SidebarHeader>
 
-    <NLayout class="app-main">
-      <NLayoutHeader class="mobile-header" bordered>
-        <NButton quaternary circle :aria-label="t('打开导航', 'Open navigation')" @click="drawerOpen = true">
-          <template #icon>
-            <NIcon :component="Menu" />
-          </template>
-        </NButton>
+      <SidebarContent class="sider-menu">
+        <SidebarGroup v-if="isAdmin">
+          <SidebarGroupLabel class="sidebar-group-label">
+            <Shield />
+            <span>{{ t('管理中心', 'Admin Center') }}</span>
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem v-for="item in adminMenuItems" :key="item.key">
+                <SidebarMenuButton
+                  data-navigation="true"
+                  :is-active="selectedKey === item.key"
+                  :tooltip="item.label"
+                  @click="handleMenuUpdate(item.key)"
+                >
+                  <component :is="item.icon" />
+                  <span>{{ item.label }}</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel class="sidebar-group-label">
+            <UserRound />
+            <span>{{ t('我的账户', 'My Account') }}</span>
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem v-for="item in accountMenuItems" :key="item.key">
+                <SidebarMenuButton
+                  data-navigation="true"
+                  :is-active="selectedKey === item.key"
+                  :tooltip="item.label"
+                  @click="handleMenuUpdate(item.key)"
+                >
+                  <component :is="item.icon" />
+                  <span>{{ item.label }}</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
+
+      <SidebarFooter class="sidebar-user-footer">
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <DropdownMenu>
+              <DropdownMenuTrigger as-child>
+                <SidebarMenuButton size="lg" class="user-menu-button">
+                  <span class="user-avatar"><UserRound /></span>
+                  <span class="user-copy">
+                    <strong>{{ accountText }}</strong>
+                    <span>{{ roleText }}</span>
+                  </span>
+                  <ChevronUp class="user-menu-chevron" />
+                </SidebarMenuButton>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent side="right" align="end" :side-offset="8" class="user-dropdown">
+                <DropdownMenuLabel class="user-dropdown-label">
+                  <strong>{{ accountText }}</strong>
+                  <span>{{ roleText }}</span>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem @select="toggleLanguage">
+                  <Languages />
+                  <span>{{ language === 'zh' ? 'English' : '中文' }}</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem @select="cycleTheme">
+                  <component :is="themeIcon" />
+                  <span>{{ t('切换主题', 'Switch theme') }}</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem variant="destructive" @select="handleLogout">
+                  <LogOut />
+                  <span>{{ t('退出登录', 'Sign out') }}</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
+      <SidebarRail />
+    </Sidebar>
+
+    <SidebarInset class="app-main">
+      <header class="app-header">
+        <SidebarTrigger class="navigation-trigger" :aria-label="t('打开导航', 'Open navigation')" />
+        <div class="header-divider" aria-hidden="true" />
+        <div class="desktop-location">{{ currentNavigationLabel }}</div>
         <div class="mobile-brand" :aria-label="t('CPA-Helper 账号信息', 'CPA-Helper account info')">
           <img class="mobile-brand-logo" :src="logoUrl" alt="" aria-hidden="true">
           <div class="mobile-brand-copy">
@@ -386,21 +388,18 @@ const logoutAriaLabel = computed(() => t('退出登录', 'Sign out'))
             <span>{{ accountText }} · {{ roleText }}</span>
           </div>
         </div>
-        <div class="mobile-actions">
-          <NButton quaternary circle :aria-label="languageAriaLabel" @click="toggleLanguage">
-            <template #icon>
-              <NIcon :component="Languages" />
-            </template>
+        <div class="header-actions">
+          <Button variant="ghost" size="icon" :aria-label="languageAriaLabel" @click="toggleLanguage">
+            <Languages />
             <span class="sr-only">{{ languageLabel }}</span>
-          </NButton>
-          <NButton quaternary circle :aria-label="themeAriaLabel" @click="toggleTheme">
-            <template #icon>
-              <NIcon :component="themeIcon" />
-            </template>
-          </NButton>
+          </Button>
+          <Button variant="ghost" size="icon" :aria-label="themeAriaLabel" @click="cycleTheme">
+            <component :is="themeIcon" />
+          </Button>
         </div>
-      </NLayoutHeader>
-      <NLayoutContent
+      </header>
+
+      <main
         class="content"
         :class="{
           'is-route-pending': isMenuNavigationPending,
@@ -409,47 +408,26 @@ const logoutAriaLabel = computed(() => t('退出登录', 'Sign out'))
         }"
       >
         <div v-if="isMenuNavigationPending" class="route-progress" aria-hidden="true" />
-        <RouterView v-slot="{ Component: RouteComponent, route: activeRoute }">
-          <Transition
-            name="route-fade"
-            mode="out-in"
-            appear
-            @before-enter="beginRouteTransition"
-            @after-enter="finishRouteTransition"
-            @enter-cancelled="finishRouteTransition"
-            @before-leave="beginRouteTransition"
-            @after-leave="finishRouteTransition"
-            @leave-cancelled="finishRouteTransition"
-          >
-            <component :is="RouteComponent" :key="activeRoute.name ?? activeRoute.path" />
-          </Transition>
-        </RouterView>
-      </NLayoutContent>
-    </NLayout>
-
-    <NDrawer v-model:show="drawerOpen" placement="left" :width="248">
-      <NDrawerContent :title="`CPA-Helper · ${appVersion}`" body-content-style="padding: 0;">
-        <NMenu :value="selectedKey" :options="menuOptions" @update:value="handleMenuUpdate" />
-        <div class="drawer-actions">
-          <NButton secondary circle :aria-label="languageAriaLabel" @click="toggleLanguage">
-            <template #icon>
-              <NIcon :component="Languages" />
-            </template>
-          </NButton>
-          <NButton secondary circle :aria-label="themeAriaLabel" @click="cycleTheme">
-            <template #icon>
-              <NIcon :component="themeIcon" />
-            </template>
-          </NButton>
-          <NButton secondary circle :aria-label="logoutAriaLabel" @click="handleLogout">
-            <template #icon>
-              <NIcon :component="LogOut" />
-            </template>
-          </NButton>
+        <div class="content-scroll">
+          <RouterView v-slot="{ Component: RouteComponent, route: activeRoute }">
+            <Transition
+              name="route-fade"
+              mode="out-in"
+              appear
+              @before-enter="beginRouteTransition"
+              @after-enter="finishRouteTransition"
+              @enter-cancelled="finishRouteTransition"
+              @before-leave="beginRouteTransition"
+              @after-leave="finishRouteTransition"
+              @leave-cancelled="finishRouteTransition"
+            >
+              <component :is="RouteComponent" :key="activeRoute.name ?? activeRoute.path" />
+            </Transition>
+          </RouterView>
         </div>
-      </NDrawerContent>
-    </NDrawer>
-  </NLayout>
+      </main>
+    </SidebarInset>
+  </SidebarProvider>
 </template>
 
 <style scoped>
@@ -458,56 +436,7 @@ const logoutAriaLabel = computed(() => t('退出登录', 'Sign out'))
   height: 100dvh;
   min-height: 0;
   overflow: hidden;
-  --n-color: var(--cpa-bg);
   background: var(--cpa-bg);
-}
-
-.app-shell > :deep(.n-layout-scroll-container),
-.app-main > :deep(.n-layout-scroll-container) {
-  overflow: hidden;
-  scrollbar-gutter: auto;
-  scrollbar-width: none;
-  background: var(--cpa-bg);
-}
-
-.app-main > :deep(.n-layout-scroll-container) {
-  display: flex;
-  min-height: 0;
-  flex-direction: column;
-}
-
-.app-shell > :deep(.n-layout-scroll-container::-webkit-scrollbar),
-.app-main > :deep(.n-layout-scroll-container::-webkit-scrollbar) {
-  display: none;
-}
-
-.app-sider {
-  position: relative;
-  height: 100vh;
-  height: 100dvh;
-  max-height: 100vh;
-  max-height: 100dvh;
-  border-right: 1px solid var(--cpa-border);
-  background:
-    linear-gradient(180deg, rgb(255 255 255 / 96%) 0, rgb(255 255 255 / 86%) 100%),
-    var(--cpa-surface-solid);
-  box-shadow: 18px 0 38px rgb(30 56 62 / 7%);
-  backdrop-filter: blur(22px);
-}
-
-.app-sider :deep(.n-layout-sider-scroll-container) {
-  display: flex;
-  height: 100%;
-  min-height: 0;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-:root.dark .app-sider {
-  background:
-    linear-gradient(180deg, rgb(26 42 48 / 88%) 0, rgb(18 30 35 / 78%) 100%),
-    var(--cpa-glass);
-  box-shadow: 14px 0 34px rgb(0 0 0 / 22%);
 }
 
 .brand {
@@ -588,128 +517,6 @@ const logoutAriaLabel = computed(() => t('退出登录', 'Sign out'))
   scrollbar-color: color-mix(in srgb, var(--cpa-text-muted) 34%, transparent) transparent;
 }
 
-.app-sider :deep(.n-menu) {
-  padding: 0 14px 12px;
-}
-
-.app-sider :deep(.n-menu-item-group-title) {
-  height: 32px;
-  padding: 16px 8px 7px !important;
-  color: var(--cpa-text-muted);
-  font-size: 12px;
-  font-weight: 750;
-}
-
-.app-sider :deep(.n-menu-item-content) {
-  height: 42px;
-  border-radius: var(--cpa-radius);
-  overflow: hidden;
-  background: transparent;
-  transition:
-    background-color 160ms ease,
-    color 160ms ease,
-    transform 160ms ease;
-}
-
-.app-sider :deep(.n-menu-item-content::before) {
-  right: 0;
-  left: 0;
-  border-radius: var(--cpa-radius);
-}
-
-.app-sider :deep(.n-menu-item-content--selected) {
-  background: transparent;
-  color: var(--cpa-primary);
-  font-weight: 760;
-  transform: none;
-}
-
-.app-sider :deep(.n-menu-item-content--selected::before) {
-  border: 1px solid rgb(0 154 168 / 7%);
-  background:
-    linear-gradient(90deg, rgb(0 154 168 / 8%), rgb(0 154 168 / 3%)),
-    var(--cpa-primary-wash);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 68%);
-}
-
-:root.dark .app-sider :deep(.n-menu-item-content--selected::before) {
-  border-color: rgb(34 193 200 / 20%);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 10%);
-}
-
-.sider-footer {
-  display: grid;
-  flex: 0 0 auto;
-  gap: 10px;
-  padding: 10px 16px 18px;
-  background: inherit;
-}
-
-.sider-version-link {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  box-sizing: border-box;
-  min-height: 40px;
-  gap: 8px;
-  padding: 0 12px;
-  border: 1px solid var(--cpa-border);
-  border-radius: 8px;
-  color: var(--cpa-text-strong);
-  background: transparent;
-  box-shadow: none;
-  font-size: 13px;
-  font-weight: 760;
-  line-height: 1;
-  text-decoration: none;
-  transition:
-    background-color 160ms ease,
-    color 160ms ease,
-    transform 160ms ease,
-    border-color 160ms ease;
-}
-
-.sider-version-link:hover {
-  border-color: color-mix(in srgb, var(--cpa-primary) 22%, var(--cpa-border));
-  color: var(--cpa-primary);
-  background: color-mix(in srgb, var(--cpa-primary) 5%, transparent);
-  transform: none;
-}
-
-.sider-version-link:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--cpa-primary) 54%, transparent);
-  outline-offset: 2px;
-}
-
-.sider-version-link :deep(.n-icon) {
-  flex: 0 0 auto;
-}
-
-.sider-version-text {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-:root.dark .sider-version-link {
-  border-color: var(--cpa-border);
-  background: transparent;
-}
-
-.sider-actions {
-  display: flex;
-  justify-content: space-between;
-  width: 100%;
-  box-sizing: border-box;
-  padding: 8px 12px;
-  border: 1px solid var(--cpa-border);
-  border-radius: var(--cpa-radius);
-  background: var(--cpa-surface-raised);
-  box-shadow: var(--cpa-shadow-card), var(--cpa-shadow-hairline);
-}
-
 .sr-only {
   position: absolute;
   width: 1px;
@@ -730,7 +537,6 @@ const logoutAriaLabel = computed(() => t('退出登录', 'Sign out'))
   min-height: 0;
   min-width: 0;
   overflow: hidden;
-  --n-color: var(--cpa-bg);
   background: var(--cpa-bg);
 }
 
@@ -744,7 +550,6 @@ const logoutAriaLabel = computed(() => t('退出登录', 'Sign out'))
   scrollbar-gutter: stable;
   scrollbar-width: thin;
   scrollbar-color: var(--content-scrollbar-thumb) transparent;
-  --n-color: var(--cpa-bg);
   --content-scrollbar-thumb: color-mix(in srgb, var(--cpa-text-muted) 44%, transparent);
   --content-scrollbar-thumb-hover: color-mix(
     in srgb,
@@ -754,88 +559,18 @@ const logoutAriaLabel = computed(() => t('退出登录', 'Sign out'))
   background: var(--cpa-bg);
 }
 
-.content > :deep(.n-layout-scroll-container) {
-  overflow: auto;
-  padding: 28px 36px 32px 28px;
-  scrollbar-gutter: stable;
-  scrollbar-width: thin;
-  scrollbar-color: var(--content-scrollbar-thumb) transparent;
-  background: var(--cpa-bg);
-}
-
-.content::-webkit-scrollbar,
-.content > :deep(.n-layout-scroll-container::-webkit-scrollbar) {
-  width: 18px;
-  height: 18px;
-}
-
-.content::-webkit-scrollbar-track,
-.content > :deep(.n-layout-scroll-container::-webkit-scrollbar-track),
-.content::-webkit-scrollbar-corner,
-.content > :deep(.n-layout-scroll-container::-webkit-scrollbar-corner) {
-  background: transparent;
-}
-
-.content::-webkit-scrollbar-thumb,
-.content > :deep(.n-layout-scroll-container::-webkit-scrollbar-thumb) {
-  min-height: 56px;
-  border: 6px solid transparent;
-  border-radius: 999px;
-  background: var(--content-scrollbar-thumb);
-  background-clip: content-box;
-}
-
-.content::-webkit-scrollbar-thumb:hover,
-.content > :deep(.n-layout-scroll-container::-webkit-scrollbar-thumb:hover) {
-  background: var(--content-scrollbar-thumb-hover);
-  background-clip: content-box;
-}
-
 .content.is-route-pending {
   cursor: progress;
 }
 
-.content.is-route-pending,
-.content.is-route-transitioning,
-.content.is-route-pending :deep(.n-layout-scroll-container),
-.content.is-route-transitioning :deep(.n-layout-scroll-container) {
-  overflow: hidden;
-}
-
-.content.is-route-pending :deep(.records-table .v-vl),
-.content.is-route-transitioning :deep(.records-table .v-vl),
 .content.is-route-pending :deep(.records-table .n-scrollbar-container),
 .content.is-route-transitioning :deep(.records-table .n-scrollbar-container) {
   scrollbar-gutter: auto;
   scrollbar-width: none;
 }
 
-.content.is-route-pending :deep(.records-table .v-vl::-webkit-scrollbar),
-.content.is-route-transitioning :deep(.records-table .v-vl::-webkit-scrollbar),
 .content.is-route-pending :deep(.records-table .n-scrollbar-container::-webkit-scrollbar),
 .content.is-route-transitioning :deep(.records-table .n-scrollbar-container::-webkit-scrollbar) {
-  display: none;
-  width: 0;
-  height: 0;
-}
-
-.content.is-route-pending :deep(.records-table .n-scrollbar-rail--vertical),
-.content.is-route-transitioning :deep(.records-table .n-scrollbar-rail--vertical),
-.content.is-route-pending :deep(.records-table .n-scrollbar-rail--horizontal),
-.content.is-route-transitioning :deep(.records-table .n-scrollbar-rail--horizontal) {
-  visibility: hidden !important;
-  opacity: 0 !important;
-  pointer-events: none !important;
-}
-
-.content.is-records-scroll-mode,
-.content.is-records-scroll-mode > :deep(.n-layout-scroll-container) {
-  scrollbar-gutter: auto;
-  scrollbar-width: none;
-}
-
-.content.is-records-scroll-mode::-webkit-scrollbar,
-.content.is-records-scroll-mode > :deep(.n-layout-scroll-container::-webkit-scrollbar) {
   display: none;
   width: 0;
   height: 0;
@@ -890,29 +625,6 @@ const logoutAriaLabel = computed(() => t('退出登录', 'Sign out'))
     transform: translateX(260%);
     opacity: 0.35;
   }
-}
-
-.mobile-header {
-  display: none;
-  align-items: center;
-  grid-template-columns: 42px minmax(0, 1fr) auto;
-  gap: 8px;
-  height: 56px;
-  padding: 0 10px;
-  border-bottom: 1px solid var(--cpa-border);
-  background: var(--cpa-mobile-header-bg);
-  backdrop-filter: blur(18px);
-}
-
-.mobile-header :deep(.n-button) {
-  width: 38px;
-  height: 38px;
-}
-
-.mobile-actions {
-  display: inline-flex;
-  gap: 4px;
-  align-items: center;
 }
 
 .mobile-brand {
@@ -971,24 +683,260 @@ const logoutAriaLabel = computed(() => t('退出登录', 'Sign out'))
   font-weight: 600;
 }
 
-.drawer-actions {
-  display: flex;
-  gap: 12px;
-  justify-content: center;
-  padding: 14px;
+/* shadcn Sidebar layout */
+.app-sidebar {
+  border-color: var(--cpa-border);
+  background: var(--sidebar);
+  box-shadow: 16px 0 34px rgb(30 56 62 / 6%);
 }
 
-@media (max-width: 860px) {
-  .mobile-header {
-    display: grid;
+.sidebar-brand-header {
+  padding: 12px 10px 8px;
+  overflow: hidden;
+}
+
+.app-shell :deep([data-collapsible="icon"] [data-sidebar="header"] .brand-copy) {
+  display: none;
+}
+
+.sidebar-brand-header .brand {
+  min-width: 0;
+  gap: 10px;
+  padding: 4px 2px 8px;
+}
+
+.sidebar-brand-header .brand-mark {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  border-radius: 10px;
+  box-shadow: 0 9px 20px rgb(0 154 168 / 18%);
+}
+
+.sidebar-brand-header .brand-copy strong {
+  font-size: 15px;
+}
+
+.sidebar-group-label {
+  gap: 7px;
+  color: var(--cpa-text-muted);
+  font-weight: 720;
+}
+
+.sider-menu {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--cpa-text-muted) 30%, transparent) transparent;
+}
+
+.app-sidebar :deep([data-sidebar="menu-button"]) {
+  min-height: 36px;
+  color: var(--cpa-text);
+  cursor: pointer;
+}
+
+.app-sidebar :deep([data-sidebar="menu-button"][data-active="true"]) {
+  color: var(--cpa-primary);
+  background:
+    linear-gradient(90deg, rgb(0 154 168 / 10%), rgb(0 154 168 / 4%)),
+    var(--cpa-primary-wash);
+  box-shadow: inset 0 0 0 1px rgb(0 154 168 / 9%);
+}
+
+.sidebar-user-footer {
+  padding: 8px;
+  border-top: 1px solid var(--cpa-border);
+  background: color-mix(in srgb, var(--sidebar) 94%, var(--cpa-primary-wash));
+}
+
+.user-menu-button {
+  height: 52px !important;
+}
+
+.user-avatar {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  place-items: center;
+  border-radius: 10px;
+  color: var(--cpa-primary);
+  background: var(--cpa-primary-wash);
+}
+
+.user-avatar svg {
+  width: 17px;
+  height: 17px;
+}
+
+.user-copy,
+.user-dropdown-label {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  text-align: left;
+}
+
+.user-copy {
+  flex: 1 1 auto;
+}
+
+.user-copy strong,
+.user-copy span,
+.user-dropdown-label strong,
+.user-dropdown-label span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-copy strong,
+.user-dropdown-label strong {
+  color: var(--cpa-text-strong);
+  font-size: 13px;
+}
+
+.user-copy span,
+.user-dropdown-label span {
+  color: var(--cpa-text-muted);
+  font-size: 11px;
+}
+
+.user-menu-chevron {
+  width: 15px !important;
+  height: 15px !important;
+  margin-left: auto;
+  color: var(--cpa-text-muted);
+}
+
+.user-dropdown {
+  min-width: 208px;
+}
+
+.app-header {
+  display: grid;
+  grid-template-columns: auto 1px minmax(0, 1fr) auto;
+  flex: 0 0 52px;
+  align-items: center;
+  gap: 10px;
+  height: 52px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--cpa-border);
+  background: var(--cpa-mobile-header-bg);
+  backdrop-filter: blur(18px);
+}
+
+.navigation-trigger {
+  width: 32px;
+  height: 32px;
+  color: var(--cpa-text-muted);
+}
+
+.header-divider {
+  width: 1px;
+  height: 18px;
+  background: var(--cpa-border);
+}
+
+.desktop-location {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--cpa-text-strong);
+  font-size: 13px;
+  font-weight: 720;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.header-actions {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+}
+
+.header-actions button {
+  color: var(--cpa-text-muted);
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+}
+
+.content-scroll {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 28px 36px 32px 28px;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--content-scrollbar-thumb) transparent;
+  background: var(--cpa-bg);
+}
+
+.content-scroll::-webkit-scrollbar {
+  width: 18px;
+  height: 18px;
+}
+
+.content-scroll::-webkit-scrollbar-track,
+.content-scroll::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.content-scroll::-webkit-scrollbar-thumb {
+  min-height: 56px;
+  border: 6px solid transparent;
+  border-radius: 999px;
+  background: var(--content-scrollbar-thumb);
+  background-clip: content-box;
+}
+
+.content-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--content-scrollbar-thumb-hover);
+  background-clip: content-box;
+}
+
+.content.is-route-pending .content-scroll,
+.content.is-route-transitioning .content-scroll {
+  overflow: hidden;
+}
+
+.content.is-records-scroll-mode .content-scroll {
+  scrollbar-gutter: auto;
+  scrollbar-width: none;
+}
+
+.content.is-records-scroll-mode .content-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .app-header {
+    grid-template-columns: 36px minmax(0, 1fr) auto;
+    gap: 6px;
+    height: 56px;
+    padding: 0 10px;
   }
 
-  .content {
-    padding: 0;
+  .header-divider,
+  .desktop-location {
+    display: none;
   }
 
-  .content > :deep(.n-layout-scroll-container) {
+  .mobile-brand {
+    display: inline-grid;
+  }
+
+  .content-scroll {
     padding: 10px 18px 12px 10px;
+  }
+}
+
+@media (min-width: 769px) {
+  .mobile-brand {
+    display: none;
   }
 }
 

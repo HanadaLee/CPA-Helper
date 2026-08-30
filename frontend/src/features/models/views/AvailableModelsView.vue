@@ -2,17 +2,17 @@
 import { computed, h, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  NAlert,
-  NButton,
-  NDataTable,
-  NEmpty,
-  NIcon,
-  NSpace,
-  NSpin,
-  NTag,
+  AppAlert,
+  AppButton,
+  AppDataTable,
+  AppEmpty,
+  AppIcon,
+  AppStack,
+  AppSpinner,
+  AppBadge,
   type DataTableColumns,
-} from 'naive-ui'
-import { Cpu, KeyRound, RefreshCw, ShieldCheck } from 'lucide-vue-next'
+} from '@/shared/ui/app-kit'
+import { Cpu, KeyRound, RefreshCw, ShieldCheck } from '@lucide/vue'
 
 import { listAvailableModels } from '@/features/models/api/availableModelsApi'
 import { useI18n } from '@/shared/i18n'
@@ -164,13 +164,13 @@ const columns = computed<DataTableColumns<AvailableModel>>(() => [
     width: 220,
     render: (row) =>
       h(
-        NSpace,
+        AppStack,
         { size: 4, wrap: true },
         {
           default: () =>
             row.sources.map((source) =>
               h(
-                NTag,
+                AppBadge,
                 { key: source.api_key_hash, size: 'small', bordered: false, type: 'info' },
                 { default: () => `${source.description} · ${source.api_key_preview}` },
               ),
@@ -226,27 +226,27 @@ onMounted(refresh)
         <h1 class="page-title">{{ t('可用模型', 'Available Models') }}</h1>
         <p class="page-subtitle">{{ t('通过当前账号绑定的 CPA API Key 查询并聚合', 'Query and aggregate models from CPA API keys bound to the current account') }}</p>
       </div>
-      <NSpace>
-        <NButton secondary :loading="isLoading" @click="refresh">
+      <AppStack>
+        <AppButton secondary :loading="isLoading" @click="refresh">
           <template #icon>
-            <NIcon :component="RefreshCw" />
+            <AppIcon :component="RefreshCw" />
           </template>
           {{ t('刷新', 'Refresh') }}
-        </NButton>
-      </NSpace>
+        </AppButton>
+      </AppStack>
     </div>
 
     <section class="panel model-table-panel">
       <div class="panel-inner model-panel">
-        <NAlert v-if="errorMessage" type="error" :bordered="false">
+        <AppAlert v-if="errorMessage" type="error" :bordered="false">
           <div class="alert-row">
             <span>{{ errorMessage }}</span>
-            <NButton size="small" secondary :loading="isLoading" @click="refresh">{{ t('重试', 'Retry') }}</NButton>
+            <AppButton size="small" secondary :loading="isLoading" @click="refresh">{{ t('重试', 'Retry') }}</AppButton>
           </div>
-        </NAlert>
+        </AppAlert>
 
         <template v-else>
-          <NAlert
+          <AppAlert
             v-if="response?.errors.length"
             type="warning"
             :bordered="false"
@@ -262,7 +262,7 @@ onMounted(refresh)
                 }}
               </div>
             </div>
-          </NAlert>
+          </AppAlert>
 
           <div v-if="response" class="metric-grid model-metrics">
             <div class="metric-card">
@@ -292,38 +292,38 @@ onMounted(refresh)
           </div>
 
           <div v-if="isLoading && !response" class="loading-state">
-            <NSpin size="small" />
+            <AppSpinner size="small" />
             <span>{{ t('正在向 CPA 查询模型', 'Querying CPA for models') }}</span>
           </div>
 
           <div v-else-if="response && !response.has_api_keys" class="empty-state">
-            <NEmpty :description="t('还没有可用于查询模型的 API 密钥', 'No API keys are available for model queries yet')">
+            <AppEmpty :description="t('还没有可用于查询模型的 API 密钥', 'No API keys are available for model queries yet')">
               <template #extra>
-                <NButton type="primary" @click="goToApiKeys">{{ t('去创建 API 密钥', 'Create API key') }}</NButton>
+                <AppButton type="primary" @click="goToApiKeys">{{ t('去创建 API 密钥', 'Create API key') }}</AppButton>
               </template>
-            </NEmpty>
+            </AppEmpty>
           </div>
 
           <div
             v-else-if="response && response.has_api_keys && response.queryable_api_key_count === 0"
             class="empty-state"
           >
-            <NEmpty :description="t('绑定的 API 密钥缺少完整密钥，无法查询模型', 'Bound API keys are missing complete keys and cannot query models')">
+            <AppEmpty :description="t('绑定的 API 密钥缺少完整密钥，无法查询模型', 'Bound API keys are missing complete keys and cannot query models')">
               <template #extra>
-                <NButton type="primary" @click="goToApiKeys">{{ t('去 API 密钥页检查', 'Check API keys') }}</NButton>
+                <AppButton type="primary" @click="goToApiKeys">{{ t('去 API 密钥页检查', 'Check API keys') }}</AppButton>
               </template>
-            </NEmpty>
+            </AppEmpty>
           </div>
 
           <div v-else-if="response && response.models.length === 0" class="empty-state">
-            <NEmpty :description="t('CPA 未返回可用模型', 'CPA returned no available models')">
+            <AppEmpty :description="t('CPA 未返回可用模型', 'CPA returned no available models')">
               <template #extra>
-                <NButton secondary :loading="isLoading" @click="refresh">{{ t('重新查询', 'Query again') }}</NButton>
+                <AppButton secondary :loading="isLoading" @click="refresh">{{ t('重新查询', 'Query again') }}</AppButton>
               </template>
-            </NEmpty>
+            </AppEmpty>
           </div>
 
-          <NDataTable
+          <AppDataTable
             v-else-if="response"
             class="available-models-table"
             size="small"

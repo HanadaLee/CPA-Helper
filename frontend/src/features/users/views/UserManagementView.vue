@@ -2,22 +2,22 @@
 import type { Component } from 'vue'
 import { computed, h, onMounted, ref } from 'vue'
 import {
-  NAlert,
-  NButton,
-  NDataTable,
-  NForm,
-  NFormItem,
-  NInput,
-  NInputNumber,
-  NModal,
-  NPopconfirm,
-  NSpace,
-  NSwitch,
-  NTag,
+  AppAlert,
+  AppButton,
+  AppDataTable,
+  AppForm,
+  AppFormItem,
+  AppInput,
+  AppNumberInput,
+  AppModal,
+  AppConfirm,
+  AppStack,
+  AppSwitch,
+  AppBadge,
   useMessage,
   type DataTableColumns,
-} from 'naive-ui'
-import { CircleDollarSign, KeyRound, ShieldCheck, UserRound } from 'lucide-vue-next'
+} from '@/shared/ui/app-kit'
+import { CircleDollarSign, KeyRound, ShieldCheck, UserRound } from '@lucide/vue'
 
 import {
   createUser,
@@ -319,7 +319,7 @@ const columns = computed<DataTableColumns<UserSummary>>(() => [
     width: 90,
     render: (row) =>
       h(
-        NTag,
+        AppBadge,
         {
           size: 'small',
           type: isUserDisabled(row) ? 'warning' : 'success',
@@ -440,12 +440,12 @@ const columns = computed<DataTableColumns<UserSummary>>(() => [
     fixed: 'right',
     render: (row) =>
       h(
-        NSpace,
+        AppStack,
         { size: 4 },
         {
           default: () => [
             h(
-              NButton,
+              AppButton,
               { size: 'small', quaternary: true, onClick: () => editUser(row) },
               { default: () => t('编辑', 'Edit') },
             ),
@@ -453,12 +453,12 @@ const columns = computed<DataTableColumns<UserSummary>>(() => [
               ? null
               : isUserDisabled(row)
                 ? h(
-                    NPopconfirm,
+                    AppConfirm,
                     { onPositiveClick: () => enableUserRow(row) },
                     {
                       trigger: () =>
                         h(
-                          NButton,
+                          AppButton,
                           { size: 'small', quaternary: true, type: 'primary' },
                           { default: () => t('启用', 'Enable') },
                         ),
@@ -466,12 +466,12 @@ const columns = computed<DataTableColumns<UserSummary>>(() => [
                     },
                   )
                 : h(
-                    NPopconfirm,
+                    AppConfirm,
                     { onPositiveClick: () => disableUserRow(row) },
                     {
                       trigger: () =>
                         h(
-                          NButton,
+                          AppButton,
                           { size: 'small', quaternary: true, type: 'warning' },
                           { default: () => t('禁用', 'Disable') },
                         ),
@@ -494,10 +494,10 @@ onMounted(refresh)
         <h1 class="page-title">{{ t('用户管理', 'User Management') }}</h1>
         <p class="page-subtitle">{{ t('管理用户昵称、登录账号、密码和角色', 'Manage user nicknames, sign-in accounts, passwords, and roles') }}</p>
       </div>
-      <NSpace>
-        <NButton secondary :loading="isLoading" @click="refresh">{{ t('刷新', 'Refresh') }}</NButton>
-        <NButton type="primary" @click="openCreateUser">{{ t('增加用户', 'Add user') }}</NButton>
-      </NSpace>
+      <AppStack>
+        <AppButton secondary :loading="isLoading" @click="refresh">{{ t('刷新', 'Refresh') }}</AppButton>
+        <AppButton type="primary" @click="openCreateUser">{{ t('增加用户', 'Add user') }}</AppButton>
+      </AppStack>
     </div>
 
     <div class="metric-grid user-metrics">
@@ -512,7 +512,7 @@ onMounted(refresh)
     </div>
 
     <section class="panel table-panel">
-      <NDataTable
+      <AppDataTable
         size="small"
         :loading="isLoading"
         :columns="columns"
@@ -523,7 +523,7 @@ onMounted(refresh)
       />
     </section>
 
-    <NModal
+    <AppModal
       v-model:show="editorVisible"
       preset="card"
       :mask-closable="false"
@@ -531,29 +531,29 @@ onMounted(refresh)
       :title="editingUserId ? t('编辑用户', 'Edit user') : t('增加用户', 'Add user')"
       :style="{ width: 'min(520px, calc(100vw - 32px))' }"
     >
-      <NAlert v-if="editingUserId === null" type="warning" :bordered="false" class="user-editor-warning">
+      <AppAlert v-if="editingUserId === null" type="warning" :bordered="false" class="user-editor-warning">
         {{ t('账号一旦创建，不允许删除，只允许禁用，请谨慎操作。', 'Accounts cannot be deleted after creation. They can only be disabled, so proceed carefully.') }}
-      </NAlert>
+      </AppAlert>
 
-      <NForm label-placement="top">
-        <NFormItem :label="t('用户昵称', 'User nickname')" required>
-          <NInput
+      <AppForm label-placement="top">
+        <AppFormItem :label="t('用户昵称', 'User nickname')" required>
+          <AppInput
             v-model:value="userNickname"
             :placeholder="t('例如：研发用户', 'Example: Engineering user')"
             @keyup.enter="saveUser"
           />
-        </NFormItem>
-        <NFormItem :label="t('账号', 'Account')" required>
-          <NInput
+        </AppFormItem>
+        <AppFormItem :label="t('账号', 'Account')" required>
+          <AppInput
             v-model:value="userAccount"
             autocomplete="username"
             :disabled="editingUserId !== null"
             :placeholder="t('例如：user001', 'Example: user001')"
             @keyup.enter="saveUser"
           />
-        </NFormItem>
-        <NFormItem :label="t('密码', 'Password')" :required="editingUserId === null">
-          <NInput
+        </AppFormItem>
+        <AppFormItem :label="t('密码', 'Password')" :required="editingUserId === null">
+          <AppInput
             v-model:value="userPassword"
             type="password"
             show-password-on="mousedown"
@@ -561,22 +561,22 @@ onMounted(refresh)
             :placeholder="editingUserId ? t('留空不修改密码', 'Leave blank to keep the current password') : t('请输入登录密码', 'Enter a sign-in password')"
             @keyup.enter="saveUser"
           />
-        </NFormItem>
-        <NFormItem :label="t('是否设为管理员', 'Set as admin')">
-          <NSwitch v-model:value="isUserAdmin" :disabled="isEditingFirstUser" />
-        </NFormItem>
-        <NFormItem :label="t('余额设置', 'Balance settings')">
+        </AppFormItem>
+        <AppFormItem :label="t('是否设为管理员', 'Set as admin')">
+          <AppSwitch v-model:value="isUserAdmin" :disabled="isEditingFirstUser" />
+        </AppFormItem>
+        <AppFormItem :label="t('余额设置', 'Balance settings')">
           <div class="quota-unlimited-row">
             <div>
               <div class="quota-unlimited-title">{{ t('不限制余额', 'Unlimited balance') }}</div>
               <div class="quota-unlimited-desc">{{ t('开启后不扣余额，也不会因余额暂停 API Key。', 'When enabled, balances are not deducted and API keys are not paused due to balance.') }}</div>
             </div>
-            <NSwitch v-model:value="quotaUnlimited" />
+            <AppSwitch v-model:value="quotaUnlimited" />
           </div>
-        </NFormItem>
+        </AppFormItem>
         <div class="form-grid quota-editor-grid">
-          <NFormItem :label="t('每日余额 USD', 'Daily balance USD')">
-            <NInputNumber
+          <AppFormItem :label="t('每日余额 USD', 'Daily balance USD')">
+            <AppNumberInput
               :value="quotaDailyUsd"
               :disabled="quotaUnlimited"
               :min="0"
@@ -584,9 +584,9 @@ onMounted(refresh)
               placeholder="0"
               @update:value="setQuotaDailyUsd"
             />
-          </NFormItem>
-          <NFormItem :label="t('每周余额 USD', 'Weekly balance USD')">
-            <NInputNumber
+          </AppFormItem>
+          <AppFormItem :label="t('每周余额 USD', 'Weekly balance USD')">
+            <AppNumberInput
               :value="quotaWeeklyUsd"
               :disabled="quotaUnlimited"
               :min="0"
@@ -594,9 +594,9 @@ onMounted(refresh)
               placeholder="0"
               @update:value="setQuotaWeeklyUsd"
             />
-          </NFormItem>
-          <NFormItem :label="t('每月余额 USD', 'Monthly balance USD')">
-            <NInputNumber
+          </AppFormItem>
+          <AppFormItem :label="t('每月余额 USD', 'Monthly balance USD')">
+            <AppNumberInput
               :value="quotaMonthlyUsd"
               :disabled="quotaUnlimited"
               :min="0"
@@ -604,9 +604,9 @@ onMounted(refresh)
               placeholder="0"
               @update:value="setQuotaMonthlyUsd"
             />
-          </NFormItem>
-          <NFormItem :label="t('不限时余额 USD', 'Lifetime balance USD')">
-            <NInputNumber
+          </AppFormItem>
+          <AppFormItem :label="t('不限时余额 USD', 'Lifetime balance USD')">
+            <AppNumberInput
               :value="quotaLifetimeUsd"
               :disabled="quotaUnlimited"
               :min="0"
@@ -614,19 +614,19 @@ onMounted(refresh)
               placeholder="0"
               @update:value="setQuotaLifetimeUsd"
             />
-          </NFormItem>
+          </AppFormItem>
         </div>
-        <NAlert type="info" :bordered="false" class="quota-editor-hint">
+        <AppAlert type="info" :bordered="false" class="quota-editor-hint">
           {{ t('关闭不限制后，扣费顺序：每日、每周、每月、不限时；全部余额都无剩余时暂停该用户的 API Key。', 'After unlimited balance is disabled, charges are deducted from daily, weekly, monthly, then lifetime balance. If all balances are exhausted, the user API keys are paused.') }}
-        </NAlert>
+        </AppAlert>
         <div class="user-editor-actions">
-          <NButton secondary @click="editorVisible = false">{{ t('取消', 'Cancel') }}</NButton>
-          <NButton type="primary" :loading="isSavingUser" @click="saveUser">
+          <AppButton secondary @click="editorVisible = false">{{ t('取消', 'Cancel') }}</AppButton>
+          <AppButton type="primary" :loading="isSavingUser" @click="saveUser">
             {{ editingUserId ? t('保存', 'Save') : t('创建', 'Create') }}
-          </NButton>
+          </AppButton>
         </div>
-      </NForm>
-    </NModal>
+      </AppForm>
+    </AppModal>
   </section>
 </template>
 

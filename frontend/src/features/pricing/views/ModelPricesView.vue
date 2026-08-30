@@ -2,24 +2,24 @@
 import type { Component, CSSProperties } from 'vue'
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import {
-  NAlert,
-  NButton,
-  NDataTable,
-  NForm,
-  NFormItem,
-  NIcon,
-  NInput,
-  NInputNumber,
-  NModal,
-  NSelect,
-  NSpace,
-  NSwitch,
-  NTag,
+  AppAlert,
+  AppButton,
+  AppDataTable,
+  AppForm,
+  AppFormItem,
+  AppIcon,
+  AppInput,
+  AppNumberInput,
+  AppModal,
+  AppSelect,
+  AppStack,
+  AppSwitch,
+  AppBadge,
   useDialog,
   useMessage,
   type DataTableColumns,
-} from 'naive-ui'
-import { Database, Layers3, RefreshCw, Search, Server, Settings2 } from 'lucide-vue-next'
+} from '@/shared/ui/app-kit'
+import { Database, Layers3, RefreshCw, Search, Server, Settings2 } from '@lucide/vue'
 
 import {
   createModelPrice,
@@ -193,7 +193,7 @@ watch([selectedProvider, selectedStatus, searchQuery], () => {
 })
 
 function renderSearchIcon() {
-  return h(NIcon, { component: Search })
+  return h(AppIcon, { component: Search })
 }
 
 function updatePricePage(page: number) {
@@ -597,7 +597,7 @@ function renderModelCell(row: PriceDisplayRow) {
       h('span', { class: 'model-name' }, row.id),
       row.in_cpa
         ? h(
-            NTag,
+            AppBadge,
             {
               class: 'model-availability-tag',
               size: 'small',
@@ -626,7 +626,7 @@ function renderStatusCell(row: PriceDisplayRow) {
   const label = row.status === 'missing' ? t('未定价', 'Unpriced') : row.status === 'litellm' ? 'LiteLLM' : t('手动', 'Manual')
   const type = row.status === 'missing' ? 'warning' : row.status === 'litellm' ? 'info' : 'default'
   return h(
-    NTag,
+    AppBadge,
     { size: 'small', type, bordered: false },
     { default: () => label },
   )
@@ -708,24 +708,24 @@ const columns = computed<DataTableColumns<PriceDisplayRow>>(() => [
     fixed: 'right',
     render: (row) =>
       h(
-        NSpace,
+        AppStack,
         { size: 4 },
         {
           default: () => [
             row.price
               ? h(
-                  NButton,
+                  AppButton,
                   { size: 'small', quaternary: true, onClick: () => openEdit(row.price as ModelPrice) },
                   { default: () => t('改价', 'Edit') },
                 )
               : h(
-                  NButton,
+                  AppButton,
                   { size: 'small', type: 'primary', secondary: true, onClick: () => openCreateForRow(row) },
                   { default: () => t('设价', 'Set price') },
                 ),
             row.price
               ? h(
-                  NButton,
+                  AppButton,
                   { size: 'small', quaternary: true, type: 'error', onClick: () => confirmDelete(row.price as ModelPrice) },
                   { default: () => t('删除', 'Delete') },
                 )
@@ -755,21 +755,21 @@ onBeforeUnmount(() => {
           {{ t('Token 模型按 USD / 百万 Token 计费，image 模型按每次成功调用计费', 'Token models are charged in USD per million tokens. Image models are charged per successful call.') }}
         </p>
       </div>
-      <NSpace>
-        <NButton secondary :loading="isSyncing" @click="syncPrices">
+      <AppStack>
+        <AppButton secondary :loading="isSyncing" @click="syncPrices">
           <template #icon>
-            <NIcon :component="RefreshCw" />
+            <AppIcon :component="RefreshCw" />
           </template>
           {{ t('同步 LiteLLM', 'Sync LiteLLM') }}
-        </NButton>
-        <NButton secondary :disabled="isSyncing" @click="openProxySettings">
+        </AppButton>
+        <AppButton secondary :disabled="isSyncing" @click="openProxySettings">
           <template #icon>
-            <NIcon :component="Settings2" />
+            <AppIcon :component="Settings2" />
           </template>
           {{ t('代理配置', 'Proxy settings') }}
-        </NButton>
-        <NButton type="primary" @click="() => openCreate()">{{ t('新增价格', 'Add price') }}</NButton>
-      </NSpace>
+        </AppButton>
+        <AppButton type="primary" @click="() => openCreate()">{{ t('新增价格', 'Add price') }}</AppButton>
+      </AppStack>
     </div>
 
     <div class="metric-grid price-metrics">
@@ -785,14 +785,14 @@ onBeforeUnmount(() => {
 
     <section class="panel table-panel price-table-panel">
       <div class="price-table-top">
-        <NAlert v-if="catalogNotice" class="price-alert" type="warning" :show-icon="false">
+        <AppAlert v-if="catalogNotice" class="price-alert" type="warning" :show-icon="false">
           {{ catalogNotice }}
-        </NAlert>
+        </AppAlert>
         <div class="table-toolbar">
-          <NSpace class="price-toolbar-layout" justify="space-between" align="center">
-            <NSpace class="price-filters" align="center" :size="8">
+          <AppStack class="price-toolbar-layout" justify="space-between" align="center">
+            <AppStack class="price-filters" align="center" :size="8">
               <span class="filter-label">{{ t('服务商', 'Provider') }}</span>
-              <NSelect
+              <AppSelect
                 v-model:value="selectedProvider"
                 class="provider-filter"
                 :options="providerOptions"
@@ -800,28 +800,28 @@ onBeforeUnmount(() => {
                 filterable
                 :placeholder="t('全部服务商', 'All providers')"
               />
-              <NSelect
+              <AppSelect
                 v-model:value="selectedStatus"
                 class="status-filter"
                 :options="statusOptions"
                 clearable
                 :placeholder="t('全部状态', 'All statuses')"
               />
-              <NInput
+              <AppInput
                 v-model:value="searchQuery"
                 class="price-search"
                 clearable
                 :placeholder="t('搜索模型或服务商', 'Search models or providers')"
                 :render-prefix="renderSearchIcon"
               />
-            </NSpace>
+            </AppStack>
             <span class="result-count">
               {{ t(`共 ${filteredPriceCount} / ${totalPriceCount} 条`, `${filteredPriceCount} / ${totalPriceCount} items`) }}
             </span>
-          </NSpace>
+          </AppStack>
         </div>
       </div>
-      <NDataTable
+      <AppDataTable
         class="price-table"
         v-bind="priceTableLayoutProps"
         size="small"
@@ -834,53 +834,53 @@ onBeforeUnmount(() => {
       />
     </section>
 
-    <NModal
+    <AppModal
       v-model:show="modalOpen"
       preset="card"
       :title="editingId === null ? t('新增价格', 'Add price') : t('编辑价格', 'Edit price')"
       :style="priceModalStyle"
       class="price-modal"
     >
-      <NForm :model="form" label-placement="top">
+      <AppForm :model="form" label-placement="top">
         <div class="form-grid">
-          <NFormItem :label="t('服务商', 'Provider')">
-            <NInput v-model:value="form.provider" />
-          </NFormItem>
-          <NFormItem :label="t('模型', 'Model')">
-            <NInput v-model:value="form.model" />
-          </NFormItem>
-          <NFormItem :label="t('FAST 倍率', 'FAST multiplier')" class="wide-form-item">
-            <NInputNumber v-model:value="form.fast_multiplier" :min="0.01" :step="0.1" />
-          </NFormItem>
-          <NFormItem v-if="isRequestPriceForm" :label="t('每次调用价格 USD', 'Per-call price USD')" class="wide-form-item">
-            <NInputNumber v-model:value="form.request_usd" :min="0" :placeholder="t('例如：0.04', 'Example: 0.04')" />
-          </NFormItem>
+          <AppFormItem :label="t('服务商', 'Provider')">
+            <AppInput v-model:value="form.provider" />
+          </AppFormItem>
+          <AppFormItem :label="t('模型', 'Model')">
+            <AppInput v-model:value="form.model" />
+          </AppFormItem>
+          <AppFormItem :label="t('FAST 倍率', 'FAST multiplier')" class="wide-form-item">
+            <AppNumberInput v-model:value="form.fast_multiplier" :min="0.01" :step="0.1" />
+          </AppFormItem>
+          <AppFormItem v-if="isRequestPriceForm" :label="t('每次调用价格 USD', 'Per-call price USD')" class="wide-form-item">
+            <AppNumberInput v-model:value="form.request_usd" :min="0" :placeholder="t('例如：0.04', 'Example: 0.04')" />
+          </AppFormItem>
           <template v-else>
-            <NFormItem :label="t('输入价格', 'Input price')">
-              <NInputNumber v-model:value="form.input_usd_per_million" :min="0" />
-            </NFormItem>
-            <NFormItem :label="t('输出价格', 'Output price')">
-              <NInputNumber v-model:value="form.output_usd_per_million" :min="0" />
-            </NFormItem>
-            <NFormItem :label="t('缓存读价格', 'Cache read price')">
-              <NInputNumber v-model:value="form.cache_read_usd_per_million" :min="0" />
-            </NFormItem>
-            <NFormItem :label="t('缓存写价格', 'Cache write price')">
-              <NInputNumber v-model:value="form.cache_creation_usd_per_million" :min="0" />
-            </NFormItem>
+            <AppFormItem :label="t('输入价格', 'Input price')">
+              <AppNumberInput v-model:value="form.input_usd_per_million" :min="0" />
+            </AppFormItem>
+            <AppFormItem :label="t('输出价格', 'Output price')">
+              <AppNumberInput v-model:value="form.output_usd_per_million" :min="0" />
+            </AppFormItem>
+            <AppFormItem :label="t('缓存读价格', 'Cache read price')">
+              <AppNumberInput v-model:value="form.cache_read_usd_per_million" :min="0" />
+            </AppFormItem>
+            <AppFormItem :label="t('缓存写价格', 'Cache write price')">
+              <AppNumberInput v-model:value="form.cache_creation_usd_per_million" :min="0" />
+            </AppFormItem>
           </template>
         </div>
-      </NForm>
+      </AppForm>
       <p class="price-save-hint">{{ priceSaveHint }}</p>
       <template #footer>
-        <NSpace justify="end">
-          <NButton @click="modalOpen = false">{{ t('取消', 'Cancel') }}</NButton>
-          <NButton type="primary" @click="savePrice">{{ t('保存', 'Save') }}</NButton>
-        </NSpace>
+        <AppStack justify="end">
+          <AppButton @click="modalOpen = false">{{ t('取消', 'Cancel') }}</AppButton>
+          <AppButton type="primary" @click="savePrice">{{ t('保存', 'Save') }}</AppButton>
+        </AppStack>
       </template>
-    </NModal>
+    </AppModal>
 
-    <NModal
+    <AppModal
       v-model:show="proxyModalOpen"
       preset="card"
       :title="t('LiteLLM 代理配置', 'LiteLLM proxy settings')"
@@ -889,33 +889,33 @@ onBeforeUnmount(() => {
       :footer-style="proxyModalFooterStyle"
       class="proxy-modal"
     >
-      <NForm :model="proxyForm" label-placement="top">
+      <AppForm :model="proxyForm" label-placement="top">
         <div class="proxy-form">
           <p class="proxy-hint">{{ liteLLMProxyHint }}</p>
           <div class="proxy-switch-row">
             <span class="proxy-switch-label">{{ t('使用代理', 'Use proxy') }}</span>
-            <NSwitch
+            <AppSwitch
               v-model:value="proxyForm.enabled"
               :disabled="isProxyLoading || isProxySaving"
               :aria-label="t('使用代理', 'Use proxy')"
             />
           </div>
-          <NFormItem :label="t('代理地址', 'Proxy URL')">
-            <NInput
+          <AppFormItem :label="t('代理地址', 'Proxy URL')">
+            <AppInput
               v-model:value="proxyForm.proxy_url"
               :disabled="!proxyForm.enabled || isProxyLoading || isProxySaving"
               :placeholder="t('http://127.0.0.1:7890 或 socks5://127.0.0.1:1080', 'http://127.0.0.1:7890 or socks5://127.0.0.1:1080')"
             />
-          </NFormItem>
+          </AppFormItem>
         </div>
-      </NForm>
+      </AppForm>
       <template #footer>
-        <NSpace justify="end">
-          <NButton :disabled="isProxySaving" @click="proxyModalOpen = false">{{ t('取消', 'Cancel') }}</NButton>
-          <NButton type="primary" :loading="isProxySaving" @click="saveProxySettings">{{ t('保存', 'Save') }}</NButton>
-        </NSpace>
+        <AppStack justify="end">
+          <AppButton :disabled="isProxySaving" @click="proxyModalOpen = false">{{ t('取消', 'Cancel') }}</AppButton>
+          <AppButton type="primary" :loading="isProxySaving" @click="saveProxySettings">{{ t('保存', 'Save') }}</AppButton>
+        </AppStack>
       </template>
-    </NModal>
+    </AppModal>
   </section>
 </template>
 
