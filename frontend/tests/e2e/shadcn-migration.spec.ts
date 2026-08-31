@@ -60,6 +60,7 @@ async function expectPlainDialogFooter(dialog: Locator) {
 
 test('initial navigation uses shell and dashboard skeletons instead of a blank screen', async ({ page }) => {
   await setupOrLogin(page)
+  await expect(page.locator('[data-page-title]')).toBeVisible()
 
   const cdp = await page.context().newCDPSession(page)
   await cdp.send('Network.setCacheDisabled', { cacheDisabled: true })
@@ -126,7 +127,7 @@ test('all migrated routes render and core controls remain interactive', async ({
     await page.goto(route)
     await expect(page.locator('.desktop-location')).toContainText(title)
     await expect(page.locator('[data-page-title]')).toBeVisible()
-    await expect(page.locator('.desktop-location')).toHaveCSS('visibility', 'hidden')
+    await expect(page.locator('.desktop-location')).toHaveCSS('visibility', 'visible')
   }
 
   for (const [route, title] of accountRoutes) {
@@ -279,7 +280,64 @@ test('all migrated routes render and core controls remain interactive', async ({
   await expect(adminSwitch.locator('[data-slot="switch-thumb"]')).toHaveCSS('border-top-width', '1px')
   await page.getByRole('button', { name: /取消|Cancel/ }).click()
 
+  const usageRecordFixture = {
+    id: 101,
+    timestamp: '2026-08-31T12:00:00+08:00',
+    api_key_description: 'E2E key',
+    user_id: 1,
+    user_label: 'admin',
+    provider: 'openai',
+    model: 'gpt-5.6-terra',
+    reasoning_effort: 'xhigh',
+    request_service_tier: 'fast',
+    endpoint: '/v1/responses',
+    source: 'e2e',
+    request_id: 'request-detail-width-e2e',
+    auth_index: null,
+    auth: 'api_key',
+    latency_ms: 1200,
+    ttft_ms: 180,
+    failed: false,
+    input_tokens: 1200,
+    output_tokens: 400,
+    cached_tokens: 200,
+    cache_read_tokens: 200,
+    cache_creation_tokens: 0,
+    reasoning_tokens: 120,
+    total_tokens: 1600,
+    estimated_cost_usd: 0.012,
+    unpriced: false,
+  }
+  await page.route('**/api/usage/records?*', async (route) => {
+    await route.fulfill({
+      json: {
+        items: [usageRecordFixture],
+        total: 1,
+        page: 1,
+        page_size: 50,
+        start: '2026-08-31T00:00:00+08:00',
+        end: '2026-09-01T00:00:00+08:00',
+      },
+    })
+  })
+  await page.route('**/api/usage/records/101*', async (route) => {
+    await route.fulfill({
+      json: {
+        ...usageRecordFixture,
+        raw_json: {
+          request: {
+            model: 'gpt-5.6-terra',
+            input: 'A deliberately long raw payload value used to verify that the wider request detail drawer remains readable.',
+          },
+          response: { id: 'request-detail-width-e2e' },
+        },
+      },
+    })
+  })
   await page.goto('/admin/records')
+  const quickRangeTabs = page.locator('.quick-ranges[data-slot="tabs"]')
+  await expect(quickRangeTabs.getByRole('tablist')).toHaveAccessibleName(/快捷时间范围|Quick time ranges/)
+  await expect(quickRangeTabs.getByRole('tab')).toHaveCount(5)
   await expect(page.locator('input[type="datetime-local"]')).toHaveCount(0)
   await expect(page.locator('[data-slot="date-time-range-start"]')).toBeVisible()
   await expect(page.locator('[data-slot="date-time-range-end"]')).toBeVisible()
@@ -293,6 +351,13 @@ test('all migrated routes render and core controls remain interactive', async ({
   await expect(page.getByRole('columnheader', { name: /^(费用|Cost)$/ })).toHaveCount(0)
   await expect(page.locator('.records-table')).toHaveCSS('border-top-left-radius', /[1-9]/)
   await expectTableInsidePanel(page, '.records-table', '.records-table-panel')
+  await page.getByRole('button', { name: /详情|Details/ }).first().click()
+  const requestDetailSheet = page.getByRole('dialog', { name: /请求事件详情|Request event details/ })
+  const requestDetailSheetBox = await requestDetailSheet.boundingBox()
+  expect(requestDetailSheetBox).not.toBeNull()
+  expect(requestDetailSheetBox?.width).toBeGreaterThanOrEqual(900)
+  await expect(requestDetailSheet.locator('.mono-json')).toHaveCSS('overflow-x', 'auto')
+  await requestDetailSheet.getByRole('button', { name: /Close/ }).click()
 
   await page.goto('/admin/settings')
   const brandingSection = page.locator('.settings-section').filter({ hasText: /界面品牌|Interface branding/ })
@@ -339,7 +404,8 @@ test('all migrated routes render and core controls remain interactive', async ({
   const endpointTypeTabs = page.locator('.api-endpoint-type-tabs[data-slot="tabs"]')
   const endpointTypeGroup = endpointTypeTabs.locator('[data-slot="tabs-list"]')
   const endpointTypeButtons = endpointTypeGroup.locator('[data-slot="tabs-trigger"]')
-  await expect(endpointTypeGroup).toHaveAttribute('aria-labelledby', 'api-endpoint-url-type-label')
+  await expect(endpointTypeGroup).toHaveAccessibleName(/URL 类型|URL type/)
+  await expect(page.getByText(/^(URL 类型|URL type)$/)).toHaveCount(0)
   await expect(endpointTypeButtons).toHaveCount(4)
   await expect(endpointTypeButtons.first()).toHaveCSS('cursor', 'pointer')
   await expect(endpointTypeButtons.first()).toHaveAttribute('data-state', 'active')
@@ -422,16 +488,27 @@ test('available models uses compact price columns and shows the FAST multiplier'
 
 test('theme and mobile navigation survive the migration', async ({ page }) => {
   await setupOrLogin(page)
+  await expect(page.locator('[data-slot="sidebar"][data-variant="inset"]')).toBeVisible()
   await expect.poll(() =>
     page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--cpa-primary').trim()),
   ).toBe('oklch(55% .19 257)')
-  await expect(page.locator('[data-slot="sidebar-container"]')).toHaveCSS('border-right-color', 'oklch(0.9 0.018 255)')
+  await expect(page.locator('[data-slot="sidebar-container"]')).toHaveCSS('border-right-width', '0px')
   const usageMenuButton = page.getByRole('button', { name: /用量分析|Usage Analytics/ })
   await expect(usageMenuButton).toHaveCSS('cursor', 'pointer')
   await expect(usageMenuButton).toHaveCSS('font-size', '12.25px')
   await expect(page.locator('a[href*="github.com/walkingddd/CPA-Helper"]')).toHaveCount(0)
-  await page.getByRole('button', { name: /admin.*管理员|admin.*Admin/i }).click()
+  const desktopUserMenuButton = page.getByRole('button', { name: /admin.*管理员|admin.*Admin/i })
+  await expect(desktopUserMenuButton.locator('.lucide-ellipsis-vertical')).toBeVisible()
+  const desktopUserButtonBox = await desktopUserMenuButton.boundingBox()
+  await desktopUserMenuButton.click()
+  const desktopUserMenu = page.getByRole('menu')
   await expect(page.getByRole('menuitem', { name: /退出登录|Sign out/ })).toBeVisible()
+  const desktopUserMenuBox = await desktopUserMenu.boundingBox()
+  expect(desktopUserButtonBox).not.toBeNull()
+  expect(desktopUserMenuBox).not.toBeNull()
+  expect(desktopUserMenuBox?.x ?? 0).toBeGreaterThanOrEqual(
+    (desktopUserButtonBox?.x ?? 0) + (desktopUserButtonBox?.width ?? 0) - 1,
+  )
   await page.keyboard.press('Escape')
 
   await page.getByRole('button', { name: /打开导航|Open navigation/ }).click()
@@ -452,13 +529,25 @@ test('theme and mobile navigation survive the migration', async ({ page }) => {
   await expect.poll(() =>
     page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--cpa-primary').trim()),
   ).toBe('oklch(68% .16 257)')
-  await expect(page.locator('[data-slot="sidebar-container"]')).toHaveCSS('border-right-color', 'oklch(1 0 0 / 0.1)')
+  await expect(page.locator('[data-slot="sidebar-container"]')).toHaveCSS('border-right-width', '0px')
 
   await page.setViewportSize({ width: 390, height: 844 })
   await page.reload()
   await page.getByRole('button', { name: /打开导航|Open navigation/ }).click()
+  await expect(page.locator('[data-mobile="true"]')).toHaveCSS('border-right-color', 'oklch(1 0 0 / 0.1)')
   await expect(page.getByText('CPA-Helper', { exact: false }).last()).toBeVisible()
   await expect(page.getByRole('button', { name: /用量分析|Usage Analytics/ }).first()).toBeVisible()
+  const mobileUserMenuButton = page.getByRole('button', { name: /admin.*管理员|admin.*Admin/i })
+  await expect(mobileUserMenuButton.locator('.lucide-ellipsis-vertical')).toBeVisible()
+  const mobileUserButtonBox = await mobileUserMenuButton.boundingBox()
+  await mobileUserMenuButton.click()
+  const mobileUserMenuBox = await page.getByRole('menu').boundingBox()
+  expect(mobileUserButtonBox).not.toBeNull()
+  expect(mobileUserMenuBox).not.toBeNull()
+  expect((mobileUserMenuBox?.y ?? 0) + (mobileUserMenuBox?.height ?? 0)).toBeLessThanOrEqual(
+    (mobileUserButtonBox?.y ?? 0) + 1,
+  )
+  await page.keyboard.press('Escape')
   await page.getByRole('button', { name: /用户管理|Users/ }).click()
   await expect(page).toHaveURL(/\/admin\/users/)
   await expect(page.locator('[data-mobile="true"]')).toBeHidden()

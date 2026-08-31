@@ -57,6 +57,7 @@ import {
 } from '@/components/ui/sheet'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Table,
   TableBody,
@@ -66,7 +67,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { cn } from '@/lib/utils'
 import DateTimeRangePicker from '@/shared/ui/DateTimeRangePicker.vue'
 
@@ -866,24 +866,26 @@ onBeforeUnmount(() => {
     <section class="panel">
       <div class="panel-inner filter-toolbar">
         <div class="time-row">
-          <ToggleGroup
-            type="single"
-            variant="outline"
-            size="sm"
+          <Tabs
             class="quick-ranges"
             :model-value="activeQuickRange ?? undefined"
-            :aria-label="t('快捷时间范围', 'Quick time ranges')"
             @update:model-value="handleQuickRangeChange"
           >
-            <ToggleGroupItem
-              v-for="option in quickRangeOptions"
-              :key="option.key"
-              :value="option.key"
-              :aria-label="option.label"
+            <TabsList
+              class="quick-range-options grid h-10 w-full grid-cols-5 p-1"
+              :aria-label="t('快捷时间范围', 'Quick time ranges')"
             >
-              {{ option.label }}
-            </ToggleGroupItem>
-          </ToggleGroup>
+              <TabsTrigger
+                v-for="option in quickRangeOptions"
+                :key="option.key"
+                :value="option.key"
+                class="min-w-0 justify-center px-2 text-center"
+                :aria-label="option.label"
+              >
+                {{ option.label }}
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
           <DateTimeRangePicker
             :model-value="dateRange"
             class="range-picker"
@@ -1102,7 +1104,10 @@ onBeforeUnmount(() => {
     </section>
 
     <Sheet v-model:open="drawerOpen">
-      <SheetContent side="right" class="w-full overflow-y-auto sm:max-w-[760px]">
+      <SheetContent
+        side="right"
+        class="w-full overflow-y-auto data-[side=right]:sm:w-[88vw] data-[side=right]:sm:max-w-[1080px]"
+      >
         <SheetHeader>
           <SheetTitle>{{ t('请求事件详情', 'Request event details') }}</SheetTitle>
           <SheetDescription>
@@ -1195,9 +1200,8 @@ onBeforeUnmount(() => {
 }
 
 .quick-ranges {
-  flex-wrap: wrap;
   min-width: 0;
-  width: fit-content;
+  width: 100%;
 }
 
 .filter-combobox {

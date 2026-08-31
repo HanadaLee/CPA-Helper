@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Component } from 'vue'
+import { useMediaQuery } from '@vueuse/core'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { isNavigationFailure, NavigationFailureType, useRoute, useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
@@ -30,9 +31,9 @@ import {
 } from '@/components/ui/sidebar'
 import {
   BarChart3,
-  ChevronsUpDown,
   Cpu,
   DollarSign,
+  EllipsisVertical,
   KeyRound,
   Languages,
   List,
@@ -42,7 +43,6 @@ import {
   Moon,
   Network,
   Settings,
-  Shield,
   Sun,
   UserRound,
   Users,
@@ -64,59 +64,15 @@ const { currentUser, setCurrentUser } = useCurrentUser()
 const hasLoadedUser = ref(currentUser.value !== null)
 const { isDark, preference, setThemePreference } = useThemePreference()
 const { language, t, toggleLanguage } = useI18n()
+const isMobileViewport = useMediaQuery('(max-width: 768px)')
 const branding = ref<BrandingResponse>({
   brand_name_zh: 'CPA-Helper',
   brand_name_en: 'CPA-Helper',
   brand_subtitle_zh: '边缘网关管理平台',
   brand_subtitle_en: 'Edge Gateway Management Platform',
 })
-const contentScroll = ref<HTMLElement | null>(null)
-const showStickyLocation = ref(false)
 let navigationFeedbackTimer: number | undefined
 let routeTransitionReleaseTimer: number | undefined
-let pageTitleObserver: IntersectionObserver | undefined
-let pageTitleObserverFrame: number | undefined
-
-function disconnectPageTitleObserver() {
-  pageTitleObserver?.disconnect()
-  pageTitleObserver = undefined
-  if (pageTitleObserverFrame !== undefined) {
-    window.cancelAnimationFrame(pageTitleObserverFrame)
-    pageTitleObserverFrame = undefined
-  }
-}
-
-function observePageTitle() {
-  disconnectPageTitleObserver()
-  const scrollRoot = contentScroll.value
-  const pageTitle = scrollRoot?.querySelector<HTMLElement>('[data-page-title]')
-  if (!scrollRoot || !pageTitle || typeof IntersectionObserver === 'undefined') {
-    showStickyLocation.value = true
-    return
-  }
-
-  showStickyLocation.value = false
-  pageTitleObserver = new IntersectionObserver(
-    ([entry]) => {
-      if (!entry) return
-      const rootTop = entry.rootBounds?.top ?? scrollRoot.getBoundingClientRect().top
-      showStickyLocation.value = !entry.isIntersecting && entry.boundingClientRect.bottom <= rootTop
-    },
-    { root: scrollRoot, threshold: 0 },
-  )
-  pageTitleObserver.observe(pageTitle)
-}
-
-function refreshPageTitleObserver() {
-  disconnectPageTitleObserver()
-  showStickyLocation.value = false
-  void nextTick(() => {
-    pageTitleObserverFrame = window.requestAnimationFrame(() => {
-      pageTitleObserverFrame = undefined
-      observePageTitle()
-    })
-  })
-}
 
 onBeforeUnmount(() => {
   if (navigationFeedbackTimer !== undefined) {
@@ -125,7 +81,6 @@ onBeforeUnmount(() => {
   if (routeTransitionReleaseTimer !== undefined) {
     window.clearTimeout(routeTransitionReleaseTimer)
   }
-  disconnectPageTitleObserver()
 })
 
 async function refreshCurrentUser() {
@@ -159,7 +114,6 @@ async function refreshBranding() {
 onMounted(() => {
   void refreshCurrentUser()
   void refreshBranding()
-  refreshPageTitleObserver()
 })
 
 function handleAccountUpdated(event: Event) {
@@ -295,7 +249,6 @@ function finishRouteTransition() {
   routeTransitionReleaseTimer = window.setTimeout(() => {
     isRouteTransitioning.value = false
     routeTransitionReleaseTimer = undefined
-    refreshPageTitleObserver()
   }, 60)
 }
 
@@ -352,29 +305,22 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
 
 <template>
   <SidebarProvider class="app-shell" :default-open="true">
-    <Sidebar class="app-sidebar" collapsible="icon">
+    <Sidebar class="app-sidebar" collapsible="icon" variant="inset">
       <SidebarHeader class="sidebar-brand-header">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton as="div" size="lg" class="sidebar-brand-button">
-              <span class="brand-mark">
-                <img :src="logoUrl" alt="">
-              </span>
-              <span class="brand-copy group-data-[collapsible=icon]:hidden">
-                <strong>{{ brandName }}</strong>
-                <span>{{ brandSubtitle }}</span>
-              </span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
+        <div class="sidebar-brand-button">
+          <span class="brand-mark">
+            <img :src="logoUrl" alt="">
+          </span>
+          <span class="brand-copy group-data-[collapsible=icon]:hidden">
+            <strong>{{ brandName }}</strong>
+            <span>{{ brandSubtitle }}</span>
+          </span>
+        </div>
       </SidebarHeader>
 
       <SidebarContent class="sider-menu">
         <SidebarGroup v-if="isAdmin">
-          <SidebarGroupLabel class="sidebar-group-label">
-            <Shield />
-            <span>{{ t('管理中心', 'Admin Center') }}</span>
-          </SidebarGroupLabel>
+          <SidebarGroupLabel>{{ t('管理中心', 'Admin Center') }}</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem v-for="item in adminMenuItems" :key="item.key">
@@ -393,10 +339,7 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
         </SidebarGroup>
 
         <SidebarGroup>
-          <SidebarGroupLabel class="sidebar-group-label">
-            <UserRound />
-            <span>{{ t('我的账户', 'My Account') }}</span>
-          </SidebarGroupLabel>
+          <SidebarGroupLabel>{{ t('我的账户', 'My Account') }}</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem v-for="item in accountMenuItems" :key="item.key">
@@ -426,10 +369,15 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
                     <strong>{{ accountText }}</strong>
                     <span>{{ roleText }}</span>
                   </span>
-                  <ChevronsUpDown class="user-menu-chevron group-data-[collapsible=icon]:hidden" />
+                  <EllipsisVertical class="user-menu-chevron group-data-[collapsible=icon]:hidden" />
                 </SidebarMenuButton>
               </DropdownMenuTrigger>
-              <DropdownMenuContent side="top" align="end" :side-offset="8" class="user-dropdown">
+              <DropdownMenuContent
+                :side="isMobileViewport ? 'top' : 'right'"
+                align="end"
+                :side-offset="8"
+                class="user-dropdown"
+              >
                 <DropdownMenuGroup>
                   <DropdownMenuItem variant="destructive" @select="handleLogout">
                     <LogOut />
@@ -444,11 +392,11 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
       <SidebarRail />
     </Sidebar>
 
-    <SidebarInset class="app-main">
+    <SidebarInset class="app-main md:!m-0 md:!rounded-none md:!shadow-none">
       <header class="app-header">
         <SidebarTrigger class="navigation-trigger" :aria-label="t('打开导航', 'Open navigation')" />
         <Separator orientation="vertical" class="header-divider data-[orientation=vertical]:h-4" />
-        <div class="desktop-location" :class="{ 'is-visible': showStickyLocation }">
+        <div class="desktop-location">
           {{ currentNavigationLabel }}
         </div>
         <div class="mobile-brand" :aria-label="`${brandName} · ${accountText}`">
@@ -481,7 +429,7 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
         }"
       >
         <div v-if="isMenuNavigationPending" class="route-progress" aria-hidden="true" />
-        <div ref="contentScroll" class="content-scroll">
+        <div class="content-scroll">
           <RouterView v-slot="{ Component: RouteComponent, route: activeRoute }">
             <Transition
               name="route-fade"
@@ -508,7 +456,7 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
   height: 100dvh;
   min-height: 0;
   overflow: hidden;
-  background: var(--cpa-shell-bg);
+  background: var(--sidebar);
 }
 
 .brand-mark {
@@ -574,15 +522,6 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
 .brand-copy > span {
   color: var(--cpa-text-muted);
   font-size: 11px;
-}
-
-.sider-menu {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--cpa-text-muted) 34%, transparent) transparent;
 }
 
 .sr-only {
@@ -739,84 +678,33 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
   font-weight: 600;
 }
 
-/* shadcn Sidebar layout */
-.app-sidebar {
-  border-color: var(--cpa-border);
-  background: var(--sidebar);
-  box-shadow: none;
-}
-
-.app-sidebar :deep([data-sidebar="sidebar"]) {
-  border: 0;
-  border-radius: 0;
-  background: var(--sidebar);
-  box-shadow: none;
-}
-
 .sidebar-brand-header {
-  padding: 10px 8px 6px;
+  padding: 12px;
   overflow: hidden;
 }
 
-.app-shell :deep([data-collapsible="icon"] [data-sidebar="header"] .brand-copy),
-.app-shell :deep([data-collapsible="icon"] [data-sidebar="header"] .sidebar-brand-copy) {
-  display: none;
-}
-
-:global([data-collapsible="icon"] [data-sidebar="header"].sidebar-brand-header),
-:global([data-collapsible="icon"] [data-sidebar="group"]),
-:global([data-collapsible="icon"] [data-sidebar="footer"].sidebar-user-footer) {
-  padding-right: calc((0.75rem - 1px) / 2);
-  padding-left: calc((0.75rem - 1px) / 2);
+:global([data-collapsible="icon"] [data-sidebar="header"].sidebar-brand-header) {
+  padding: 8px;
 }
 
 .sidebar-brand-button {
-  height: 48px !important;
-  cursor: default !important;
+  display: flex;
+  align-items: center;
+  height: 40px;
+  gap: 10px;
+  padding-inline: 6px;
+  overflow: hidden;
+  border-radius: var(--radius);
 }
 
-.sidebar-brand-button:hover {
-  border-color: transparent !important;
-  background: transparent !important;
-}
-
-.sidebar-group-label {
-  color: var(--cpa-text-muted);
-}
-
-.sider-menu {
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--cpa-text-muted) 30%, transparent) transparent;
-}
-
-.app-sidebar :deep([data-sidebar="menu-button"]) {
-  border: 1px solid transparent;
-  border-radius: 9px;
-  color: var(--cpa-text);
-  cursor: pointer;
-}
-
-.app-sidebar :deep([data-sidebar="menu-button"]:hover) {
-  border-color: color-mix(in srgb, var(--cpa-border) 74%, transparent);
-  background: color-mix(in srgb, var(--cpa-surface-muted) 76%, transparent);
-}
-
-.app-sidebar :deep([data-sidebar="menu-button"][data-active="true"]) {
-  color: var(--cpa-primary);
-  background: var(--cpa-primary-wash);
-  border-color: color-mix(in srgb, var(--cpa-primary) 14%, var(--cpa-border));
-  box-shadow: none;
+:global([data-collapsible="icon"] .sidebar-brand-button) {
+  justify-content: center;
+  padding-inline: 0;
+  transform: translateX(5px);
 }
 
 .sidebar-user-footer {
-  padding: 9px;
-  border-top: 1px solid var(--cpa-border);
-  background: transparent;
-}
-
-.user-menu-button {
-  height: 52px !important;
-  border-color: transparent !important;
+  padding: 12px;
 }
 
 .user-avatar {
@@ -825,14 +713,9 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
   height: 32px;
   flex: 0 0 32px;
   place-items: center;
-  border-radius: 10px;
-  color: var(--cpa-primary);
-  background: var(--cpa-primary-wash);
-}
-
-.user-avatar svg {
-  width: 17px;
-  height: 17px;
+  border-radius: var(--radius);
+  color: var(--sidebar-accent-foreground);
+  background: var(--sidebar-accent);
 }
 
 .user-copy {
@@ -865,8 +748,6 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
 }
 
 .user-menu-chevron {
-  width: 15px !important;
-  height: 15px !important;
   margin-left: auto;
   color: var(--cpa-text-muted);
 }
@@ -912,21 +793,8 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
   color: var(--cpa-text-strong);
   font-size: 14px;
   font-weight: 720;
-  opacity: 0;
   text-overflow: ellipsis;
-  transform: translateY(-3px);
-  transition:
-    opacity 150ms ease,
-    transform 150ms ease,
-    visibility 150ms ease;
-  visibility: hidden;
   white-space: nowrap;
-}
-
-.desktop-location.is-visible {
-  opacity: 1;
-  transform: translateY(0);
-  visibility: visible;
 }
 
 .header-actions {

@@ -990,7 +990,6 @@ onMounted(refresh)
         </CardHeader>
         <CardContent class="api-endpoint-panel">
           <div class="api-endpoint-type-picker">
-            <span id="api-endpoint-url-type-label" class="request-endpoint-label">{{ t('URL 类型', 'URL type') }}</span>
             <Tabs
               :model-value="publicRequestURLType"
               class="api-endpoint-type-tabs w-full"
@@ -998,7 +997,7 @@ onMounted(refresh)
             >
               <TabsList
                 class="api-endpoint-type-options grid h-10 w-full grid-cols-4 p-1"
-                aria-labelledby="api-endpoint-url-type-label"
+                :aria-label="t('URL 类型', 'URL type')"
               >
                 <TabsTrigger
                   v-for="option in publicRequestURLTypeOptions"
