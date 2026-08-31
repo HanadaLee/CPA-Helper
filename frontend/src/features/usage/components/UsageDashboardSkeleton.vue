@@ -21,14 +21,23 @@ import { Skeleton } from '@/components/ui/skeleton'
       </div>
 
       <div class="usage-skeleton-top-grid">
-        <div v-for="index in 2" :key="index" class="usage-skeleton-panel">
+        <div
+          v-for="index in 2"
+          :key="index"
+          class="usage-skeleton-panel"
+          :class="{ 'is-token': index === 2 }"
+        >
           <div class="usage-skeleton-panel-heading">
             <Skeleton class="h-4 w-24" />
             <Skeleton v-if="index === 1" class="h-7 w-36 rounded-lg" />
           </div>
           <Skeleton class="usage-skeleton-chart h-64 rounded-lg" />
           <div class="usage-skeleton-legend">
-            <Skeleton v-for="item in 3" :key="item" class="h-3 w-20" />
+            <Skeleton
+              v-for="item in index === 2 ? 4 : 3"
+              :key="item"
+              class="h-3 w-20"
+            />
           </div>
         </div>
       </div>
@@ -97,7 +106,11 @@ import { Skeleton } from '@/components/ui/skeleton'
 }
 
 .usage-skeleton-top-grid {
-  grid-template-columns: minmax(0, 7fr) minmax(320px, 5fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.usage-skeleton-top-grid > .usage-skeleton-panel:first-child {
+  grid-column: span 2;
 }
 
 .usage-skeleton-bottom-grid {
@@ -134,6 +147,16 @@ import { Skeleton } from '@/components/ui/skeleton'
   margin-top: 14px;
 }
 
+.usage-skeleton-panel.is-token .usage-skeleton-legend {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.usage-skeleton-panel.is-token .usage-skeleton-legend > * {
+  width: 100%;
+}
+
 .usage-skeleton-panel.is-compact {
   min-height: 300px;
 }
@@ -158,6 +181,10 @@ import { Skeleton } from '@/components/ui/skeleton'
   .usage-skeleton-top-grid,
   .usage-skeleton-bottom-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .usage-skeleton-top-grid > .usage-skeleton-panel:first-child {
+    grid-column: auto;
   }
 }
 

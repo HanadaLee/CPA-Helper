@@ -105,10 +105,24 @@ test('initial navigation uses shell and dashboard skeletons instead of a blank s
   const dashboardSkeleton = page.locator('[data-usage-loading="true"]')
   await expect(dashboardSkeleton).toBeVisible()
   await expect.poll(() => dashboardSkeleton.locator('[data-slot="skeleton"]').count()).toBeGreaterThan(20)
+  const skeletonTopPanels = dashboardSkeleton.locator('.usage-skeleton-top-grid > .usage-skeleton-panel')
+  const skeletonBottomColumns = dashboardSkeleton.locator('.usage-skeleton-bottom-grid > .usage-skeleton-column')
+  const skeletonTokenBox = await skeletonTopPanels.nth(1).boundingBox()
+  const skeletonRankingBox = await skeletonBottomColumns.nth(2).boundingBox()
+  expect(skeletonTokenBox).not.toBeNull()
+  expect(skeletonRankingBox).not.toBeNull()
+  expect(Math.abs((skeletonTokenBox?.x ?? 0) - (skeletonRankingBox?.x ?? 0))).toBeLessThanOrEqual(1)
+  expect(Math.abs((skeletonTokenBox?.width ?? 0) - (skeletonRankingBox?.width ?? 0))).toBeLessThanOrEqual(1)
 
   releaseUsageRequest()
   await expect(dashboardSkeleton).toBeHidden()
   await expect(page.locator('.dashboard-metric-grid')).toBeVisible()
+  const tokenPanelBox = await page.locator('.area-token').boundingBox()
+  const rankingColumnBox = await page.locator('.dashboard-column-right').boundingBox()
+  expect(tokenPanelBox).not.toBeNull()
+  expect(rankingColumnBox).not.toBeNull()
+  expect(Math.abs((tokenPanelBox?.x ?? 0) - (rankingColumnBox?.x ?? 0))).toBeLessThanOrEqual(1)
+  expect(Math.abs((tokenPanelBox?.width ?? 0) - (rankingColumnBox?.width ?? 0))).toBeLessThanOrEqual(1)
 })
 
 test('sidebar navigation switches immediately and lets the destination render its loading state', async ({ page }) => {
@@ -173,6 +187,17 @@ test('all migrated routes render and core controls remain interactive', async ({
   }
   await expect(page.getByRole('button', { name: /账户设置|Account Settings/ })).toHaveCount(0)
 
+  await page.goto('/admin/settings')
+  const generalSettingsCard = page.locator('[data-slot="card"]').filter({
+    has: page.getByText(/通用配置|General Settings/i, { exact: true }),
+  })
+  const collectionSettingsCard = page.locator('[data-slot="card"]').filter({
+    has: page.getByText(/采集与保留设置|Collection and Retention Settings/i, { exact: true }),
+  })
+  await expect(generalSettingsCard.getByText(/^(采集与保留参数|Collection and retention)$/i)).toHaveCount(0)
+  await expect(collectionSettingsCard.getByText(/^(采集与保留参数|Collection and retention)$/i)).toBeVisible()
+  await expect(collectionSettingsCard.getByLabel(/批量读取数|Batch size/i)).toBeVisible()
+
   await page.goto('/admin/usage')
   const headerLayout = await page.locator('.app-header').evaluate((header) => {
     const headerBox = header.getBoundingClientRect()
@@ -189,7 +214,7 @@ test('all migrated routes render and core controls remain interactive', async ({
   expect(headerLayout?.titleWeight).toBe('500')
   const analyticsQuickRangeTabs = page.locator('.quick-ranges[data-slot="tabs"]')
   await expect(analyticsQuickRangeTabs.getByRole('tablist')).toHaveAccessibleName(/快捷时间范围|Quick time ranges/)
-  await expect(analyticsQuickRangeTabs.getByRole('tab')).toHaveCount(5)
+  await expect(analyticsQuickRangeTabs.getByRole('tab')).toHaveCount(6)
   await expect(page.locator('body')).toHaveCSS('font-family', '"Geist Variable", sans-serif')
   expect(await page.locator('body').evaluate((element) => getComputedStyle(element).fontSynthesis)).toContain('weight')
   const analyticsRangeTrigger = page.locator('[data-slot="date-time-range-trigger"]')
@@ -462,7 +487,7 @@ test('all migrated routes render and core controls remain interactive', async ({
   await page.goto('/admin/records')
   const quickRangeTabs = page.locator('.quick-ranges[data-slot="tabs"]')
   await expect(quickRangeTabs.getByRole('tablist')).toHaveAccessibleName(/快捷时间范围|Quick time ranges/)
-  await expect(quickRangeTabs.getByRole('tab')).toHaveCount(5)
+  await expect(quickRangeTabs.getByRole('tab')).toHaveCount(6)
   await expect(page.locator('input[type="datetime-local"]')).toHaveCount(0)
   await expect(page.locator('[data-slot="date-time-range-start"]')).toBeVisible()
   await expect(page.locator('[data-slot="date-time-range-end"]')).toBeVisible()

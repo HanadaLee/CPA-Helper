@@ -281,7 +281,7 @@ onMounted(refresh)
       <Card>
         <CardHeader>
           <CardTitle>{{ t('通用配置', 'General Settings') }}</CardTitle>
-          <CardDescription>{{ t('管理界面品牌、连接入口、访问权限以及采集保留参数。', 'Manage interface branding, endpoints, access, and collection retention settings.') }}</CardDescription>
+          <CardDescription>{{ t('管理界面品牌、连接入口与访问权限。', 'Manage interface branding, endpoints, and access control.') }}</CardDescription>
         </CardHeader>
         <CardContent>
           <form @submit.prevent="saveSettings">
@@ -409,35 +409,6 @@ onMounted(refresh)
                   </Field>
                 </FieldGroup>
               </FieldSet>
-
-              <FieldSet class="settings-section">
-                <FieldLegend>{{ t('采集与保留参数', 'Collection and retention') }}</FieldLegend>
-                <FieldGroup class="settings-switch-list">
-                  <Field orientation="horizontal" class="settings-switch">
-                    <FieldContent><FieldTitle>{{ t('开启本地采集', 'Enable local collection') }}</FieldTitle><FieldDescription>{{ t('定时将 CPA 队列写入本地用量数据库。', 'Periodically write CPA queue data to the local usage database.') }}</FieldDescription></FieldContent>
-                    <Switch v-model="settingsForm.collector_enabled" />
-                  </Field>
-                </FieldGroup>
-                <FieldGroup class="form-grid">
-                  <Field>
-                    <FieldLabel for="collector-batch-size">{{ t('批量读取数', 'Batch size') }}</FieldLabel>
-                    <Input id="collector-batch-size" type="number" :model-value="settingsForm.batch_size" :min="1" :max="1000" step="1" @update:model-value="updateNumericSetting('batch_size', $event)" />
-                  </Field>
-                  <Field>
-                    <FieldLabel for="collector-poll-interval">{{ t('轮询间隔（秒）', 'Poll interval (seconds)') }}</FieldLabel>
-                    <Input id="collector-poll-interval" type="number" :model-value="settingsForm.poll_interval_seconds" :min="0.2" step="0.1" @update:model-value="updateNumericSetting('poll_interval_seconds', $event)" />
-                  </Field>
-                  <Field>
-                    <FieldLabel for="collector-retry-interval">{{ t('重试间隔（秒）', 'Retry interval (seconds)') }}</FieldLabel>
-                    <Input id="collector-retry-interval" type="number" :model-value="settingsForm.retry_interval_seconds" :min="1" step="1" @update:model-value="updateNumericSetting('retry_interval_seconds', $event)" />
-                  </Field>
-                  <Field>
-                    <FieldLabel for="usage-retention-days">{{ t('用量明细保留天数', 'Usage detail retention days') }}</FieldLabel>
-                    <Input id="usage-retention-days" type="number" :model-value="settingsForm.usage_detail_retention_days" :min="31" step="1" @update:model-value="updateNumericSetting('usage_detail_retention_days', $event)" />
-                    <FieldDescription>{{ t('最低 31 天；清理明细前会先完成小时聚合。', 'Minimum 31 days; hourly aggregation completes before details are removed.') }}</FieldDescription>
-                  </Field>
-                </FieldGroup>
-              </FieldSet>
             </FieldGroup>
           </form>
         </CardContent>
@@ -445,10 +416,39 @@ onMounted(refresh)
 
       <Card>
         <CardHeader>
-          <CardTitle>{{ t('采集状态', 'Collection Status') }}</CardTitle>
-          <CardDescription>{{ t('当前采集器状态与最近一次执行结果。', 'Current collector state and latest execution result.') }}</CardDescription>
+          <CardTitle>{{ t('采集与保留设置', 'Collection and Retention Settings') }}</CardTitle>
+          <CardDescription>{{ t('配置采集与保留参数，并查看采集器当前状态。', 'Configure collection and retention parameters and review the current collector state.') }}</CardDescription>
         </CardHeader>
         <CardContent class="status-content">
+          <FieldSet class="settings-section">
+            <FieldLegend>{{ t('采集与保留参数', 'Collection and retention') }}</FieldLegend>
+            <FieldGroup class="settings-switch-list">
+              <Field orientation="horizontal" class="settings-switch">
+                <FieldContent><FieldTitle>{{ t('开启本地采集', 'Enable local collection') }}</FieldTitle><FieldDescription>{{ t('定时将 CPA 队列写入本地用量数据库。', 'Periodically write CPA queue data to the local usage database.') }}</FieldDescription></FieldContent>
+                <Switch v-model="settingsForm.collector_enabled" />
+              </Field>
+            </FieldGroup>
+            <FieldGroup class="form-grid">
+              <Field>
+                <FieldLabel for="collector-batch-size">{{ t('批量读取数', 'Batch size') }}</FieldLabel>
+                <Input id="collector-batch-size" type="number" :model-value="settingsForm.batch_size" :min="1" :max="1000" step="1" @update:model-value="updateNumericSetting('batch_size', $event)" />
+              </Field>
+              <Field>
+                <FieldLabel for="collector-poll-interval">{{ t('轮询间隔（秒）', 'Poll interval (seconds)') }}</FieldLabel>
+                <Input id="collector-poll-interval" type="number" :model-value="settingsForm.poll_interval_seconds" :min="0.2" step="0.1" @update:model-value="updateNumericSetting('poll_interval_seconds', $event)" />
+              </Field>
+              <Field>
+                <FieldLabel for="collector-retry-interval">{{ t('重试间隔（秒）', 'Retry interval (seconds)') }}</FieldLabel>
+                <Input id="collector-retry-interval" type="number" :model-value="settingsForm.retry_interval_seconds" :min="1" step="1" @update:model-value="updateNumericSetting('retry_interval_seconds', $event)" />
+              </Field>
+              <Field>
+                <FieldLabel for="usage-retention-days">{{ t('用量明细保留天数', 'Usage detail retention days') }}</FieldLabel>
+                <Input id="usage-retention-days" type="number" :model-value="settingsForm.usage_detail_retention_days" :min="31" step="1" @update:model-value="updateNumericSetting('usage_detail_retention_days', $event)" />
+                <FieldDescription>{{ t('最低 31 天；清理明细前会先完成小时聚合。', 'Minimum 31 days; hourly aggregation completes before details are removed.') }}</FieldDescription>
+              </Field>
+            </FieldGroup>
+          </FieldSet>
+
           <div class="status-list">
             <div class="status-row">
               <span>{{ t('本地采集', 'Local collection') }}</span>
@@ -497,7 +497,7 @@ onMounted(refresh)
           <ShieldCheckIcon class="size-4 text-muted-foreground" />
           {{ t('CAS 单点登录', 'CAS single sign-on') }}
         </CardTitle>
-        <CardDescription>{{ t('由 CPA-Helper 直接完成 CAS 登录、用户映射和本地会话签发；默认关闭。', 'Let CPA-Helper handle CAS login, user mapping, and local sessions directly. Disabled by default.') }}</CardDescription>
+        <CardDescription>{{ t('由 CPA-Helper 直接完成 CAS 登录、用户映射和本地会话签发。', 'Let CPA-Helper handle CAS login, user mapping, and local session issuance.') }}</CardDescription>
       </CardHeader>
       <CardContent>
         <FieldGroup class="settings-form">
