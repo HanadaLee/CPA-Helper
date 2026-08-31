@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, h, reactive, ref } from 'vue'
+import { toast } from 'vue-sonner'
 import {
   AppAlert,
   AppButton,
@@ -19,10 +20,9 @@ import {
   AppSpinner,
   AppSwitch,
   AppBadge,
-  useDialog,
-  useMessage,
   type DataTableColumns,
 } from '@/shared/ui/app-kit'
+import { useConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from '@/components/ui/input-group'
 import { Activity, Clock3, Eye, Network, Pencil, Plus, RefreshCw, Search, ServerCog, Trash2, X } from '@lucide/vue'
 
@@ -88,8 +88,8 @@ interface UpstreamForm {
 
 type DrawerMode = 'detail' | 'edit' | 'create'
 
-const message = useMessage()
-const dialog = useDialog()
+const message = toast
+const dialog = useConfirmDialog()
 const { errorText, t } = useI18n()
 const isLoading = ref(false)
 const isSaving = ref(false)

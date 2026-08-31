@@ -1,19 +1,23 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
 import {
-  AppAlert,
-  AppButton,
-  AppDescriptions,
-  AppDescriptionsItem,
-  AppForm,
-  AppFormItem,
-  AppInput,
-  AppNumberInput,
-  AppStack,
-  AppSwitch,
-  AppBadge,
-  useMessage,
-} from '@/shared/ui/app-kit'
+  Activity,
+  Database,
+  EyeIcon,
+  EyeOffIcon,
+  PlusIcon,
+  Power,
+  RefreshCwIcon,
+  SaveIcon,
+  Server,
+  Trash2Icon,
+  TriangleAlertIcon,
+} from '@lucide/vue'
+import { computed, onMounted, reactive, ref } from 'vue'
+import { toast } from 'vue-sonner'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Field,
   FieldContent,
@@ -24,7 +28,10 @@ import {
   FieldSet,
   FieldTitle,
 } from '@/components/ui/field'
-import { Activity, Database, Power, Server } from '@lucide/vue'
+import { Input } from '@/components/ui/input'
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from '@/components/ui/input-group'
+import { Spinner } from '@/components/ui/spinner'
+import { Switch } from '@/components/ui/switch'
 
 import CodexKeeperSettingsPanel from '@/features/codex-keeper/components/CodexKeeperSettingsPanel.vue'
 import {
@@ -36,12 +43,13 @@ import { useI18n } from '@/shared/i18n'
 import type { CollectorStatus, ModelRequestExtraEndpoint, SettingsUpdatePayload } from '@/shared/types/api'
 import { formatDateTime, formatInteger } from '@/shared/utils/format'
 
-const message = useMessage()
+const message = toast
 const { errorText, serverText, t } = useI18n()
 const isLoading = ref(false)
 const isSaving = ref(false)
 const collectorStatus = ref<CollectorStatus | null>(null)
 const keeperSettingsPanel = ref<InstanceType<typeof CodexKeeperSettingsPanel> | null>(null)
+const showManagementKey = ref(false)
 
 const settingsForm = reactive({
   cliaproxy_url: 'http://127.0.0.1:8317',
@@ -91,6 +99,16 @@ function addModelRequestExtraEndpoint() {
 
 function removeModelRequestExtraEndpoint(index: number) {
   settingsForm.model_request_extra_endpoints.splice(index, 1)
+}
+
+function updateNumericSetting(
+  key: 'batch_size' | 'poll_interval_seconds' | 'retry_interval_seconds' | 'usage_detail_retention_days',
+  value: string | number,
+) {
+  const nextValue = Number(value)
+  if (Number.isFinite(nextValue)) {
+    settingsForm[key] = nextValue
+  }
 }
 
 async function refresh() {
@@ -180,69 +198,92 @@ onMounted(refresh)
   <section class="page">
     <div class="page-toolbar">
       <h1 data-page-title class="page-title">{{ t('系统设置', 'System Settings') }}</h1>
-      <AppStack>
-        <AppButton secondary :loading="isLoading" @click="refresh">{{ t('刷新', 'Refresh') }}</AppButton>
-        <AppButton type="primary" :loading="isSaving" @click="saveSettings">{{ t('保存设置', 'Save settings') }}</AppButton>
-      </AppStack>
+      <div class="flex items-center gap-2">
+        <Button variant="outline" :disabled="isLoading" @click="refresh">
+          <Spinner v-if="isLoading" data-icon="inline-start" />
+          <RefreshCwIcon v-else data-icon="inline-start" />
+          {{ t('刷新', 'Refresh') }}
+        </Button>
+        <Button :disabled="isSaving" @click="saveSettings">
+          <Spinner v-if="isSaving" data-icon="inline-start" />
+          <SaveIcon v-else data-icon="inline-start" />
+          {{ t('保存设置', 'Save settings') }}
+        </Button>
+      </div>
     </div>
 
     <div class="metric-grid settings-metrics">
-      <div class="metric-card" :class="collectorStatus?.enabled ? 'is-green' : 'is-orange'">
-        <div class="metric-icon" aria-hidden="true">
-          <Power :size="20" :stroke-width="2.2" />
-        </div>
-        <div class="metric-label">{{ t('本地采集', 'Local collection') }}</div>
-        <div class="metric-value">{{ collectorEnabledText }}</div>
-        <div class="metric-footnote">{{ t('系统开关', 'System switch') }}</div>
-      </div>
-      <div class="metric-card" :class="collectorStatus?.running ? 'is-primary' : 'is-blue'">
-        <div class="metric-icon" aria-hidden="true">
-          <Activity :size="20" :stroke-width="2.2" />
-        </div>
-        <div class="metric-label">{{ t('运行状态', 'Run status') }}</div>
-        <div class="metric-value">{{ collectorRunningText }}</div>
-        <div class="metric-footnote">{{ t('采集进程', 'Collector process') }}</div>
-      </div>
-      <div class="metric-card" :class="remoteStatusType === 'success' ? 'is-green' : 'is-purple'">
-        <div class="metric-icon" aria-hidden="true">
-          <Server :size="20" :stroke-width="2.2" />
-        </div>
-        <div class="metric-label">{{ t('远端开关', 'Remote switch') }}</div>
-        <div class="metric-value">{{ remoteStatusText }}</div>
-        <div class="metric-footnote">CLIProxyAPI</div>
-      </div>
-      <div class="metric-card is-blue">
-        <div class="metric-icon" aria-hidden="true">
-          <Database :size="20" :stroke-width="2.2" />
-        </div>
-        <div class="metric-label">{{ t('累计写入', 'Records written') }}</div>
-        <div class="metric-value">{{ formatInteger(collectorStatus?.records_collected ?? 0) }}</div>
-        <div class="metric-footnote">{{ t('本地记录', 'Local records') }}</div>
-      </div>
+      <Card size="sm" class="settings-metric-card">
+        <CardHeader>
+          <CardDescription>{{ t('本地采集', 'Local collection') }}</CardDescription>
+          <CardAction><Power /></CardAction>
+        </CardHeader>
+        <CardContent>
+          <CardTitle class="text-2xl">{{ collectorEnabledText }}</CardTitle>
+          <p class="settings-metric-footnote">{{ t('系统开关', 'System switch') }}</p>
+        </CardContent>
+      </Card>
+      <Card size="sm" class="settings-metric-card">
+        <CardHeader>
+          <CardDescription>{{ t('运行状态', 'Run status') }}</CardDescription>
+          <CardAction><Activity /></CardAction>
+        </CardHeader>
+        <CardContent>
+          <CardTitle class="text-2xl">{{ collectorRunningText }}</CardTitle>
+          <p class="settings-metric-footnote">{{ t('采集进程', 'Collector process') }}</p>
+        </CardContent>
+      </Card>
+      <Card size="sm" class="settings-metric-card">
+        <CardHeader>
+          <CardDescription>{{ t('远端开关', 'Remote switch') }}</CardDescription>
+          <CardAction><Server /></CardAction>
+        </CardHeader>
+        <CardContent>
+          <CardTitle class="text-2xl">{{ remoteStatusText }}</CardTitle>
+          <p class="settings-metric-footnote">CLIProxyAPI</p>
+        </CardContent>
+      </Card>
+      <Card size="sm" class="settings-metric-card">
+        <CardHeader>
+          <CardDescription>{{ t('累计写入', 'Records written') }}</CardDescription>
+          <CardAction><Database /></CardAction>
+        </CardHeader>
+        <CardContent>
+          <CardTitle class="text-2xl">{{ formatInteger(collectorStatus?.records_collected ?? 0) }}</CardTitle>
+          <p class="settings-metric-footnote">{{ t('本地记录', 'Local records') }}</p>
+        </CardContent>
+      </Card>
     </div>
 
     <div class="grid-two">
-      <section class="panel">
-        <div class="panel-inner">
-          <h2 class="section-title">{{ t('系统配置', 'System Settings') }}</h2>
-          <AppForm :model="settingsForm" label-placement="top">
+      <Card>
+        <CardHeader>
+          <CardTitle>{{ t('系统配置', 'System Settings') }}</CardTitle>
+          <CardDescription>{{ t('管理界面品牌、连接入口、访问权限以及采集保留参数。', 'Manage interface branding, endpoints, access, and collection retention settings.') }}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form @submit.prevent="saveSettings">
             <FieldGroup class="settings-form">
               <FieldSet class="settings-section">
                 <FieldLegend>{{ t('界面品牌', 'Interface branding') }}</FieldLegend>
                 <FieldDescription>{{ t('分别配置中文和英文界面左上角显示的名称与小标题。', 'Configure the name and subtitle shown at the top left for the Chinese and English interfaces.') }}</FieldDescription>
                 <FieldGroup class="form-grid">
-                  <AppFormItem :label="t('名称（中文）', 'Name (Chinese)')">
-                    <AppInput v-model:value="settingsForm.brand_name_zh" :maxlength="80" />
-                  </AppFormItem>
-                  <AppFormItem :label="t('名称（英文）', 'Name (English)')">
-                    <AppInput v-model:value="settingsForm.brand_name_en" :maxlength="80" />
-                  </AppFormItem>
-                  <AppFormItem :label="t('小标题（中文）', 'Subtitle (Chinese)')">
-                    <AppInput v-model:value="settingsForm.brand_subtitle_zh" :maxlength="120" />
-                  </AppFormItem>
-                  <AppFormItem :label="t('小标题（英文）', 'Subtitle (English)')">
-                    <AppInput v-model:value="settingsForm.brand_subtitle_en" :maxlength="120" />
-                  </AppFormItem>
+                  <Field>
+                    <FieldLabel for="brand-name-zh">{{ t('名称（中文）', 'Name (Chinese)') }}</FieldLabel>
+                    <Input id="brand-name-zh" v-model="settingsForm.brand_name_zh" :maxlength="80" />
+                  </Field>
+                  <Field>
+                    <FieldLabel for="brand-name-en">{{ t('名称（英文）', 'Name (English)') }}</FieldLabel>
+                    <Input id="brand-name-en" v-model="settingsForm.brand_name_en" :maxlength="80" />
+                  </Field>
+                  <Field>
+                    <FieldLabel for="brand-subtitle-zh">{{ t('小标题（中文）', 'Subtitle (Chinese)') }}</FieldLabel>
+                    <Input id="brand-subtitle-zh" v-model="settingsForm.brand_subtitle_zh" :maxlength="120" />
+                  </Field>
+                  <Field>
+                    <FieldLabel for="brand-subtitle-en">{{ t('小标题（英文）', 'Subtitle (English)') }}</FieldLabel>
+                    <Input id="brand-subtitle-en" v-model="settingsForm.brand_subtitle_en" :maxlength="120" />
+                  </Field>
                 </FieldGroup>
               </FieldSet>
 
@@ -250,39 +291,67 @@ onMounted(refresh)
                 <FieldLegend>{{ t('连接与入口', 'Connections and endpoints') }}</FieldLegend>
                 <FieldDescription>{{ t('配置 CPA 管理接口、模型请求入口与管理页面地址。', 'Configure CPA management APIs, model request endpoints, and the management page.') }}</FieldDescription>
                 <FieldGroup class="form-grid">
-                  <AppFormItem :label="t('CLIProxyAPI 地址', 'CLIProxyAPI URL')" :feedback="t('用于采集队列、API Key 同步和管理接口。', 'Used for collection queues, API key sync, and management APIs.')">
-                    <AppInput v-model:value="settingsForm.cliaproxy_url" />
-                  </AppFormItem>
-                  <AppFormItem :label="t('模型请求地址（例如：填写 CPA 外网地址）', 'Model request URL (for example, CPA public URL)')" :feedback="t('作为默认 Endpoint 展示，并用于 API 密钥页请求测试。', 'Displayed as the default endpoint and used for API key request tests.')">
-                    <AppInput v-model:value="settingsForm.model_request_url" :placeholder="t('例如：http://192.168.26.50:8317', 'Example: http://192.168.26.50:8317')" />
-                  </AppFormItem>
+                  <Field>
+                    <FieldLabel for="cliaproxy-url">{{ t('CLIProxyAPI 地址', 'CLIProxyAPI URL') }}</FieldLabel>
+                    <Input id="cliaproxy-url" v-model="settingsForm.cliaproxy_url" />
+                    <FieldDescription>{{ t('用于采集队列、API Key 同步和管理接口。', 'Used for collection queues, API key sync, and management APIs.') }}</FieldDescription>
+                  </Field>
+                  <Field>
+                    <FieldLabel for="model-request-url">{{ t('模型请求地址（例如：填写 CPA 外网地址）', 'Model request URL (for example, CPA public URL)') }}</FieldLabel>
+                    <Input id="model-request-url" v-model="settingsForm.model_request_url" :placeholder="t('例如：http://192.168.26.50:8317', 'Example: http://192.168.26.50:8317')" />
+                    <FieldDescription>{{ t('作为默认 Endpoint 展示，并用于 API 密钥页请求测试。', 'Displayed as the default endpoint and used for API key request tests.') }}</FieldDescription>
+                  </Field>
                   <Field class="extra-endpoints-field">
                     <div class="extra-endpoints-heading">
                       <FieldContent>
                         <FieldLabel>{{ t('额外 API Endpoint', 'Additional API endpoints') }}</FieldLabel>
                         <FieldDescription>{{ t('仅展示在 API 密钥页，不参与请求测试；每项会生成四类 URL。', 'Shown only on the API keys page and not used for request tests; each item generates four URL types.') }}</FieldDescription>
                       </FieldContent>
-                      <AppButton size="small" type="primary" secondary :disabled="settingsForm.model_request_extra_endpoints.length >= 20" @click="addModelRequestExtraEndpoint">
+                      <Button size="sm" variant="outline" :disabled="settingsForm.model_request_extra_endpoints.length >= 20" @click="addModelRequestExtraEndpoint">
+                        <PlusIcon data-icon="inline-start" />
                         {{ t('追加 Endpoint', 'Add endpoint') }}
-                      </AppButton>
+                      </Button>
                     </div>
                     <div v-if="settingsForm.model_request_extra_endpoints.length === 0" class="extra-endpoints-empty">
                       {{ t('暂无额外 Endpoint', 'No additional endpoints') }}
                     </div>
                     <FieldGroup v-else class="extra-endpoints-list">
                       <Field v-for="(endpoint, index) in settingsForm.model_request_extra_endpoints" :key="index" orientation="horizontal" class="extra-endpoint-row">
-                        <AppInput v-model:value="endpoint.url" :aria-label="t(`Endpoint ${index + 1} 基础 URL`, `Endpoint ${index + 1} base URL`)" :placeholder="t('基础 URL，例如：https://api.example.com/v1', 'Base URL, for example: https://api.example.com/v1')" />
-                        <AppInput v-model:value="endpoint.description" :aria-label="t(`Endpoint ${index + 1} 说明`, `Endpoint ${index + 1} description`)" :placeholder="t('说明，例如：备用线路', 'Description, for example: Backup route')" :maxlength="200" />
-                        <AppButton type="error" secondary @click="removeModelRequestExtraEndpoint(index)">{{ t('移除', 'Remove') }}</AppButton>
+                        <Input v-model="endpoint.url" :aria-label="t(`Endpoint ${index + 1} 基础 URL`, `Endpoint ${index + 1} base URL`)" :placeholder="t('基础 URL，例如：https://api.example.com/v1', 'Base URL, for example: https://api.example.com/v1')" />
+                        <Input v-model="endpoint.description" :aria-label="t(`Endpoint ${index + 1} 说明`, `Endpoint ${index + 1} description`)" :placeholder="t('说明，例如：备用线路', 'Description, for example: Backup route')" :maxlength="200" />
+                        <Button size="icon" variant="destructive" :aria-label="t('移除', 'Remove')" @click="removeModelRequestExtraEndpoint(index)">
+                          <Trash2Icon data-icon="inline-start" />
+                        </Button>
                       </Field>
                     </FieldGroup>
                   </Field>
-                  <AppFormItem :label="t('CPAMC 页面地址', 'CPAMC page URL')" :feedback="t('用于 CPAMC 内嵌页面，支持站内路径或完整 URL。', 'Used by the embedded CPAMC page. Supports site paths or full URLs.')">
-                    <AppInput v-model:value="settingsForm.cpamc_url" :placeholder="t('例如：/management.html', 'Example: /management.html')" />
-                  </AppFormItem>
-                  <AppFormItem :label="t('管理密钥', 'Management key')" :feedback="t('用于访问 CLIProxyAPI 管理接口。', 'Used to access CLIProxyAPI management APIs.')">
-                    <AppInput v-model:value="settingsForm.management_key" type="password" show-password-on="mousedown" :placeholder="t('请输入 CLIProxyAPI 管理密钥', 'Enter the CLIProxyAPI management key')" />
-                  </AppFormItem>
+                  <Field>
+                    <FieldLabel for="cpamc-url">{{ t('CPAMC 页面地址', 'CPAMC page URL') }}</FieldLabel>
+                    <Input id="cpamc-url" v-model="settingsForm.cpamc_url" :placeholder="t('例如：/management.html', 'Example: /management.html')" />
+                    <FieldDescription>{{ t('用于 CPAMC 内嵌页面，支持站内路径或完整 URL。', 'Used by the embedded CPAMC page. Supports site paths or full URLs.') }}</FieldDescription>
+                  </Field>
+                  <Field>
+                    <FieldLabel for="management-key">{{ t('管理密钥', 'Management key') }}</FieldLabel>
+                    <InputGroup>
+                      <InputGroupInput
+                        id="management-key"
+                        v-model="settingsForm.management_key"
+                        :type="showManagementKey ? 'text' : 'password'"
+                        :placeholder="t('请输入 CLIProxyAPI 管理密钥', 'Enter the CLIProxyAPI management key')"
+                      />
+                      <InputGroupAddon align="inline-end">
+                        <InputGroupButton
+                          size="icon-xs"
+                          :aria-label="showManagementKey ? t('隐藏管理密钥', 'Hide management key') : t('显示管理密钥', 'Show management key')"
+                          @click="showManagementKey = !showManagementKey"
+                        >
+                          <EyeOffIcon v-if="showManagementKey" data-icon="inline-start" />
+                          <EyeIcon v-else data-icon="inline-start" />
+                        </InputGroupButton>
+                      </InputGroupAddon>
+                    </InputGroup>
+                    <FieldDescription>{{ t('用于访问 CLIProxyAPI 管理接口。', 'Used to access CLIProxyAPI management APIs.') }}</FieldDescription>
+                  </Field>
                 </FieldGroup>
               </FieldSet>
 
@@ -291,11 +360,11 @@ onMounted(refresh)
                 <FieldGroup class="settings-switch-list">
                   <Field orientation="horizontal" class="settings-switch">
                     <FieldContent><FieldTitle>{{ t('允许普通用户查看账号状态', 'Allow standard users to view account status') }}</FieldTitle><FieldDescription>{{ t('普通用户仅能只读查看账号状态。', 'Standard users receive read-only account status access.') }}</FieldDescription></FieldContent>
-                    <AppSwitch v-model:value="settingsForm.allow_user_account_status" />
+                    <Switch v-model="settingsForm.allow_user_account_status" />
                   </Field>
                   <Field orientation="horizontal" class="settings-switch">
                     <FieldContent><FieldTitle>{{ t('允许用户查看历史用量', 'Allow users to view usage history') }}</FieldTitle><FieldDescription>{{ t('开放只读历史用量面板，不提供请求明细跳转。', 'Expose the read-only usage history dashboard without record links.') }}</FieldDescription></FieldContent>
-                    <AppSwitch v-model:value="settingsForm.allow_user_usage_history" />
+                    <Switch v-model="settingsForm.allow_user_usage_history" />
                   </Field>
                 </FieldGroup>
               </FieldSet>
@@ -305,60 +374,80 @@ onMounted(refresh)
                 <FieldGroup class="settings-switch-list">
                   <Field orientation="horizontal" class="settings-switch">
                     <FieldContent><FieldTitle>{{ t('开启本地采集', 'Enable local collection') }}</FieldTitle><FieldDescription>{{ t('定时将 CPA 队列写入本地用量数据库。', 'Periodically write CPA queue data to the local usage database.') }}</FieldDescription></FieldContent>
-                    <AppSwitch v-model:value="settingsForm.collector_enabled" />
+                    <Switch v-model="settingsForm.collector_enabled" />
                   </Field>
                 </FieldGroup>
                 <FieldGroup class="form-grid">
-                  <AppFormItem :label="t('批量读取数', 'Batch size')"><AppNumberInput v-model:value="settingsForm.batch_size" :min="1" :max="1000" /></AppFormItem>
-                  <AppFormItem :label="t('轮询间隔（秒）', 'Poll interval (seconds)')"><AppNumberInput v-model:value="settingsForm.poll_interval_seconds" :min="0.2" /></AppFormItem>
-                  <AppFormItem :label="t('重试间隔（秒）', 'Retry interval (seconds)')"><AppNumberInput v-model:value="settingsForm.retry_interval_seconds" :min="1" /></AppFormItem>
-                  <AppFormItem :label="t('用量明细保留天数', 'Usage detail retention days')" :feedback="t('最低 31 天；清理明细前会先完成小时聚合。', 'Minimum 31 days; hourly aggregation completes before details are removed.')"><AppNumberInput v-model:value="settingsForm.usage_detail_retention_days" :min="31" :precision="0" /></AppFormItem>
+                  <Field>
+                    <FieldLabel for="collector-batch-size">{{ t('批量读取数', 'Batch size') }}</FieldLabel>
+                    <Input id="collector-batch-size" type="number" :model-value="settingsForm.batch_size" :min="1" :max="1000" step="1" @update:model-value="updateNumericSetting('batch_size', $event)" />
+                  </Field>
+                  <Field>
+                    <FieldLabel for="collector-poll-interval">{{ t('轮询间隔（秒）', 'Poll interval (seconds)') }}</FieldLabel>
+                    <Input id="collector-poll-interval" type="number" :model-value="settingsForm.poll_interval_seconds" :min="0.2" step="0.1" @update:model-value="updateNumericSetting('poll_interval_seconds', $event)" />
+                  </Field>
+                  <Field>
+                    <FieldLabel for="collector-retry-interval">{{ t('重试间隔（秒）', 'Retry interval (seconds)') }}</FieldLabel>
+                    <Input id="collector-retry-interval" type="number" :model-value="settingsForm.retry_interval_seconds" :min="1" step="1" @update:model-value="updateNumericSetting('retry_interval_seconds', $event)" />
+                  </Field>
+                  <Field>
+                    <FieldLabel for="usage-retention-days">{{ t('用量明细保留天数', 'Usage detail retention days') }}</FieldLabel>
+                    <Input id="usage-retention-days" type="number" :model-value="settingsForm.usage_detail_retention_days" :min="31" step="1" @update:model-value="updateNumericSetting('usage_detail_retention_days', $event)" />
+                    <FieldDescription>{{ t('最低 31 天；清理明细前会先完成小时聚合。', 'Minimum 31 days; hourly aggregation completes before details are removed.') }}</FieldDescription>
+                  </Field>
                 </FieldGroup>
               </FieldSet>
             </FieldGroup>
-          </AppForm>
-        </div>
-      </section>
+          </form>
+        </CardContent>
+      </Card>
 
-      <section class="panel">
-        <div class="panel-inner">
-          <h2 class="section-title">{{ t('采集状态', 'Collection Status') }}</h2>
-          <AppDescriptions label-placement="left" :column="1" size="small" bordered>
-            <AppDescriptionsItem :label="t('本地采集', 'Local collection')">
-              <AppBadge :type="collectorStatus?.enabled ? 'success' : 'default'" size="small">
+      <Card>
+        <CardHeader>
+          <CardTitle>{{ t('采集状态', 'Collection Status') }}</CardTitle>
+          <CardDescription>{{ t('当前采集器状态与最近一次执行结果。', 'Current collector state and latest execution result.') }}</CardDescription>
+        </CardHeader>
+        <CardContent class="status-content">
+          <div class="status-list">
+            <div class="status-row">
+              <span>{{ t('本地采集', 'Local collection') }}</span>
+              <Badge :variant="collectorStatus?.enabled ? 'default' : 'secondary'">
                 {{ collectorStatus?.enabled ? t('开启', 'On') : t('关闭', 'Off') }}
-              </AppBadge>
-            </AppDescriptionsItem>
-            <AppDescriptionsItem :label="t('运行状态', 'Run status')">
-              <AppBadge :type="collectorStatus?.running ? 'success' : 'default'" size="small">
+              </Badge>
+            </div>
+            <div class="status-row">
+              <span>{{ t('运行状态', 'Run status') }}</span>
+              <Badge :variant="collectorStatus?.running ? 'default' : 'secondary'">
                 {{ collectorStatus?.running ? t('运行中', 'Running') : t('空闲', 'Idle') }}
-              </AppBadge>
-            </AppDescriptionsItem>
-            <AppDescriptionsItem :label="t('远端开关', 'Remote switch')">
-              <AppBadge :type="remoteStatusType" size="small">
+              </Badge>
+            </div>
+            <div class="status-row">
+              <span>{{ t('远端开关', 'Remote switch') }}</span>
+              <Badge :variant="remoteStatusType === 'error' ? 'destructive' : remoteStatusType === 'success' ? 'default' : 'outline'">
                 {{ remoteStatusText }}
-              </AppBadge>
-            </AppDescriptionsItem>
-            <AppDescriptionsItem :label="t('累计写入', 'Records written')">
-              {{ formatInteger(collectorStatus?.records_collected ?? 0) }}
-            </AppDescriptionsItem>
-            <AppDescriptionsItem :label="t('最后轮询', 'Last poll')">
-              {{ formatDateTime(collectorStatus?.last_poll_at ?? null) }}
-            </AppDescriptionsItem>
-            <AppDescriptionsItem :label="t('最后成功', 'Last success')">
-              {{ formatDateTime(collectorStatus?.last_success_at ?? null) }}
-            </AppDescriptionsItem>
-          </AppDescriptions>
-          <AppAlert
-            v-if="collectorStatus?.last_error"
-            type="warning"
-            :bordered="false"
-            class="status-alert"
-          >
-            {{ serverText(collectorStatus.last_error, '采集异常', 'Collector error') }}
-          </AppAlert>
-        </div>
-      </section>
+              </Badge>
+            </div>
+            <div class="status-row">
+              <span>{{ t('累计写入', 'Records written') }}</span>
+              <strong>{{ formatInteger(collectorStatus?.records_collected ?? 0) }}</strong>
+            </div>
+            <div class="status-row">
+              <span>{{ t('最后轮询', 'Last poll') }}</span>
+              <strong>{{ formatDateTime(collectorStatus?.last_poll_at ?? null) }}</strong>
+            </div>
+            <div class="status-row">
+              <span>{{ t('最后成功', 'Last success') }}</span>
+              <strong>{{ formatDateTime(collectorStatus?.last_success_at ?? null) }}</strong>
+            </div>
+          </div>
+
+          <Alert v-if="collectorStatus?.last_error">
+            <TriangleAlertIcon />
+            <AlertTitle>{{ t('采集异常', 'Collector error') }}</AlertTitle>
+            <AlertDescription>{{ serverText(collectorStatus.last_error, '采集异常', 'Collector error') }}</AlertDescription>
+          </Alert>
+        </CardContent>
+      </Card>
     </div>
 
     <CodexKeeperSettingsPanel ref="keeperSettingsPanel" />
@@ -366,12 +455,22 @@ onMounted(refresh)
 </template>
 
 <style scoped>
-.section-title {
-  margin: 0 0 12px;
-}
-
 .settings-metrics {
   grid-template-columns: repeat(4, minmax(150px, 1fr));
+}
+
+.settings-metric-card {
+  min-width: 0;
+}
+
+.settings-metric-card :deep([data-slot="card-action"]) {
+  color: var(--muted-foreground);
+}
+
+.settings-metric-footnote {
+  margin: 6px 0 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
 }
 
 .form-grid {
@@ -434,8 +533,40 @@ onMounted(refresh)
   background: var(--cpa-surface-muted);
 }
 
-.status-alert {
-  margin-top: 10px;
+.status-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.status-list {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.status-row {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.status-row:last-child {
+  border-bottom: 0;
+}
+
+.status-row > span {
+  color: var(--muted-foreground);
+}
+
+.status-row > strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: right;
 }
 
 @media (max-width: 900px) {
@@ -451,7 +582,7 @@ onMounted(refresh)
     grid-template-columns: 1fr;
   }
 
-  .extra-endpoint-row .n-button {
+  .extra-endpoint-row [data-slot="button"] {
     justify-self: start;
   }
 }

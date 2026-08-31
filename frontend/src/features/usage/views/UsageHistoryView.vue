@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, type Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { AppButton, AppDateTimeRange, AppSelect, useMessage } from '@/shared/ui/app-kit'
+import { toast } from 'vue-sonner'
+import { AppButton, AppDateTimeRange, AppSelect } from '@/shared/ui/app-kit'
 import {
   CircleCheck,
   CircleDollarSign,
@@ -107,7 +108,7 @@ const DISTRIBUTION_CHART_COLORS = [
 
 const route = useRoute()
 const router = useRouter()
-const message = useMessage()
+const message = toast
 const props = defineProps<Props>()
 const { currentLanguage, errorText, t } = useI18n()
 const isLoading = ref(false)

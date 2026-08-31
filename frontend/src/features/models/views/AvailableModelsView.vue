@@ -1,18 +1,41 @@
 <script setup lang="ts">
-import { computed, h, onMounted, ref } from 'vue'
+import { ChevronLeftIcon, ChevronRightIcon, Cpu, KeyRound, RefreshCw, ShieldCheck, TriangleAlertIcon } from '@lucide/vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  AppAlert,
-  AppButton,
-  AppDataTable,
-  AppEmpty,
-  AppIcon,
-  AppStack,
-  AppSpinner,
-  AppBadge,
-  type DataTableColumns,
-} from '@/shared/ui/app-kit'
-import { Cpu, KeyRound, RefreshCw, ShieldCheck } from '@lucide/vue'
+  Alert,
+  AlertAction,
+  AlertDescription,
+  AlertTitle,
+} from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/components/ui/pagination'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Spinner } from '@/components/ui/spinner'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 
 import { listAvailableModels } from '@/features/models/api/availableModelsApi'
 import { useI18n } from '@/shared/i18n'
@@ -32,8 +55,14 @@ const { currentLanguage, errorText, serverText, t } = useI18n()
 const isLoading = ref(false)
 const errorMessage = ref<string | null>(null)
 const response = ref<AvailableModelsResponse | null>(null)
+const page = ref(1)
+const pageSize = 20
 
 const modelCount = computed(() => response.value?.models.length ?? 0)
+const pagedModels = computed(() => {
+  const start = (page.value - 1) * pageSize
+  return response.value?.models.slice(start, start + pageSize) ?? []
+})
 const keySummary = computed(() => {
   if (!response.value) {
     return '-'
@@ -77,42 +106,24 @@ function modelBillingUnit(row: AvailableModel): BillingUnit {
   return billingUnitForModel(row.price?.model || row.id)
 }
 
-function renderBillingUnit(row: AvailableModel) {
+function billingLabel(row: AvailableModel): string {
   const unit = modelBillingUnit(row)
-  const isRequest = unit === 'request'
-  return h(
-    'span',
-    {
-      style: {
-        display: 'inline-flex',
-        alignItems: 'center',
-        minHeight: '22px',
-        padding: '2px 8px',
-        borderRadius: '6px',
-        background: isRequest ? 'var(--cpa-success-weak)' : 'var(--cpa-accent-purple-weak)',
-        color: isRequest ? 'var(--cpa-success)' : 'var(--cpa-accent-purple)',
-        fontSize: '12px',
-        fontWeight: '600',
-        lineHeight: '1.2',
-      },
-    },
-    isRequest ? t('按次', 'Per request') : t('按 Token', 'Per token'),
-  )
+  return unit === 'request' ? t('按次', 'Per request') : t('按 Token', 'Per token')
 }
 
-function renderRequestPrice(row: AvailableModel) {
+function requestPrice(row: AvailableModel): string {
   if (modelBillingUnit(row) !== 'request') {
-    return h('span', { class: 'model-price-muted' }, '-')
+    return '-'
   }
   if (row.price?.request_usd === null || row.price?.request_usd === undefined) {
-    return h('span', { class: 'model-price-muted' }, t('未定价', 'Unpriced'))
+    return t('未定价', 'Unpriced')
   }
   return formatUsdPerMtok(row.price.request_usd)
 }
 
-function renderPriceValue(row: AvailableModel, field: PriceField) {
+function priceValue(row: AvailableModel, field: PriceField): string {
   if (modelBillingUnit(row) === 'request') {
-    return h('span', { class: 'model-price-muted' }, '-')
+    return '-'
   }
   if (!row.price) {
     return '-'
@@ -120,10 +131,10 @@ function renderPriceValue(row: AvailableModel, field: PriceField) {
   return formatUsdPerMtok(row.price[field])
 }
 
-function renderFastMultiplier(row: AvailableModel) {
+function fastMultiplier(row: AvailableModel): string {
   const multiplier = row.price?.fast_multiplier
   if (multiplier === null || multiplier === undefined) {
-    return h('span', { class: 'model-price-muted' }, '-')
+    return '-'
   }
   return `×${multiplier.toLocaleString(currentLanguage.value === 'zh' ? 'zh-CN' : 'en-US', {
     maximumFractionDigits: 4,
@@ -139,6 +150,7 @@ async function refresh() {
   errorMessage.value = null
   try {
     response.value = await listAvailableModels()
+    page.value = 1
   } catch (error) {
     response.value = null
     errorMessage.value = errorText(error, '加载可用模型失败', 'Failed to load available models')
@@ -147,99 +159,6 @@ async function refresh() {
   }
 }
 
-const columns = computed<DataTableColumns<AvailableModel>>(() => [
-  {
-    title: t('模型 ID', 'Model ID'),
-    key: 'id',
-    width: 220,
-    ellipsis: { tooltip: true },
-    render: (row) => h('span', { class: 'model-id' }, row.id),
-  },
-  {
-    title: t('名称', 'Name'),
-    key: 'name',
-    width: 170,
-    ellipsis: { tooltip: true },
-    render: (row) => displayText(row.name),
-  },
-  {
-    title: t('所有者', 'Owner'),
-    key: 'owner',
-    width: 100,
-    ellipsis: { tooltip: true },
-    render: (row) => displayText(row.owner),
-  },
-  {
-    title: t('来源 Key', 'Source Key'),
-    key: 'sources',
-    width: 170,
-    render: (row) =>
-      h(
-        AppStack,
-        { size: 4, wrap: true },
-        {
-          default: () =>
-            row.sources.map((source) =>
-              h(
-                AppBadge,
-                { key: source.api_key_hash, size: 'small', bordered: false, type: 'info' },
-                { default: () => `${source.description} · ${source.api_key_preview}` },
-              ),
-            ),
-        },
-      ),
-  },
-  {
-    title: t('计费方式', 'Billing'),
-    key: 'billing_unit',
-    width: 90,
-    align: 'center',
-    render: renderBillingUnit,
-  },
-  {
-    title: t('每次 ($)', 'Per request ($)'),
-    key: 'request_usd',
-    width: 90,
-    align: 'right',
-    render: renderRequestPrice,
-  },
-  {
-    title: t('输入 $/MTok', 'Input $/MTok'),
-    key: 'input_usd_per_million',
-    width: 108,
-    align: 'right',
-    render: (row) => renderPriceValue(row, 'input_usd_per_million'),
-  },
-  {
-    title: t('输出 $/MTok', 'Output $/MTok'),
-    key: 'output_usd_per_million',
-    width: 108,
-    align: 'right',
-    render: (row) => renderPriceValue(row, 'output_usd_per_million'),
-  },
-  {
-    title: t('缓存读 $/MTok', 'Cache read $/MTok'),
-    key: 'cache_read_usd_per_million',
-    width: 108,
-    align: 'right',
-    render: (row) => renderPriceValue(row, 'cache_read_usd_per_million'),
-  },
-  {
-    title: t('缓存写 $/MTok', 'Cache write $/MTok'),
-    key: 'cache_creation_usd_per_million',
-    width: 108,
-    align: 'right',
-    render: (row) => renderPriceValue(row, 'cache_creation_usd_per_million'),
-  },
-  {
-    title: t('FAST 倍率', 'FAST multiplier'),
-    key: 'fast_multiplier',
-    width: 88,
-    align: 'right',
-    render: renderFastMultiplier,
-  },
-])
-
 onMounted(refresh)
 </script>
 
@@ -247,43 +166,44 @@ onMounted(refresh)
   <section class="page models-page" :aria-busy="isLoading">
     <div class="page-toolbar">
       <h1 data-page-title class="page-title">{{ t('可用模型', 'Available Models') }}</h1>
-      <AppStack>
-        <AppButton secondary :loading="isLoading" @click="refresh">
-          <template #icon>
-            <AppIcon :component="RefreshCw" />
-          </template>
-          {{ t('刷新', 'Refresh') }}
-        </AppButton>
-      </AppStack>
+      <Button variant="outline" :disabled="isLoading" @click="refresh">
+        <Spinner v-if="isLoading" data-icon="inline-start" />
+        <RefreshCw v-else data-icon="inline-start" />
+        {{ t('刷新', 'Refresh') }}
+      </Button>
     </div>
 
     <section class="panel model-table-panel">
       <div class="panel-inner model-panel">
-        <AppAlert v-if="errorMessage" type="error" :bordered="false">
-          <div class="alert-row">
-            <span>{{ errorMessage }}</span>
-            <AppButton size="small" secondary :loading="isLoading" @click="refresh">{{ t('重试', 'Retry') }}</AppButton>
-          </div>
-        </AppAlert>
+        <Alert v-if="errorMessage" variant="destructive">
+          <AlertTitle>{{ t('加载可用模型失败', 'Failed to load available models') }}</AlertTitle>
+          <AlertDescription>{{ errorMessage }}</AlertDescription>
+          <AlertAction>
+            <Button size="sm" variant="outline" :disabled="isLoading" @click="refresh">
+              <Spinner v-if="isLoading" data-icon="inline-start" />
+              <RefreshCw v-else data-icon="inline-start" />
+              {{ t('重试', 'Retry') }}
+            </Button>
+          </AlertAction>
+        </Alert>
 
         <template v-else>
-          <AppAlert
-            v-if="response?.errors.length"
-            type="warning"
-            :bordered="false"
-            :title="t('部分 API Key 查询失败', 'Some API key queries failed')"
-          >
-            <div class="key-errors">
-              <div v-for="error in response.errors" :key="error.api_key_hash">
-                {{
-                  t(
-                    `${error.description}（${error.api_key_preview}）：${serverText(error.message, '查询失败', 'Query failed')}`,
-                    `${error.description} (${error.api_key_preview}): ${serverText(error.message, '查询失败', 'Query failed')}`,
-                  )
-                }}
+          <Alert v-if="response?.errors.length">
+            <TriangleAlertIcon />
+            <AlertTitle>{{ t('部分 API Key 查询失败', 'Some API key queries failed') }}</AlertTitle>
+            <AlertDescription>
+              <div class="key-errors">
+                <div v-for="error in response.errors" :key="error.api_key_hash">
+                  {{
+                    t(
+                      `${error.description}（${error.api_key_preview}）：${serverText(error.message, '查询失败', 'Query failed')}`,
+                      `${error.description} (${error.api_key_preview}): ${serverText(error.message, '查询失败', 'Query failed')}`,
+                    )
+                  }}
+                </div>
               </div>
-            </div>
-          </AppAlert>
+            </AlertDescription>
+          </Alert>
 
           <div v-if="response" class="metric-grid model-metrics">
             <div class="metric-card">
@@ -313,49 +233,138 @@ onMounted(refresh)
           </div>
 
           <div v-if="isLoading && !response" class="loading-state">
-            <AppSpinner size="small" />
+            <Spinner class="size-5" />
             <span>{{ t('正在向 CPA 查询模型', 'Querying CPA for models') }}</span>
           </div>
 
-          <div v-else-if="response && !response.has_api_keys" class="empty-state">
-            <AppEmpty :description="t('还没有可用于查询模型的 API 密钥', 'No API keys are available for model queries yet')">
-              <template #extra>
-                <AppButton type="primary" @click="goToApiKeys">{{ t('去创建 API 密钥', 'Create API key') }}</AppButton>
-              </template>
-            </AppEmpty>
-          </div>
+          <Empty v-else-if="response && !response.has_api_keys" class="min-h-[220px]">
+            <EmptyHeader>
+              <EmptyMedia variant="icon"><KeyRound /></EmptyMedia>
+              <EmptyTitle>{{ t('暂无可查询的 API 密钥', 'No queryable API keys') }}</EmptyTitle>
+              <EmptyDescription>{{ t('还没有可用于查询模型的 API 密钥', 'No API keys are available for model queries yet') }}</EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent>
+              <Button @click="goToApiKeys">{{ t('去创建 API 密钥', 'Create API key') }}</Button>
+            </EmptyContent>
+          </Empty>
 
-          <div
+          <Empty
             v-else-if="response && response.has_api_keys && response.queryable_api_key_count === 0"
-            class="empty-state"
+            class="min-h-[220px]"
           >
-            <AppEmpty :description="t('绑定的 API 密钥缺少完整密钥，无法查询模型', 'Bound API keys are missing complete keys and cannot query models')">
-              <template #extra>
-                <AppButton type="primary" @click="goToApiKeys">{{ t('去 API 密钥页检查', 'Check API keys') }}</AppButton>
-              </template>
-            </AppEmpty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon"><KeyRound /></EmptyMedia>
+              <EmptyTitle>{{ t('API 密钥不可查询', 'API keys unavailable') }}</EmptyTitle>
+              <EmptyDescription>{{ t('绑定的 API 密钥缺少完整密钥，无法查询模型', 'Bound API keys are missing complete keys and cannot query models') }}</EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent>
+              <Button @click="goToApiKeys">{{ t('去 API 密钥页检查', 'Check API keys') }}</Button>
+            </EmptyContent>
+          </Empty>
+
+          <Empty v-else-if="response && response.models.length === 0" class="min-h-[220px]">
+            <EmptyHeader>
+              <EmptyMedia variant="icon"><Cpu /></EmptyMedia>
+              <EmptyTitle>{{ t('暂无可用模型', 'No available models') }}</EmptyTitle>
+              <EmptyDescription>{{ t('CPA 未返回可用模型', 'CPA returned no available models') }}</EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent>
+              <Button variant="outline" :disabled="isLoading" @click="refresh">
+                <Spinner v-if="isLoading" data-icon="inline-start" />
+                <RefreshCw v-else data-icon="inline-start" />
+                {{ t('重新查询', 'Query again') }}
+              </Button>
+            </EmptyContent>
+          </Empty>
+
+          <div v-else-if="response" class="available-models-table">
+            <Table class="min-w-[1240px] table-fixed">
+              <TableHeader class="sticky top-0 bg-card">
+                <TableRow>
+                  <TableHead class="w-[200px]">{{ t('模型 ID', 'Model ID') }}</TableHead>
+                  <TableHead class="w-[150px]">{{ t('名称', 'Name') }}</TableHead>
+                  <TableHead class="w-[90px]">{{ t('所有者', 'Owner') }}</TableHead>
+                  <TableHead class="w-[160px]">{{ t('来源 Key', 'Source Key') }}</TableHead>
+                  <TableHead class="w-[84px] text-center">{{ t('计费方式', 'Billing') }}</TableHead>
+                  <TableHead class="w-[90px] text-right">{{ t('每次 ($)', 'Per request ($)') }}</TableHead>
+                  <TableHead class="w-[100px] text-right">{{ t('输入 $/MTok', 'Input $/MTok') }}</TableHead>
+                  <TableHead class="w-[100px] text-right">{{ t('输出 $/MTok', 'Output $/MTok') }}</TableHead>
+                  <TableHead class="w-[100px] text-right">{{ t('缓存读 $/MTok', 'Cache read $/MTok') }}</TableHead>
+                  <TableHead class="w-[100px] text-right">{{ t('缓存写 $/MTok', 'Cache write $/MTok') }}</TableHead>
+                  <TableHead class="w-[80px] text-right">{{ t('FAST 倍率', 'FAST multiplier') }}</TableHead>
+                </TableRow>
+              </TableHeader>
+
+              <TableBody>
+                <template v-if="isLoading && pagedModels.length === 0">
+                  <TableRow v-for="rowIndex in 5" :key="`model-skeleton-${rowIndex}`">
+                    <TableCell v-for="columnIndex in 11" :key="columnIndex">
+                      <Skeleton class="h-4 w-full" />
+                    </TableCell>
+                  </TableRow>
+                </template>
+
+                <TableRow v-for="model in pagedModels" v-else :key="model.id">
+                  <TableCell class="font-mono text-xs">
+                    <span class="block truncate" :title="model.id">{{ model.id }}</span>
+                  </TableCell>
+                  <TableCell><span class="block truncate" :title="displayText(model.name)">{{ displayText(model.name) }}</span></TableCell>
+                  <TableCell><span class="block truncate" :title="displayText(model.owner)">{{ displayText(model.owner) }}</span></TableCell>
+                  <TableCell>
+                    <div class="flex flex-wrap gap-1">
+                      <Badge v-for="source in model.sources" :key="source.api_key_hash" variant="secondary">
+                        {{ source.description }} · {{ source.api_key_preview }}
+                      </Badge>
+                    </div>
+                  </TableCell>
+                  <TableCell class="text-center">
+                    <Badge :variant="modelBillingUnit(model) === 'request' ? 'secondary' : 'outline'">
+                      {{ billingLabel(model) }}
+                    </Badge>
+                  </TableCell>
+                  <TableCell class="text-right tabular-nums">{{ requestPrice(model) }}</TableCell>
+                  <TableCell class="text-right tabular-nums">{{ priceValue(model, 'input_usd_per_million') }}</TableCell>
+                  <TableCell class="text-right tabular-nums">{{ priceValue(model, 'output_usd_per_million') }}</TableCell>
+                  <TableCell class="text-right tabular-nums">{{ priceValue(model, 'cache_read_usd_per_million') }}</TableCell>
+                  <TableCell class="text-right tabular-nums">{{ priceValue(model, 'cache_creation_usd_per_million') }}</TableCell>
+                  <TableCell class="text-right tabular-nums">{{ fastMultiplier(model) }}</TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+
+            <div v-if="isLoading && pagedModels.length > 0" class="table-loading-overlay">
+              <Spinner class="size-5" />
+            </div>
           </div>
 
-          <div v-else-if="response && response.models.length === 0" class="empty-state">
-            <AppEmpty :description="t('CPA 未返回可用模型', 'CPA returned no available models')">
-              <template #extra>
-                <AppButton secondary :loading="isLoading" @click="refresh">{{ t('重新查询', 'Query again') }}</AppButton>
+          <Pagination
+            v-if="modelCount > pageSize"
+            v-model:page="page"
+            class="justify-end"
+            :items-per-page="pageSize"
+            :total="modelCount"
+            :sibling-count="1"
+            show-edges
+          >
+            <PaginationContent v-slot="{ items }">
+              <PaginationPrevious size="icon" :aria-label="t('上一页', 'Previous page')">
+                <ChevronLeftIcon data-icon="inline-start" />
+              </PaginationPrevious>
+              <template v-for="(item, index) in items" :key="index">
+                <PaginationItem
+                  v-if="item.type === 'page'"
+                  :value="item.value"
+                  :is-active="item.value === page"
+                >
+                  {{ item.value }}
+                </PaginationItem>
+                <PaginationEllipsis v-else :index="index" />
               </template>
-            </AppEmpty>
-          </div>
-
-          <AppDataTable
-            v-else-if="response"
-            class="available-models-table"
-            size="small"
-            :loading="isLoading"
-            :columns="columns"
-            :data="response.models"
-            :pagination="{ pageSize: 20 }"
-            max-height="max(240px, calc(100dvh - 360px))"
-            :scroll-x="1360"
-            table-layout="fixed"
-          />
+              <PaginationNext size="icon" :aria-label="t('下一页', 'Next page')">
+                <ChevronRightIcon data-icon="inline-end" />
+              </PaginationNext>
+            </PaginationContent>
+          </Pagination>
         </template>
       </div>
     </section>
@@ -384,20 +393,26 @@ onMounted(refresh)
   overflow: hidden;
 }
 
-.model-id {
-  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 13px;
+.available-models-table {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: var(--cpa-shadow-card);
 }
 
-.model-price-muted {
-  color: var(--cpa-text-muted);
+.available-models-table :deep([data-slot="table-container"]) {
+  max-height: max(240px, calc(100dvh - 360px));
+  overflow: auto;
 }
 
-.alert-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+.table-loading-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: color-mix(in oklch, var(--background) 62%, transparent);
 }
 
 .key-errors {
@@ -405,8 +420,7 @@ onMounted(refresh)
   gap: 4px;
 }
 
-.loading-state,
-.empty-state {
+.loading-state {
   display: grid;
   min-height: 220px;
   place-items: center;
@@ -435,9 +449,5 @@ onMounted(refresh)
     grid-column: 1 / -1;
   }
 
-  .alert-row {
-    align-items: stretch;
-    flex-direction: column;
-  }
 }
 </style>

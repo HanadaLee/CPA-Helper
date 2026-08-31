@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Component, CSSProperties } from 'vue'
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { toast } from 'vue-sonner'
 import {
   AppAlert,
   AppButton,
@@ -15,10 +16,9 @@ import {
   AppStack,
   AppSwitch,
   AppBadge,
-  useDialog,
-  useMessage,
   type DataTableColumns,
 } from '@/shared/ui/app-kit'
+import { useConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -96,8 +96,8 @@ const proxyModalStyle: CSSProperties = { width: 'min(460px, calc(100vw - 32px))'
 const proxyModalContentStyle: CSSProperties = { padding: '16px 22px 4px' }
 const proxyModalFooterStyle: CSSProperties = { padding: '12px 22px 18px' }
 const desktopPriceLayoutQuery = window.matchMedia('(min-width: 861px)')
-const message = useMessage()
-const dialog = useDialog()
+const message = toast
+const dialog = useConfirmDialog()
 const { errorText, serverText, t } = useI18n()
 const isLoading = ref(false)
 const isSyncing = ref(false)

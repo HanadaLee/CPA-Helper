@@ -15,7 +15,6 @@ import {
   h,
   inject,
   provide,
-  reactive,
   ref,
   watch,
 } from 'vue'
@@ -32,20 +31,8 @@ import {
   XIcon,
 } from '@lucide/vue'
 import { CalendarDate } from '@internationalized/date'
-import { toast } from 'vue-sonner'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -103,7 +90,6 @@ import { Switch } from '@/components/ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { Toaster } from '@/components/ui/sonner'
 import { cn } from '@/lib/utils'
 import { localize } from '@/shared/i18n'
 
@@ -939,41 +925,6 @@ export const AppTooltip = defineComponent({
   },
 })
 
-export const AppConfirm = defineComponent({
-  name: 'AppConfirm',
-  inheritAttrs: false,
-  props: {
-    positiveText: { type: String, default: '确认' },
-    negativeText: { type: String, default: '取消' },
-    showIcon: Boolean,
-  },
-  emits: ['positive-click', 'negative-click'],
-  setup(props, { slots, emit }) {
-    return () =>
-      h(AlertDialog, {}, {
-        default: () => [
-          h(AlertDialogTrigger, { asChild: true } as never, { default: () => renderSlot(slots, 'trigger') }),
-          h(AlertDialogContent, {}, {
-            default: () => [
-              h(AlertDialogHeader, {}, {
-                default: () => [
-                  h(AlertDialogTitle, {}, { default: () => props.positiveText }),
-                  h(AlertDialogDescription, {}, { default: () => renderSlot(slots) }),
-                ],
-              }),
-              h(AlertDialogFooter, {}, {
-                default: () => [
-                  h(AlertDialogCancel, { onClick: () => emit('negative-click') }, { default: () => props.negativeText }),
-                  h(AlertDialogAction, { onClick: () => emit('positive-click') }, { default: () => props.positiveText }),
-                ],
-              }),
-            ],
-          }),
-        ],
-      })
-  },
-})
-
 export const AppDropdown = defineComponent({
   name: 'AppDropdown',
   inheritAttrs: false,
@@ -1315,87 +1266,6 @@ export const AppDateTimeRange = defineComponent({
               ],
             }),
           ],
-        }),
-      ])
-  },
-})
-
-type DialogOptions = {
-  title?: string
-  content?: string | (() => VNodeChild)
-  positiveText?: string
-  negativeText?: string
-  onPositiveClick?: () => void | Promise<void>
-  onNegativeClick?: () => void
-}
-
-const imperativeDialog = reactive({ open: false, options: null as DialogOptions | null })
-
-function openImperativeDialog(options: DialogOptions) {
-  imperativeDialog.options = options
-  imperativeDialog.open = true
-  return { destroy: () => (imperativeDialog.open = false) }
-}
-
-export function useDialog() {
-  return {
-    warning: openImperativeDialog,
-    error: openImperativeDialog,
-    info: openImperativeDialog,
-    success: openImperativeDialog,
-  }
-}
-
-export function useMessage() {
-  return {
-    success: (message: string, options?: object) => toast.success(message, options),
-    error: (message: string, options?: object) => toast.error(message, options),
-    warning: (message: string, options?: object) => toast.warning(message, options),
-    info: (message: string, options?: object) => toast.info(message, options),
-    loading: (message: string, options?: object) => toast.loading(message, options),
-    destroyAll: () => toast.dismiss(),
-  }
-}
-
-export const AppMessageProvider = defineComponent({
-  name: 'AppMessageProvider',
-  setup(_, { slots }) {
-    return () => h('div', { class: 'contents' }, [renderSlot(slots), h(Toaster, { richColors: true, position: 'top-center' })])
-  },
-})
-
-export const AppDialogProvider = defineComponent({
-  name: 'AppDialogProvider',
-  setup(_, { slots }) {
-    const confirm = async () => {
-      const options = imperativeDialog.options
-      if (!options) return
-      await options.onPositiveClick?.()
-      imperativeDialog.open = false
-    }
-    return () =>
-      h('div', { class: 'contents' }, [
-        renderSlot(slots),
-        h(AlertDialog, { open: imperativeDialog.open, 'onUpdate:open': (open: boolean) => (imperativeDialog.open = open) } as never, {
-          default: () =>
-            h(AlertDialogContent, {}, {
-              default: () => [
-                h(AlertDialogHeader, {}, {
-                  default: () => [
-                    h(AlertDialogTitle, {}, { default: () => imperativeDialog.options?.title ?? '确认' }),
-                    h(AlertDialogDescription, {}, {
-                      default: () => typeof imperativeDialog.options?.content === 'function' ? imperativeDialog.options.content() : imperativeDialog.options?.content,
-                    }),
-                  ],
-                }),
-                h(AlertDialogFooter, {}, {
-                  default: () => [
-                    h(AlertDialogCancel, { onClick: () => imperativeDialog.options?.onNegativeClick?.() }, { default: () => imperativeDialog.options?.negativeText ?? '取消' }),
-                    h(AlertDialogAction, { onClick: confirm }, { default: () => imperativeDialog.options?.positiveText ?? '确认' }),
-                  ],
-                }),
-              ],
-            }),
         }),
       ])
   },

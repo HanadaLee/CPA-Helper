@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { toast } from 'vue-sonner'
 import {
   AppButton,
   AppDataTable,
@@ -17,7 +18,6 @@ import {
   AppStack,
   AppSwitch,
   AppBadge,
-  useMessage,
   type DataTableColumns,
   type DataTableRowKey,
 } from '@/shared/ui/app-kit'
@@ -145,7 +145,7 @@ const accountReadOnlyTableScrollX = 1468
 const KEEPER_STATUS_POLL_INTERVAL_MS = 3000
 const REFRESH_STATUS_POLL_INTERVAL_MS = 1500
 const OAUTH_STATUS_POLL_INTERVAL_MS = 3000
-const message = useMessage()
+const message = toast
 const { currentLanguage, errorText, keeperStatusText, serverText, t } = useI18n()
 const { currentUser } = useCurrentUser()
 const canManageAccounts = computed(() => currentUser.value?.is_admin === true)

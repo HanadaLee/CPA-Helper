@@ -1,7 +1,12 @@
 <script setup lang="ts">
+import { Copy, FileClockIcon, Trash2 } from '@lucide/vue'
 import { computed, nextTick, ref, watch } from 'vue'
-import { AppButton, AppIcon, AppStack, useMessage } from '@/shared/ui/app-kit'
-import { Copy, Trash2 } from '@lucide/vue'
+import { toast } from 'vue-sonner'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
+import { Spinner } from '@/components/ui/spinner'
 
 import { clearCodexKeeperLogs } from '@/features/codex-keeper/api/codexKeeperApi'
 import { useI18n } from '@/shared/i18n'
@@ -25,7 +30,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   refresh: []
 }>()
-const message = useMessage()
+const message = toast
 const { errorText, serverText, t } = useI18n()
 const isClearing = ref(false)
 const logBodyRef = ref<HTMLElement | null>(null)
@@ -60,6 +65,13 @@ function logTone(level: string): LogTone {
     return 'debug'
   }
   return 'default'
+}
+
+function logBadgeVariant(tone: LogTone): 'default' | 'destructive' | 'outline' | 'secondary' {
+  if (tone === 'danger') return 'destructive'
+  if (tone === 'info') return 'default'
+  if (tone === 'debug') return 'secondary'
+  return 'outline'
 }
 
 function parseSlogFields(line: string): Record<string, string> | null {
@@ -186,25 +198,23 @@ async function clearLogs() {
 </script>
 
 <template>
-  <section class="panel log-panel">
-    <div class="panel-inner log-panel-inner">
-      <div class="section-heading">
-        <h2 class="section-title">{{ t('维护日志', 'Maintenance Logs') }}</h2>
-        <AppStack class="log-actions" size="small">
-          <AppButton secondary :disabled="!logText" @click="copyLogText">
-            <template #icon>
-              <AppIcon :component="Copy" />
-            </template>
-            {{ t('复制日志', 'Copy Logs') }}
-          </AppButton>
-          <AppButton secondary :loading="isClearing" @click="clearLogs">
-            <template #icon>
-              <AppIcon :component="Trash2" />
-            </template>
-            {{ t('清空日志', 'Clear Logs') }}
-          </AppButton>
-        </AppStack>
-      </div>
+  <Card class="log-panel">
+    <CardHeader>
+      <CardTitle>{{ t('维护日志', 'Maintenance Logs') }}</CardTitle>
+      <CardDescription>{{ t('最新日志显示在顶部。', 'Newest entries appear first.') }}</CardDescription>
+      <CardAction class="log-actions">
+        <Button size="sm" variant="outline" :disabled="!logText" @click="copyLogText">
+          <Copy data-icon="inline-start" />
+          {{ t('复制日志', 'Copy Logs') }}
+        </Button>
+        <Button size="sm" variant="destructive" :disabled="isClearing" @click="clearLogs">
+          <Spinner v-if="isClearing" data-icon="inline-start" />
+          <Trash2 v-else data-icon="inline-start" />
+          {{ t('清空日志', 'Clear Logs') }}
+        </Button>
+      </CardAction>
+    </CardHeader>
+    <CardContent>
       <div
         ref="logBodyRef"
         class="log-view"
@@ -212,7 +222,12 @@ async function clearLogs() {
         :aria-label="t('维护日志', 'Maintenance Logs')"
         @scroll="handleLogScroll"
       >
-        <div v-if="displayedLogLines.length === 0" class="log-empty">{{ t('暂无日志', 'No logs') }}</div>
+        <Empty v-if="displayedLogLines.length === 0" class="log-empty border-0">
+          <EmptyHeader>
+            <EmptyMedia variant="icon"><FileClockIcon /></EmptyMedia>
+            <EmptyTitle>{{ t('暂无日志', 'No logs') }}</EmptyTitle>
+          </EmptyHeader>
+        </Empty>
         <div v-else class="log-lines">
           <div
             v-for="line in displayedLogLines"
@@ -222,54 +237,34 @@ async function clearLogs() {
             :title="serverText(line.message, '维护日志', 'Maintenance log')"
           >
             <time class="log-time">{{ line.time }}</time>
-            <span class="log-level">{{ line.level }}</span>
+            <Badge :variant="logBadgeVariant(line.tone)">{{ line.level }}</Badge>
             <span class="log-component">{{ line.component }}</span>
             <span class="log-message">{{ serverText(line.message, '维护日志', 'Maintenance log') }}</span>
           </div>
         </div>
       </div>
-    </div>
-  </section>
+    </CardContent>
+  </Card>
 </template>
 
 <style scoped>
 .log-panel,
-.log-panel-inner,
 .log-view {
   min-height: 0;
 }
 
-.log-panel-inner {
-  display: grid;
-  gap: 10px;
-}
-
-.section-heading {
+.log-actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.section-title {
-  margin: 0;
-  color: var(--cpa-text);
-  font-size: 15px;
-}
-
-.log-actions {
-  flex-shrink: 0;
+  gap: 8px;
 }
 
 .log-view {
   height: 520px;
   overflow: auto;
-  border: 1px solid var(--cpa-border);
-  border-radius: var(--cpa-radius-sm);
-  background:
-    linear-gradient(180deg, rgb(255 255 255 / 54%), rgb(255 255 255 / 18%)),
-    var(--cpa-surface-muted);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 78%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--muted);
   scrollbar-color: color-mix(in srgb, var(--cpa-text-muted) 44%, transparent) transparent;
   scrollbar-gutter: stable;
   scrollbar-width: thin;
@@ -296,13 +291,6 @@ async function clearLogs() {
 .log-view::-webkit-scrollbar-thumb:hover {
   background: color-mix(in srgb, var(--cpa-primary) 58%, var(--cpa-text-muted));
   background-clip: content-box;
-}
-
-:root.dark .log-view {
-  background:
-    linear-gradient(180deg, rgb(255 255 255 / 5%), rgb(255 255 255 / 1%)),
-    var(--cpa-surface-muted);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 8%);
 }
 
 .log-lines {
@@ -334,10 +322,6 @@ async function clearLogs() {
   background: var(--cpa-primary-wash);
 }
 
-:root.dark .log-line:hover {
-  background: color-mix(in srgb, var(--cpa-primary-wash) 70%, transparent);
-}
-
 .log-time,
 .log-component,
 .log-message {
@@ -352,62 +336,19 @@ async function clearLogs() {
   white-space: nowrap;
 }
 
-.log-level {
-  display: inline-flex;
-  justify-content: center;
-  width: fit-content;
-  min-width: 48px;
-  padding: 1px 6px;
-  border: 1px solid var(--cpa-border);
-  border-radius: var(--cpa-radius-sm);
-  background: var(--cpa-surface);
-  color: var(--cpa-text-muted);
-  font-size: 11px;
-  font-weight: 760;
-  line-height: 1.35;
-}
-
 .log-message {
   color: var(--cpa-text);
   overflow-wrap: anywhere;
 }
 
-.log-line.is-info .log-level {
-  border-color: color-mix(in srgb, var(--cpa-primary) 24%, transparent);
-  background: var(--cpa-primary-wash);
-  color: var(--cpa-primary);
-}
-
-.log-line.is-warning .log-level {
-  border-color: color-mix(in srgb, var(--cpa-warning) 28%, transparent);
-  background: var(--cpa-warning-weak);
-  color: var(--cpa-warning);
-}
-
-.log-line.is-danger .log-level {
-  border-color: color-mix(in srgb, var(--cpa-danger) 28%, transparent);
-  background: var(--cpa-danger-weak);
-  color: var(--cpa-danger);
-}
-
-.log-line.is-debug .log-level {
-  border-color: color-mix(in srgb, var(--cpa-accent-blue) 24%, transparent);
-  background: var(--cpa-accent-blue-weak);
-  color: var(--cpa-accent-blue);
-}
-
 .log-empty {
-  display: grid;
   height: 100%;
   min-height: 180px;
-  place-items: center;
-  color: var(--cpa-text-muted);
-  font-size: 13px;
 }
 
 @media (max-width: 760px) {
-  .section-heading {
-    align-items: flex-start;
+  .log-actions {
+    align-items: stretch;
     flex-direction: column;
   }
 

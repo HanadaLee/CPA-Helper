@@ -1,7 +1,10 @@
 <script setup lang="ts">
+import { RefreshCwIcon } from '@lucide/vue'
 import { onMounted, ref } from 'vue'
-import { AppAlert, AppButton, AppSpinner } from '@/shared/ui/app-kit'
 
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
+import { Spinner } from '@/components/ui/spinner'
 import { getSettings } from '@/features/settings/api/settingsApi'
 import { useI18n } from '@/shared/i18n'
 
@@ -35,16 +38,22 @@ onMounted(loadCPAMC)
   <section class="page cpamc-page">
     <div class="page-toolbar">
       <h1 data-page-title class="page-title">CPAMC</h1>
-      <AppButton secondary :loading="isLoading" @click="loadCPAMC">
+      <Button variant="outline" :disabled="isLoading" @click="loadCPAMC">
+        <Spinner v-if="isLoading" data-icon="inline-start" />
+        <RefreshCwIcon v-else data-icon="inline-start" />
         {{ t('刷新', 'Refresh') }}
-      </AppButton>
+      </Button>
     </div>
 
     <div v-if="loadError" class="cpamc-error">
-      <AppAlert type="error" :title="t('无法打开 CPAMC', 'Unable to open CPAMC')">
-        {{ loadError }}
-      </AppAlert>
-      <AppButton type="primary" @click="loadCPAMC">{{ t('重试', 'Retry') }}</AppButton>
+      <Alert variant="destructive">
+        <AlertTitle>{{ t('无法打开 CPAMC', 'Unable to open CPAMC') }}</AlertTitle>
+        <AlertDescription>{{ loadError }}</AlertDescription>
+      </Alert>
+      <Button @click="loadCPAMC">
+        <RefreshCwIcon data-icon="inline-start" />
+        {{ t('重试', 'Retry') }}
+      </Button>
     </div>
 
     <div v-else class="cpamc-frame-shell">
@@ -57,7 +66,7 @@ onMounted(loadCPAMC)
         @load="isFrameLoading = false"
       />
       <div v-if="isLoading || isFrameLoading" class="cpamc-loading">
-        <AppSpinner size="large" />
+        <Spinner class="size-5" />
       </div>
     </div>
   </section>
@@ -97,13 +106,15 @@ onMounted(loadCPAMC)
 }
 
 .cpamc-error {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 14px;
   align-content: start;
 }
 
-.cpamc-error :deep(.n-button) {
+.cpamc-error [data-slot="button"] {
   justify-self: start;
+  align-self: start;
 }
 
 </style>

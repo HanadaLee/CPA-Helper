@@ -2,9 +2,7 @@
 import type { Component } from 'vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { isNavigationFailure, NavigationFailureType, useRoute, useRouter } from 'vue-router'
-import {
-  useMessage,
-} from '@/shared/ui/app-kit'
+import { toast } from 'vue-sonner'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import {
@@ -60,7 +58,6 @@ import { logoUrl } from '@/shared/utils/assets'
 
 const route = useRoute()
 const router = useRouter()
-const message = useMessage()
 const navigationTarget = ref<string | null>(null)
 const isRouteTransitioning = ref(false)
 const { currentUser, setCurrentUser } = useCurrentUser()
@@ -325,7 +322,7 @@ async function handleLogout() {
   await logout()
   setCurrentUser(null)
   hasLoadedUser.value = true
-  message.success(t('已退出登录', 'Signed out'))
+  toast.success(t('已退出登录', 'Signed out'))
   await router.push('/login')
 }
 

@@ -61,6 +61,9 @@ async function expectPlainDialogFooter(dialog: Locator) {
 test('initial navigation uses shell and dashboard skeletons instead of a blank screen', async ({ page }) => {
   await setupOrLogin(page)
 
+  const cdp = await page.context().newCDPSession(page)
+  await cdp.send('Network.setCacheDisabled', { cacheDisabled: true })
+
   let releaseAuthRequest!: () => void
   let releaseUsageRequest!: () => void
   const authRequestGate = new Promise<void>((resolve) => {
@@ -413,15 +416,15 @@ test('available models uses compact price columns and shows the FAST multiplier'
   await page.goto('/account/models')
   await expect(page.getByRole('columnheader', { name: /FAST 倍率|FAST multiplier/ })).toBeVisible()
   await expect(page.getByRole('cell', { name: '×1.8' })).toBeVisible()
-  await expect(page.locator('.available-models-table [data-slot="table-container"]')).toHaveCSS('min-width', '1360px')
+  await expect(page.locator('.available-models-table [data-slot="table"]')).toHaveCSS('min-width', '1240px')
 })
 
 test('theme and mobile navigation survive the migration', async ({ page }) => {
   await setupOrLogin(page)
   await expect.poll(() =>
     page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--cpa-primary').trim()),
-  ).toBe('#2563eb')
-  await expect(page.locator('[data-slot="sidebar-container"]')).toHaveCSS('border-right-color', 'rgba(15, 23, 42, 0.1)')
+  ).toBe('oklch(55% .19 257)')
+  await expect(page.locator('[data-slot="sidebar-container"]')).toHaveCSS('border-right-color', 'oklch(0.9 0.018 255)')
   const usageMenuButton = page.getByRole('button', { name: /用量分析|Usage Analytics/ })
   await expect(usageMenuButton).toHaveCSS('cursor', 'pointer')
   await expect(usageMenuButton).toHaveCSS('font-size', '12.25px')
@@ -447,8 +450,8 @@ test('theme and mobile navigation survive the migration', async ({ page }) => {
   await expect(page.locator('html')).toHaveClass(/dark/)
   await expect.poll(() =>
     page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--cpa-primary').trim()),
-  ).toBe('#60a5fa')
-  await expect(page.locator('[data-slot="sidebar-container"]')).toHaveCSS('border-right-color', 'rgba(148, 163, 184, 0.16)')
+  ).toBe('oklch(68% .16 257)')
+  await expect(page.locator('[data-slot="sidebar-container"]')).toHaveCSS('border-right-color', 'oklch(1 0 0 / 0.1)')
 
   await page.setViewportSize({ width: 390, height: 844 })
   await page.reload()

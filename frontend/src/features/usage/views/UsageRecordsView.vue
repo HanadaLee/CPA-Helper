@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { toast } from 'vue-sonner'
 import {
   CircleCheck,
   Cpu,
@@ -19,7 +20,6 @@ import {
   AppPagination,
   AppSelect,
   AppBadge,
-  useMessage,
   type DataTableColumns,
 } from '@/shared/ui/app-kit'
 
@@ -91,7 +91,7 @@ const desktopRecordsLayoutQuery = window.matchMedia('(min-width: 861px)')
 
 const route = useRoute()
 const router = useRouter()
-const message = useMessage()
+const message = toast
 const props = defineProps<Props>()
 const { currentLanguage, errorText, t } = useI18n()
 const isLoading = ref(false)

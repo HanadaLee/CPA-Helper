@@ -1,20 +1,28 @@
 <script setup lang="ts">
+import { EyeIcon, EyeOffIcon, TriangleAlertIcon } from '@lucide/vue'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { AppAlert, AppButton, AppCard, AppForm, AppFormItem, AppInput, useMessage } from '@/shared/ui/app-kit'
+import { toast } from 'vue-sonner'
 
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
+import { Input } from '@/components/ui/input'
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from '@/components/ui/input-group'
+import { Spinner } from '@/components/ui/spinner'
 import { getSetupState, login, setupFirstAdmin } from '@/features/auth/api/authApi'
+import AuthShell from '@/features/auth/components/AuthShell.vue'
 import { setCurrentUser } from '@/features/auth/state/currentUser'
 import { useI18n } from '@/shared/i18n'
-import { logoUrl } from '@/shared/utils/assets'
 
 const route = useRoute()
 const router = useRouter()
-const message = useMessage()
 const { errorText, t } = useI18n()
 const isLoading = ref(false)
 const isSetupLoading = ref(true)
 const setupRequired = ref(false)
+const showPassword = ref(false)
 const errorMessage = ref<string | null>(null)
 const form = reactive({
   username: '',
@@ -40,7 +48,7 @@ onMounted(async () => {
 
 async function handleSubmit() {
   if (setupRequired.value && !form.nickname.trim()) {
-    message.error(t('用户昵称不能为空', 'User nickname is required'))
+    toast.error(t('用户昵称不能为空', 'User nickname is required'))
     return
   }
   isLoading.value = true
@@ -55,12 +63,12 @@ async function handleSubmit() {
       })
       setCurrentUser(user)
       homePath = user.is_admin ? '/admin/usage' : '/account/usage'
-      message.success(t('管理员账号已创建', 'Admin account created'))
+      toast.success(t('管理员账号已创建', 'Admin account created'))
     } else {
       const user = await login({ username: form.username, password: form.password })
       setCurrentUser(user)
       homePath = user.is_admin ? '/admin/usage' : '/account/usage'
-      message.success(t('登录成功', 'Signed in'))
+      toast.success(t('登录成功', 'Signed in'))
     }
     const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : homePath
     await router.push(redirect)
@@ -73,268 +81,71 @@ async function handleSubmit() {
 </script>
 
 <template>
-  <main class="auth-screen">
-    <section class="auth-brand-panel" aria-hidden="true">
-      <div class="brand-stage">
-        <span class="brand-word brand-word-cpa">CPA</span>
-        <span class="brand-word brand-word-helper">HELPER</span>
-      </div>
-    </section>
+  <AuthShell :section-label="t('登录区域', 'Sign-in area')">
+    <Card class="w-full max-w-[420px]">
+      <CardHeader class="text-center">
+        <CardTitle>{{ headingTitle }}</CardTitle>
+        <CardDescription>{{ headingSubtitle }}</CardDescription>
+      </CardHeader>
 
-    <section class="auth-content" :aria-label="t('登录区域', 'Sign-in area')">
-      <div class="brand-mark">
-        <img :src="logoUrl" alt="">
-      </div>
+      <CardContent class="flex flex-col gap-5">
+        <Alert v-if="errorMessage" variant="destructive">
+          <AlertDescription>{{ errorMessage }}</AlertDescription>
+        </Alert>
 
-      <AppCard class="auth-card" :bordered="true">
-        <div class="auth-heading">
-          <h1>{{ headingTitle }}</h1>
-          <p>{{ headingSubtitle }}</p>
-        </div>
+        <Alert v-if="setupRequired">
+          <TriangleAlertIcon />
+          <AlertTitle>{{ t('请注意', 'Important') }}</AlertTitle>
+          <AlertDescription>
+            {{ t('账号一旦创建，不允许删除，只允许禁用，请谨慎操作。', 'Accounts cannot be deleted after creation. They can only be disabled, so proceed carefully.') }}
+          </AlertDescription>
+        </Alert>
 
-        <AppAlert v-if="errorMessage" type="error" :bordered="false" class="auth-alert">
-          {{ errorMessage }}
-        </AppAlert>
+        <form @submit.prevent="handleSubmit">
+          <FieldGroup>
+            <Field>
+              <FieldLabel for="login-username">{{ t('账号', 'Account') }}</FieldLabel>
+              <Input id="login-username" v-model="form.username" autocomplete="username" />
+            </Field>
 
-        <AppAlert v-if="setupRequired" type="warning" :bordered="false" class="auth-alert">
-          {{ t('账号一旦创建，不允许删除，只允许禁用，请谨慎操作。', 'Accounts cannot be deleted after creation. They can only be disabled, so proceed carefully.') }}
-        </AppAlert>
+            <Field>
+              <FieldLabel for="login-password">{{ t('密码', 'Password') }}</FieldLabel>
+              <InputGroup>
+                <InputGroupInput
+                  id="login-password"
+                  v-model="form.password"
+                  :type="showPassword ? 'text' : 'password'"
+                  autocomplete="current-password"
+                />
+                <InputGroupAddon align="inline-end">
+                  <InputGroupButton
+                    size="icon-xs"
+                    :aria-label="showPassword ? t('隐藏密码', 'Hide password') : t('显示密码', 'Show password')"
+                    @click="showPassword = !showPassword"
+                  >
+                    <EyeOffIcon v-if="showPassword" data-icon="inline-start" />
+                    <EyeIcon v-else data-icon="inline-start" />
+                  </InputGroupButton>
+                </InputGroupAddon>
+              </InputGroup>
+            </Field>
 
-        <AppForm :model="form" label-placement="top" @submit.prevent="handleSubmit">
-          <AppFormItem :label="t('账号', 'Account')" path="username">
-            <AppInput v-model:value="form.username" autocomplete="username" />
-          </AppFormItem>
-          <AppFormItem :label="t('密码', 'Password')" path="password">
-            <AppInput
-              v-model:value="form.password"
-              type="password"
-              show-password-on="mousedown"
-              autocomplete="current-password"
-              @keyup.enter="handleSubmit"
-            />
-          </AppFormItem>
-          <AppFormItem v-if="setupRequired" :label="t('用户昵称', 'User nickname')" path="nickname" required>
-            <AppInput v-model:value="form.nickname" :placeholder="t('例如：研发用户', 'Example: Engineering user')" />
-          </AppFormItem>
-          <AppButton type="primary" block attr-type="submit" :loading="isLoading || isSetupLoading">
-            {{ submitText }}
-          </AppButton>
-        </AppForm>
-      </AppCard>
-    </section>
-  </main>
+            <Field v-if="setupRequired">
+              <FieldLabel for="login-nickname">{{ t('用户昵称', 'User nickname') }}</FieldLabel>
+              <Input
+                id="login-nickname"
+                v-model="form.nickname"
+                :placeholder="t('例如：研发用户', 'Example: Engineering user')"
+              />
+            </Field>
+
+            <Button class="w-full" type="submit" :disabled="isLoading || isSetupLoading" :aria-busy="isLoading || isSetupLoading">
+              <Spinner v-if="isLoading || isSetupLoading" data-icon="inline-start" />
+              {{ submitText }}
+            </Button>
+          </FieldGroup>
+        </form>
+      </CardContent>
+    </Card>
+  </AuthShell>
 </template>
-
-<style scoped>
-.auth-screen {
-  display: grid;
-  grid-template-columns: minmax(420px, 1fr) minmax(420px, 1fr);
-  height: 100vh;
-  height: 100dvh;
-  min-height: 0;
-  overflow: auto;
-  background: var(--cpa-shell-bg);
-}
-
-.auth-brand-panel {
-  position: relative;
-  display: grid;
-  min-height: 100%;
-  align-items: center;
-  overflow: hidden;
-  padding: 72px 48px;
-  background:
-    radial-gradient(circle at 18% 18%, rgb(255 255 255 / 24%), transparent 32%),
-    radial-gradient(circle at 82% 78%, rgb(191 219 254 / 30%), transparent 38%),
-    linear-gradient(145deg, #60a5fa 0%, #3b82f6 52%, #2563eb 100%);
-}
-
-.auth-brand-panel::before {
-  position: absolute;
-  inset: 0;
-  background-image:
-    linear-gradient(rgb(255 255 255 / 4%) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(255 255 255 / 4%) 1px, transparent 1px);
-  background-size: 48px 48px;
-  mask-image: linear-gradient(135deg, black, transparent 72%);
-  content: "";
-}
-
-.brand-stage {
-  position: relative;
-  display: grid;
-  z-index: 1;
-  width: min(620px, 100%);
-  gap: 8px;
-  align-content: center;
-  justify-self: center;
-  font-weight: 820;
-  line-height: 0.9;
-  text-transform: uppercase;
-}
-
-.brand-word {
-  display: block;
-  max-width: 100%;
-  overflow-wrap: anywhere;
-  letter-spacing: 0;
-}
-
-.brand-word-cpa {
-  justify-self: start;
-  color: rgb(255 255 255 / 96%);
-  font-size: 148px;
-}
-
-.brand-word-helper {
-  justify-self: end;
-  color: #dbeafe;
-  font-size: 116px;
-}
-
-.auth-content {
-  display: grid;
-  min-width: 0;
-  align-content: center;
-  justify-items: center;
-  gap: 24px;
-  padding: 48px;
-  background:
-    radial-gradient(circle at 88% 10%, var(--cpa-primary-weak), transparent 28%),
-    var(--cpa-canvas);
-}
-
-.auth-card {
-  width: min(420px, 100%);
-  border: 1px solid var(--cpa-border);
-  border-radius: calc(var(--cpa-radius) + 4px);
-  overflow: hidden;
-  background: var(--cpa-surface-raised);
-  box-shadow: var(--cpa-shadow);
-}
-
-.auth-card :deep(.n-card__content) {
-  padding: 36px 32px 32px;
-}
-
-.auth-heading {
-  display: grid;
-  justify-items: center;
-  margin-bottom: 24px;
-  text-align: center;
-}
-
-.brand-mark {
-  display: grid;
-  width: 68px;
-  height: 68px;
-  place-items: center;
-  border-radius: 18px;
-  overflow: hidden;
-  background: var(--cpa-surface-solid);
-  border: 1px solid color-mix(in srgb, var(--cpa-primary) 20%, var(--cpa-border));
-  box-shadow: 0 12px 28px -18px rgb(37 99 235 / 48%), 0 1px 2px rgb(15 23 42 / 8%);
-}
-
-.brand-mark img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-h1 {
-  margin: 0;
-  color: var(--cpa-text-strong);
-  font-size: 24px;
-  font-weight: 700;
-  line-height: 1.18;
-  text-wrap: pretty;
-}
-
-p {
-  margin: 6px 0 0;
-  color: var(--cpa-text-muted);
-  text-wrap: pretty;
-}
-
-.auth-alert {
-  margin-bottom: 12px;
-}
-
-.auth-card :deep(.n-form-item-label) {
-  font-weight: 650;
-}
-
-:global(:root.dark) .auth-brand-panel {
-  background:
-    radial-gradient(circle at 18% 18%, rgb(96 165 250 / 24%), transparent 32%),
-    radial-gradient(circle at 82% 78%, rgb(37 99 235 / 22%), transparent 38%),
-    linear-gradient(145deg, #08152b 0%, #102a52 52%, #0a1830 100%);
-}
-
-@media (max-width: 1320px) {
-  .brand-word-cpa {
-    font-size: 128px;
-  }
-
-  .brand-word-helper {
-    font-size: 102px;
-  }
-}
-
-@media (max-width: 1180px) {
-  .auth-screen {
-    grid-template-columns: minmax(360px, 0.9fr) minmax(390px, 1.1fr);
-  }
-
-  .brand-word-cpa {
-    font-size: 118px;
-  }
-
-  .brand-word-helper {
-    font-size: 94px;
-  }
-}
-
-@media (max-width: 900px) {
-  .auth-screen {
-    grid-template-columns: 1fr;
-  }
-
-  .auth-brand-panel {
-    display: none;
-  }
-
-  .auth-content {
-    min-height: 100%;
-    align-content: start;
-    gap: 16px;
-    padding: max(28px, env(safe-area-inset-top)) 14px 20px;
-  }
-
-  .brand-mark {
-    width: 56px;
-    height: 56px;
-    border-radius: 15px;
-  }
-
-  .auth-card {
-    align-self: center;
-  }
-}
-
-@media (max-width: 520px) {
-  .auth-content {
-    gap: 14px;
-  }
-
-  .auth-card :deep(.n-card__content) {
-    padding: 24px 18px 22px;
-  }
-
-  h1 {
-    font-size: 22px;
-  }
-}
-</style>

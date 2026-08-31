@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Component } from 'vue'
 import { computed, h, onMounted, ref } from 'vue'
+import { toast } from 'vue-sonner'
 import {
   AppAlert,
   AppButton,
@@ -13,10 +14,9 @@ import {
   AppStack,
   AppSwitch,
   AppBadge,
-  useDialog,
-  useMessage,
   type DataTableColumns,
 } from '@/shared/ui/app-kit'
+import { useConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -58,8 +58,8 @@ import { useI18n } from '@/shared/i18n'
 import type { UserSummary } from '@/shared/types/api'
 import { formatCompact, formatDateTime, formatInteger, formatUsd } from '@/shared/utils/format'
 
-const message = useMessage()
-const dialog = useDialog()
+const message = toast
+const dialog = useConfirmDialog()
 const { errorText, t } = useI18n()
 const isLoading = ref(false)
 const isSavingUser = ref(false)

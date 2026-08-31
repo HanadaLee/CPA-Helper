@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import { ChartNoAxesCombinedIcon } from '@lucide/vue'
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { AppEmpty, AppSpinner } from '@/shared/ui/app-kit'
 import * as echarts from 'echarts/core'
 import { BarChart, LineChart, PieChart } from 'echarts/charts'
 import {
@@ -18,6 +18,8 @@ import { CanvasRenderer } from 'echarts/renderers'
 import type { BarSeriesOption, LineSeriesOption, PieSeriesOption } from 'echarts/charts'
 import type { ComposeOption, ECharts } from 'echarts/core'
 
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
+import { Spinner } from '@/components/ui/spinner'
 import { useThemePreference } from '@/shared/composables/useThemePreference'
 import { useI18n } from '@/shared/i18n'
 
@@ -72,16 +74,20 @@ function getChartMutedColor(): string {
   )
 }
 
+function getThemeColor(name: string, fallback: string): string {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback
+}
+
 function buildCurrentOption(): ChartOption {
   const option: ChartOption = {
     backgroundColor: 'transparent',
     textStyle: {
-      fontFamily: 'Aptos, Segoe UI, Microsoft YaHei UI, sans-serif',
+      fontFamily: 'Geist Variable, Microsoft YaHei UI, sans-serif',
       color: getChartTextColor(),
     },
     tooltip: {
-      backgroundColor: isDark.value ? 'rgba(17, 27, 45, 0.97)' : 'rgba(255, 255, 255, 0.97)',
-      borderColor: isDark.value ? 'rgba(148, 163, 184, 0.24)' : 'rgba(15, 23, 42, 0.14)',
+      backgroundColor: getThemeColor('--popover', isDark.value ? '#27272a' : '#ffffff'),
+      borderColor: getThemeColor('--border', isDark.value ? '#3f3f46' : '#e4e4e7'),
       textStyle: {
         color: getChartTextColor(),
       },
@@ -163,17 +169,27 @@ onBeforeUnmount(() => {
         <slot name="actions" />
       </div>
     </div>
-    <AppSpinner :show="loading ?? false">
+    <div class="chart-loading-container">
       <div class="chart-body">
         <div ref="chartEl" class="chart-surface" :class="{ 'is-empty': empty }" />
         <div v-if="empty" class="chart-empty">
-          <AppEmpty :description="t('暂无数据', 'No data')" />
+          <Empty class="border-0 p-0">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <ChartNoAxesCombinedIcon />
+              </EmptyMedia>
+              <EmptyTitle>{{ t('暂无数据', 'No data') }}</EmptyTitle>
+            </EmptyHeader>
+          </Empty>
         </div>
       </div>
       <div v-if="$slots.default" class="chart-footer">
         <slot />
       </div>
-    </AppSpinner>
+      <div v-if="loading" class="chart-loading-overlay" role="status" :aria-label="t('加载中', 'Loading')">
+        <Spinner class="size-5" />
+      </div>
+    </div>
   </section>
 </template>
 
@@ -229,6 +245,20 @@ h2 {
 .chart-body {
   position: relative;
   background: transparent;
+}
+
+.chart-loading-container {
+  position: relative;
+  min-width: 0;
+}
+
+.chart-loading-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: color-mix(in oklch, var(--background) 68%, transparent);
+  backdrop-filter: blur(1px);
 }
 
 .chart-surface.is-empty {

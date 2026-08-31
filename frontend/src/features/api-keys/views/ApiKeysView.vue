@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Component } from 'vue'
 import { computed, h, onMounted, ref, watch } from 'vue'
+import { toast } from 'vue-sonner'
 import {
   AppAlert,
   AppButton,
@@ -13,10 +14,9 @@ import {
   AppModal,
   AppSelect,
   AppStack,
-  useDialog,
-  useMessage,
   type DataTableColumns,
 } from '@/shared/ui/app-kit'
+import { useConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Activity,
@@ -54,8 +54,8 @@ import { useI18n } from '@/shared/i18n'
 import { copyToClipboard } from '@/shared/utils/clipboard'
 import { formatCompact, formatDateTime, formatInteger, formatUsd } from '@/shared/utils/format'
 
-const message = useMessage()
-const dialog = useDialog()
+const message = toast
+const dialog = useConfirmDialog()
 const { copiedText, currentLanguage, errorText, t } = useI18n()
 const isLoading = ref(false)
 const isSaving = ref(false)

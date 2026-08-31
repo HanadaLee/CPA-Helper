@@ -1,18 +1,27 @@
 <script setup lang="ts">
+import { EyeIcon, EyeOffIcon } from '@lucide/vue'
 import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { AppAlert, AppButton, AppCard, AppForm, AppFormItem, AppInput, useMessage } from '@/shared/ui/app-kit'
+import { toast } from 'vue-sonner'
 
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
+import { Input } from '@/components/ui/input'
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from '@/components/ui/input-group'
+import { Spinner } from '@/components/ui/spinner'
 import { changeCredentials, getMe } from '@/features/auth/api/authApi'
+import AuthShell from '@/features/auth/components/AuthShell.vue'
 import { setCurrentUser } from '@/features/auth/state/currentUser'
 import { useI18n } from '@/shared/i18n'
-import { logoUrl } from '@/shared/utils/assets'
 
 const router = useRouter()
-const message = useMessage()
 const { errorText, t } = useI18n()
 const isLoading = ref(false)
 const errorMessage = ref<string | null>(null)
+const showNewPassword = ref(false)
+const showCurrentPassword = ref(false)
 const form = reactive({
   username: '',
   password: '',
@@ -37,7 +46,7 @@ async function handleSubmit() {
       current_password: form.current_password || undefined,
     })
     setCurrentUser(user)
-    message.success(t('密码已更新', 'Password updated'))
+    toast.success(t('密码已更新', 'Password updated'))
     await router.push(user.is_admin ? '/admin/usage' : '/account/usage')
   } catch (error) {
     errorMessage.value = errorText(error, '更新失败', 'Update failed')
@@ -48,257 +57,76 @@ async function handleSubmit() {
 </script>
 
 <template>
-  <main class="auth-screen">
-    <section class="auth-brand-panel" aria-hidden="true">
-      <div class="brand-stage">
-        <span class="brand-word brand-word-cpa">CPA</span>
-        <span class="brand-word brand-word-helper">HELPER</span>
-      </div>
-    </section>
+  <AuthShell :section-label="t('修改密码区域', 'Change password area')">
+    <Card class="w-full max-w-[420px]">
+      <CardHeader class="text-center">
+        <CardTitle>{{ t('修改密码', 'Change password') }}</CardTitle>
+        <CardDescription>{{ t('首次登录后需要完成密码更新', 'Update your password after first sign-in') }}</CardDescription>
+      </CardHeader>
 
-    <section class="auth-content" :aria-label="t('修改密码区域', 'Change password area')">
-      <div class="brand-mark">
-        <img :src="logoUrl" alt="">
-      </div>
+      <CardContent class="flex flex-col gap-5">
+        <Alert v-if="errorMessage" variant="destructive">
+          <AlertDescription>{{ errorMessage }}</AlertDescription>
+        </Alert>
 
-      <AppCard class="auth-card" :bordered="true">
-        <div class="auth-heading">
-          <h1>{{ t('修改密码', 'Change password') }}</h1>
-          <p>{{ t('首次登录后需要完成密码更新', 'Update your password after first sign-in') }}</p>
-        </div>
+        <form @submit.prevent="handleSubmit">
+          <FieldGroup>
+            <Field data-disabled>
+              <FieldLabel for="credentials-username">{{ t('账号', 'Account') }}</FieldLabel>
+              <Input id="credentials-username" v-model="form.username" autocomplete="username" disabled />
+            </Field>
 
-        <AppAlert v-if="errorMessage" type="error" :bordered="false" class="auth-alert">
-          {{ errorMessage }}
-        </AppAlert>
+            <Field>
+              <FieldLabel for="credentials-new-password">{{ t('新密码', 'New password') }}</FieldLabel>
+              <InputGroup>
+                <InputGroupInput
+                  id="credentials-new-password"
+                  v-model="form.password"
+                  :type="showNewPassword ? 'text' : 'password'"
+                  autocomplete="new-password"
+                />
+                <InputGroupAddon align="inline-end">
+                  <InputGroupButton
+                    size="icon-xs"
+                    :aria-label="showNewPassword ? t('隐藏密码', 'Hide password') : t('显示密码', 'Show password')"
+                    @click="showNewPassword = !showNewPassword"
+                  >
+                    <EyeOffIcon v-if="showNewPassword" data-icon="inline-start" />
+                    <EyeIcon v-else data-icon="inline-start" />
+                  </InputGroupButton>
+                </InputGroupAddon>
+              </InputGroup>
+            </Field>
 
-        <AppForm :model="form" label-placement="top" @submit.prevent="handleSubmit">
-          <AppFormItem :label="t('账号', 'Account')" path="username">
-            <AppInput v-model:value="form.username" autocomplete="username" disabled />
-          </AppFormItem>
-          <AppFormItem :label="t('新密码', 'New password')" path="password">
-            <AppInput
-              v-model:value="form.password"
-              type="password"
-              show-password-on="mousedown"
-              autocomplete="new-password"
-            />
-          </AppFormItem>
-          <AppFormItem :label="t('当前密码', 'Current password')" path="current_password">
-            <AppInput
-              v-model:value="form.current_password"
-              type="password"
-              show-password-on="mousedown"
-              autocomplete="current-password"
-              @keyup.enter="handleSubmit"
-            />
-          </AppFormItem>
-          <AppButton type="primary" block attr-type="submit" :loading="isLoading">
-            {{ t('保存', 'Save') }}
-          </AppButton>
-        </AppForm>
-      </AppCard>
-    </section>
-  </main>
+            <Field>
+              <FieldLabel for="credentials-current-password">{{ t('当前密码', 'Current password') }}</FieldLabel>
+              <InputGroup>
+                <InputGroupInput
+                  id="credentials-current-password"
+                  v-model="form.current_password"
+                  :type="showCurrentPassword ? 'text' : 'password'"
+                  autocomplete="current-password"
+                />
+                <InputGroupAddon align="inline-end">
+                  <InputGroupButton
+                    size="icon-xs"
+                    :aria-label="showCurrentPassword ? t('隐藏密码', 'Hide password') : t('显示密码', 'Show password')"
+                    @click="showCurrentPassword = !showCurrentPassword"
+                  >
+                    <EyeOffIcon v-if="showCurrentPassword" data-icon="inline-start" />
+                    <EyeIcon v-else data-icon="inline-start" />
+                  </InputGroupButton>
+                </InputGroupAddon>
+              </InputGroup>
+            </Field>
+
+            <Button class="w-full" type="submit" :disabled="isLoading" :aria-busy="isLoading">
+              <Spinner v-if="isLoading" data-icon="inline-start" />
+              {{ t('保存', 'Save') }}
+            </Button>
+          </FieldGroup>
+        </form>
+      </CardContent>
+    </Card>
+  </AuthShell>
 </template>
-
-<style scoped>
-.auth-screen {
-  display: grid;
-  grid-template-columns: minmax(420px, 1fr) minmax(420px, 1fr);
-  height: 100vh;
-  height: 100dvh;
-  min-height: 0;
-  overflow: auto;
-  background: var(--cpa-bg);
-}
-
-.auth-brand-panel {
-  position: relative;
-  display: grid;
-  min-height: 100%;
-  align-items: center;
-  overflow: hidden;
-  padding: 72px 48px;
-  background:
-    radial-gradient(circle at 18% 18%, rgb(255 255 255 / 24%), transparent 32%),
-    radial-gradient(circle at 82% 78%, rgb(191 219 254 / 30%), transparent 38%),
-    linear-gradient(145deg, #60a5fa 0%, #3b82f6 52%, #2563eb 100%);
-}
-
-.brand-stage {
-  position: relative;
-  display: grid;
-  width: 100%;
-  gap: 18px;
-  align-content: center;
-  font-weight: 850;
-  line-height: 0.86;
-  text-transform: uppercase;
-}
-
-.brand-word {
-  display: block;
-  max-width: 100%;
-  overflow-wrap: anywhere;
-  letter-spacing: 0;
-}
-
-.brand-word-cpa {
-  justify-self: start;
-  color: rgb(255 255 255 / 96%);
-  font-size: 172px;
-}
-
-.brand-word-helper {
-  justify-self: end;
-  color: #dbeafe;
-  font-size: 136px;
-}
-
-.auth-content {
-  display: grid;
-  min-width: 0;
-  align-content: center;
-  justify-items: center;
-  gap: 28px;
-  padding: 48px;
-  background:
-    linear-gradient(135deg, var(--cpa-bg-glow) 0, transparent 30%),
-    linear-gradient(180deg, var(--cpa-bg-soft) 0, var(--cpa-bg) 560px),
-    var(--cpa-bg);
-}
-
-.auth-card {
-  width: min(420px, 100%);
-  border: 1px solid var(--cpa-border);
-  border-radius: var(--cpa-radius);
-  overflow: hidden;
-  background: var(--cpa-surface-raised);
-  box-shadow: var(--cpa-shadow);
-}
-
-.auth-card :deep(.n-card__content) {
-  padding: 36px 32px 32px;
-}
-
-.auth-heading {
-  display: grid;
-  justify-items: center;
-  margin-bottom: 24px;
-  text-align: center;
-}
-
-.brand-mark {
-  display: grid;
-  width: 76px;
-  height: 76px;
-  place-items: center;
-  border-radius: 18px;
-  overflow: hidden;
-  background: var(--cpa-surface-solid);
-  border: 1px solid color-mix(in srgb, var(--cpa-primary) 20%, var(--cpa-border));
-  box-shadow: 0 18px 34px rgb(37 99 235 / 18%);
-}
-
-.brand-mark img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-h1 {
-  margin: 0;
-  color: var(--cpa-text-strong);
-  font-size: 24px;
-  font-weight: 700;
-  line-height: 1.18;
-  text-wrap: pretty;
-}
-
-p {
-  margin: 6px 0 0;
-  color: var(--cpa-text-muted);
-  text-wrap: pretty;
-}
-
-.auth-alert {
-  margin-bottom: 12px;
-}
-
-.auth-card :deep(.n-form-item-label) {
-  font-weight: 650;
-}
-
-:global(:root.dark) .auth-brand-panel {
-  background:
-    radial-gradient(circle at 18% 18%, rgb(96 165 250 / 24%), transparent 32%),
-    radial-gradient(circle at 82% 78%, rgb(37 99 235 / 22%), transparent 38%),
-    linear-gradient(145deg, #08152b 0%, #102a52 52%, #0a1830 100%);
-}
-
-@media (max-width: 1320px) {
-  .brand-word-cpa {
-    font-size: 148px;
-  }
-
-  .brand-word-helper {
-    font-size: 118px;
-  }
-}
-
-@media (max-width: 1180px) {
-  .auth-screen {
-    grid-template-columns: minmax(360px, 0.9fr) minmax(390px, 1.1fr);
-  }
-
-  .brand-word-cpa {
-    font-size: 118px;
-  }
-
-  .brand-word-helper {
-    font-size: 94px;
-  }
-}
-
-@media (max-width: 900px) {
-  .auth-screen {
-    grid-template-columns: 1fr;
-  }
-
-  .auth-brand-panel {
-    display: none;
-  }
-
-  .auth-content {
-    min-height: 100%;
-    align-content: start;
-    gap: 16px;
-    padding: max(28px, env(safe-area-inset-top)) 14px 20px;
-  }
-
-  .brand-mark {
-    width: 56px;
-    height: 56px;
-    border-radius: 15px;
-  }
-
-  .auth-card {
-    align-self: center;
-  }
-}
-
-@media (max-width: 520px) {
-  .auth-content {
-    gap: 14px;
-  }
-
-  .auth-card :deep(.n-card__content) {
-    padding: 24px 18px 22px;
-  }
-
-  h1 {
-    font-size: 22px;
-  }
-}
-</style>

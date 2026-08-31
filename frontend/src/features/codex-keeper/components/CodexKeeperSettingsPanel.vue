@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { toast } from 'vue-sonner'
 import {
   AppButton,
   AppDataTable,
@@ -10,7 +11,6 @@ import {
   AppSelect,
   AppStack,
   AppSwitch,
-  useMessage,
   type DataTableColumns,
 } from '@/shared/ui/app-kit'
 
@@ -32,7 +32,7 @@ import type {
 } from '@/shared/types/api'
 import { formatDateTime } from '@/shared/utils/format'
 
-const message = useMessage()
+const message = toast
 const { errorText, t } = useI18n()
 const isLoading = ref(false)
 const isActing = ref(false)
