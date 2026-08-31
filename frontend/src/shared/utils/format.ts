@@ -27,7 +27,16 @@ export const BEIJING_TIME_ZONE = 'Asia/Shanghai'
 const BEIJING_OFFSET = '+08:00'
 const BEIJING_OFFSET_MS = 8 * 60 * 60 * 1000
 
-function parseDisplayDate(value: string): Date | null {
+type DateTimeValue = string | number | Date | null | undefined
+
+function parseDisplayDate(value: Exclude<DateTimeValue, null | undefined>): Date | null {
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value
+  }
+  if (typeof value === 'number') {
+    const parsed = new Date(value)
+    return Number.isNaN(parsed.getTime()) ? null : parsed
+  }
   const localMatch = value.match(
     /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3})\d*)?)?)?$/,
   )
@@ -42,35 +51,29 @@ function parseDisplayDate(value: string): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed
 }
 
-interface DateTimeFormatOptions {
-  includeSecond?: boolean
-}
-
 export function formatDateTime(
-  value: string | null,
-  options: DateTimeFormatOptions = {},
+  value: DateTimeValue,
 ): string {
-  if (!value) {
+  if (value === null || value === undefined || value === '') {
     return '-'
   }
   const date = parseDisplayDate(value)
   if (!date) {
     return '-'
   }
-  const formatOptions: Intl.DateTimeFormatOptions = {
-    timeZone: BEIJING_TIME_ZONE,
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }
-  if (options.includeSecond !== false) {
-    formatOptions.second = '2-digit'
-  }
-  return new Intl.DateTimeFormat(
-    currentLanguage.value === 'zh' ? 'zh-CN' : 'en-US',
-    formatOptions,
-  ).format(date)
+  const beijing = new Date(date.getTime() + BEIJING_OFFSET_MS)
+  const pad = (part: number) => String(part).padStart(2, '0')
+  return `${beijing.getUTCFullYear()}-${pad(beijing.getUTCMonth() + 1)}-${pad(beijing.getUTCDate())} ${pad(beijing.getUTCHours())}:${pad(beijing.getUTCMinutes())}:${pad(beijing.getUTCSeconds())}`
+}
+
+export function beijingDayRange(dayOffset = 0, now = Date.now()): [number, number] {
+  const beijing = new Date(now + BEIJING_OFFSET_MS)
+  const start = Date.UTC(
+    beijing.getUTCFullYear(),
+    beijing.getUTCMonth(),
+    beijing.getUTCDate() + dayOffset,
+  ) - BEIJING_OFFSET_MS
+  return [start, start + 24 * 60 * 60 * 1000]
 }
 
 export function formatRelativeTime(value: string | null, now = Date.now()): string {

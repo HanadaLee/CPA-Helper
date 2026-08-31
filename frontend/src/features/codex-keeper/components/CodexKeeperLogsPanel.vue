@@ -11,6 +11,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { clearCodexKeeperLogs } from '@/features/codex-keeper/api/codexKeeperApi'
 import { useI18n } from '@/shared/i18n'
 import { copyToClipboard } from '@/shared/utils/clipboard'
+import { formatDateTime } from '@/shared/utils/format'
 
 type LogTone = 'danger' | 'debug' | 'default' | 'info' | 'warning'
 
@@ -149,7 +150,7 @@ function parseLogLine(line: string, index: number): ParsedLogLine | null {
     level,
     message: logMessage,
     raw: line,
-    time,
+    time: formatDateTime(time),
     tone: logTone(level),
   }
 }

@@ -128,7 +128,6 @@ import { useI18n } from '@/shared/i18n'
 import TablePaginationFooter from '@/shared/ui/TablePaginationFooter.vue'
 import { copyToClipboard } from '@/shared/utils/clipboard'
 import {
-  BEIJING_TIME_ZONE,
   formatCompact,
   formatDateTime,
   formatInteger,
@@ -195,7 +194,7 @@ const KEEPER_STATUS_POLL_INTERVAL_MS = 3000
 const REFRESH_STATUS_POLL_INTERVAL_MS = 1500
 const OAUTH_STATUS_POLL_INTERVAL_MS = 3000
 const message = toast
-const { currentLanguage, errorText, keeperStatusText, serverText, t } = useI18n()
+const { errorText, keeperStatusText, serverText, t } = useI18n()
 const { currentUser } = useCurrentUser()
 const canManageAccounts = computed(() => currentUser.value?.is_admin === true)
 const accountPageTitle = computed(() =>
@@ -979,21 +978,8 @@ function quotaBarTone(percent: number): string {
 }
 
 function formatQuotaResetTime(value: string | null): string | null {
-  if (!value) {
-    return null
-  }
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) {
-    return null
-  }
-  return new Intl.DateTimeFormat(currentLanguage.value === 'zh' ? 'zh-CN' : 'en-US', {
-    timeZone: BEIJING_TIME_ZONE,
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(date)
+  const formatted = formatDateTime(value)
+  return formatted === '-' ? null : formatted
 }
 
 function quotaText(account: CodexKeeperAccount): string {

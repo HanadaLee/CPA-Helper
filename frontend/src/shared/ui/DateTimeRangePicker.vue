@@ -15,6 +15,7 @@ import {
 import { RangeCalendar } from '@/components/ui/range-calendar'
 import { Separator } from '@/components/ui/separator'
 import { useI18n } from '@/shared/i18n'
+import { formatDateTime } from '@/shared/utils/format'
 
 const props = withDefaults(defineProps<{
   modelValue?: [number, number] | null
@@ -43,19 +44,21 @@ const calendarRange = shallowRef<DateRange | null>(null)
 const locale = computed(() => currentLanguage.value === 'zh' ? 'zh-CN' : 'en-US')
 
 function formatDateTimeLocal(timestamp: number): string {
-  const date = new Date(timestamp)
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
-  return local.toISOString().slice(0, 16)
+  return formatDateTime(timestamp).replace(' ', 'T')
 }
 
 function parseDateTimeLocal(value: string): number | null {
-  const timestamp = new Date(value).getTime()
+  const timestamp = new Date(`${value}+08:00`).getTime()
   return Number.isFinite(timestamp) ? timestamp : null
 }
 
 function timestampToCalendarDate(timestamp: number): CalendarDate {
-  const date = new Date(timestamp)
-  return new CalendarDate(date.getFullYear(), date.getMonth() + 1, date.getDate())
+  const beijing = new Date(timestamp + 8 * 60 * 60 * 1000)
+  return new CalendarDate(
+    beijing.getUTCFullYear(),
+    beijing.getUTCMonth() + 1,
+    beijing.getUTCDate(),
+  )
 }
 
 function dateValueToInputDate(value: { year: number, month: number, day: number }): string {
@@ -63,14 +66,7 @@ function dateValueToInputDate(value: { year: number, month: number, day: number 
 }
 
 function formatRangePart(timestamp: number): string {
-  return new Intl.DateTimeFormat(locale.value, {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  }).format(new Date(timestamp))
+  return formatDateTime(timestamp)
 }
 
 const startText = computed(() => props.modelValue ? formatRangePart(props.modelValue[0]) : '')
@@ -105,11 +101,11 @@ function handleOpenChange(value: boolean) {
 function updateCalendarRange(value: DateRange) {
   calendarRange.value = value
   if (value.start) {
-    const time = draftStart.value.slice(11, 16) || '00:00'
+    const time = draftStart.value.slice(11, 19) || '00:00:00'
     draftStart.value = `${dateValueToInputDate(value.start)}T${time}`
   }
   if (value.end) {
-    const time = draftEnd.value.slice(11, 16) || '23:59'
+    const time = draftEnd.value.slice(11, 19) || '23:59:59'
     draftEnd.value = `${dateValueToInputDate(value.end)}T${time}`
   }
 }
@@ -204,7 +200,8 @@ function cancel() {
             <Input
               :id="`${fieldId}-start`"
               type="time"
-              :model-value="draftStart.slice(11, 16)"
+              :model-value="draftStart.slice(11, 19)"
+              step="1"
               :disabled="!calendarRange?.start"
               @update:model-value="updateTime('start', $event)"
             />
@@ -214,7 +211,8 @@ function cancel() {
             <Input
               :id="`${fieldId}-end`"
               type="time"
-              :model-value="draftEnd.slice(11, 16)"
+              :model-value="draftEnd.slice(11, 19)"
+              step="1"
               :disabled="!calendarRange?.end"
               @update:model-value="updateTime('end', $event)"
             />

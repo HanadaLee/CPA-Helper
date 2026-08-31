@@ -171,7 +171,7 @@ const visibleProductCount = computed(() =>
   rows.value.reduce((total, row) => total + row.visibleProducts.length, 0),
 )
 const fetchedAtText = computed(() =>
-  fetchedAt.value ? formatDateTime(fetchedAt.value, { includeSecond: false }) : DEFAULT_EMPTY_TEXT,
+  fetchedAt.value ? formatDateTime(fetchedAt.value) : DEFAULT_EMPTY_TEXT,
 )
 const resultSummary = computed(() =>
   t(
@@ -1024,7 +1024,7 @@ function telegramHref(value: string | null | undefined): string | null {
           </span>
           <span>
             <Clock3 class="size-4" />
-            {{ formatDateTime(row.shop.updatedAt ?? null, { includeSecond: false }) }}
+            {{ formatDateTime(row.shop.updatedAt ?? null) }}
           </span>
           <span>
             <ShoppingBag class="size-4" />

@@ -288,7 +288,7 @@ onMounted(refresh)
             <FieldGroup class="settings-form">
               <FieldSet class="settings-section">
                 <FieldLegend>{{ t('界面品牌', 'Interface branding') }}</FieldLegend>
-                <FieldDescription>{{ t('分别配置中文和英文界面左上角显示的名称与小标题。', 'Configure the name and subtitle shown at the top left for the Chinese and English interfaces.') }}</FieldDescription>
+                <FieldDescription>{{ t('分别配置中文和英文界面左上角显示的名称与小标题；浏览器标题使用“名称 - 小标题”格式。', 'Configure the name and subtitle shown at the top left for each language. The browser title uses the “Name - Subtitle” format.') }}</FieldDescription>
                 <FieldGroup class="form-grid">
                   <Field>
                     <FieldLabel for="brand-name-zh">{{ t('名称（中文）', 'Name (Chinese)') }}</FieldLabel>

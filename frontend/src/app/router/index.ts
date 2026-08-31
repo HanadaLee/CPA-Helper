@@ -1,6 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
-import { getMe } from '@/features/auth/api/authApi'
+import { getMe, getSetupState } from '@/features/auth/api/authApi'
 import { getCurrentUser, setCurrentUser } from '@/features/auth/state/currentUser'
 import type { AuthUser } from '@/shared/types/api'
 
@@ -13,6 +13,16 @@ function homePath(user: AuthUser): string {
 function stringMeta(to: { meta: Record<string, unknown> }, key: string): string | null {
   const value = to.meta[key]
   return typeof value === 'string' ? value : null
+}
+
+function casLoginPath(redirect: unknown): string {
+  const returnTo = typeof redirect === 'string'
+    && redirect.startsWith('/')
+    && !redirect.startsWith('//')
+    && !redirect.includes('\\')
+    ? redirect
+    : '/'
+  return `/cas/login?returnTo=${encodeURIComponent(returnTo)}`
 }
 
 export const router = createRouter({
@@ -170,6 +180,18 @@ export const router = createRouter({
 
 router.beforeEach(async (to) => {
   if (to.name === 'login') {
+    if (to.query.skipsso === 'true') {
+      return true
+    }
+    try {
+      const state = await getSetupState()
+      if (state.cas_enabled && state.cas_default_login && !state.setup_required) {
+        window.location.replace(casLoginPath(to.query.redirect))
+        return false
+      }
+    } catch {
+      // Let the login page surface setup-state errors when the public endpoint is unavailable.
+    }
     return true
   }
   try {

@@ -88,6 +88,7 @@ import {
   type UpstreamSection,
 } from '@/features/upstreams/api/upstreamApi'
 import { useI18n } from '@/shared/i18n'
+import { formatDateTime } from '@/shared/utils/format'
 
 interface SectionDefinition {
   name: UpstreamSection
@@ -597,7 +598,7 @@ function confirmDelete(row: UpstreamTableRow) {
 }
 
 function formatUpdatedAt(): string {
-  return updatedAt.value ? updatedAt.value.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '-'
+  return formatDateTime(updatedAt.value)
 }
 
 void loadUpstreams()
@@ -649,7 +650,7 @@ void loadUpstreams()
         <CardHeader class="flex flex-row items-start justify-between gap-3">
           <div class="flex min-w-0 flex-col gap-1">
             <CardDescription>{{ t('最近同步', 'Last synced') }}</CardDescription>
-            <CardTitle class="text-2xl tabular-nums">{{ formatUpdatedAt() }}</CardTitle>
+            <CardTitle class="text-lg tabular-nums xl:text-xl">{{ formatUpdatedAt() }}</CardTitle>
           </div>
           <div class="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
             <Clock3 class="size-5" />

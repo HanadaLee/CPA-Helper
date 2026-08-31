@@ -66,6 +66,7 @@ import type {
   UsageRecordListItem,
 } from '@/shared/types/api'
 import {
+  beijingDayRange,
   formatDateTime,
   formatInteger,
   formatLocalDateTimeParam,
@@ -75,7 +76,7 @@ import {
 import { useI18n } from '@/shared/i18n'
 
 type FailedFilter = 'all' | 'success' | 'failed'
-type QuickRangeKey = 'today' | 'last24h' | 'last3d' | 'last7d' | 'all'
+type QuickRangeKey = 'today' | 'yesterday' | 'last24h' | 'last3d' | 'last7d' | 'all'
 type UsageScope = 'admin' | 'account'
 
 interface RefreshOptions {
@@ -144,11 +145,11 @@ function initialRange(): [number, number] | null {
 }
 
 function todayRange(): [number, number] {
-  const now = new Date()
-  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const tomorrow = new Date(start)
-  tomorrow.setDate(start.getDate() + 1)
-  return [start.getTime(), tomorrow.getTime()]
+  return beijingDayRange()
+}
+
+function yesterdayRange(): [number, number] {
+  return beijingDayRange(-1)
 }
 
 function isTodayRange(range: [number, number] | null): boolean {
@@ -179,13 +180,17 @@ function numberFromQuery(value: unknown): number | null {
 
 const initialIsAllRange = route.query.range === 'all'
 const initialDateRange = initialIsAllRange ? null : initialRange()
-const dateRange = ref<[number, number] | null>(initialDateRange)
+let initialQuickRange: QuickRangeKey | null = initialIsAllRange ? 'all' : quickRangeFromQuery()
+if (!initialQuickRange && isTodayRange(initialDateRange)) {
+  initialQuickRange = 'today'
+} else if (!initialQuickRange && isYesterdayRange(initialDateRange)) {
+  initialQuickRange = 'yesterday'
+}
+const dateRange = ref<[number, number] | null>(
+  initialQuickRange ? buildQuickRange(initialQuickRange) : initialDateRange,
+)
 const activeQuickRange = ref<QuickRangeKey | null>(
-  initialIsAllRange
-    ? 'all'
-    : initialDateRange === null || isTodayRange(initialDateRange)
-      ? 'today'
-      : null,
+  initialQuickRange ?? (initialDateRange === null ? 'today' : null),
 )
 const filterForm = reactive({
   user_id: numberFromQuery(route.query.user_id),
@@ -200,9 +205,10 @@ const filterForm = reactive({
 
 const quickRangeOptions = computed<Array<{ key: QuickRangeKey; label: string }>>(() => [
   { key: 'today', label: t('今日', 'Today') },
-  { key: 'last24h', label: t('近24小时', 'Last 24 hours') },
-  { key: 'last3d', label: t('近3日', 'Last 3 days') },
-  { key: 'last7d', label: t('近7日', 'Last 7 days') },
+  { key: 'yesterday', label: t('昨日', 'Yesterday') },
+  { key: 'last24h', label: t('近 24 小时', 'Last 24 hours') },
+  { key: 'last3d', label: t('近 3 日', 'Last 3 days') },
+  { key: 'last7d', label: t('近 7 日', 'Last 7 days') },
   { key: 'all', label: t('全部', 'All') },
 ])
 
@@ -319,6 +325,26 @@ function selectedFilterOption(
   return filterOptions.find((option) => option.value === value) ?? null
 }
 
+function isYesterdayRange(range: [number, number] | null): boolean {
+  if (!range) {
+    return false
+  }
+  const [yesterdayStart, todayStart] = yesterdayRange()
+  return range[0] === yesterdayStart && range[1] === todayStart
+}
+
+function quickRangeFromQuery(): QuickRangeKey | null {
+  const value = route.query.quick_range
+  return value === 'today'
+    || value === 'yesterday'
+    || value === 'last24h'
+    || value === 'last3d'
+    || value === 'last7d'
+    || value === 'all'
+    ? value
+    : null
+}
+
 function filterOptionValue(value: unknown): string | number | null {
   if (typeof value !== 'object' || value === null || !('value' in value)) {
     return null
@@ -411,11 +437,7 @@ const refreshStatusText = computed(() => {
       ? t('自动刷新异常 · 尚无成功同步', 'Auto refresh error · no successful sync yet')
       : t('每 10 秒自动刷新 · 等待首次同步', 'Auto refresh every 10 seconds · waiting for first sync')
   }
-  const lastRefreshText = new Intl.DateTimeFormat(currentLanguage.value === 'zh' ? 'zh-CN' : 'en-US', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  }).format(lastRefreshTime)
+  const lastRefreshText = formatDateTime(lastRefreshTime)
   if (autoRefreshError.value) {
     return t(`自动刷新异常 · 最近成功 ${lastRefreshText}`, `Auto refresh error · last success ${lastRefreshText}`)
   }
@@ -465,6 +487,8 @@ function filtersToQuery(
     delete query.start
     delete query.end
     query.range = 'all'
+  } else if (rangeKey) {
+    query.quick_range = rangeKey
   }
   return query
 }
@@ -473,6 +497,8 @@ function buildQuickRange(key: QuickRangeKey): [number, number] | null {
   switch (key) {
     case 'today':
       return todayRange()
+    case 'yesterday':
+      return yesterdayRange()
     case 'last24h': {
       const end = Date.now()
       return [end - 24 * HOUR_MS, end]
@@ -859,7 +885,7 @@ onBeforeUnmount(() => {
             @update:model-value="handleQuickRangeChange"
           >
             <TabsList
-              class="quick-range-options grid h-8 w-full grid-cols-5"
+              class="quick-range-options grid h-8 w-full grid-cols-6"
               :aria-label="t('快捷时间范围', 'Quick time ranges')"
             >
               <TabsTrigger
@@ -1121,7 +1147,7 @@ onBeforeUnmount(() => {
 
 .time-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(380px, 440px);
+  grid-template-columns: minmax(0, 1fr) minmax(460px, 520px);
   gap: 12px;
   align-items: center;
   min-width: 0;
