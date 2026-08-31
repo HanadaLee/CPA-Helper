@@ -136,6 +136,12 @@ test('all migrated routes render and core controls remain interactive', async ({
     await expect(page.locator('[data-page-title]')).toBeVisible()
   }
   await expect(page.getByRole('button', { name: /账户设置|Account Settings/ })).toHaveCount(0)
+
+  await page.goto('/admin/usage')
+  const analyticsQuickRangeTabs = page.locator('.quick-ranges[data-slot="tabs"]')
+  await expect(analyticsQuickRangeTabs.getByRole('tablist')).toHaveAccessibleName(/快捷时间范围|Quick time ranges/)
+  await expect(analyticsQuickRangeTabs.getByRole('tab')).toHaveCount(5)
+
   await page.goto('/account/settings')
   await expect(page).toHaveURL(/\/account\/settings$/)
   await expect(page.locator('[data-page-title]')).toHaveCount(0)
@@ -493,9 +499,11 @@ test('theme and mobile navigation survive the migration', async ({ page }) => {
     page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--cpa-primary').trim()),
   ).toBe('oklch(55% .19 257)')
   await expect(page.locator('[data-slot="sidebar-container"]')).toHaveCSS('border-right-width', '0px')
+  await expect(page.locator('[data-slot="sidebar-container"]')).toHaveCSS('width', '256px')
   const usageMenuButton = page.getByRole('button', { name: /用量分析|Usage Analytics/ })
   await expect(usageMenuButton).toHaveCSS('cursor', 'pointer')
-  await expect(usageMenuButton).toHaveCSS('font-size', '12.25px')
+  await expect(usageMenuButton).toHaveCSS('font-size', '14px')
+  await expect(usageMenuButton).toHaveCSS('height', '32px')
   await expect(page.locator('a[href*="github.com/walkingddd/CPA-Helper"]')).toHaveCount(0)
   const desktopUserMenuButton = page.getByRole('button', { name: /admin.*管理员|admin.*Admin/i })
   await expect(desktopUserMenuButton.locator('.lucide-ellipsis-vertical')).toBeVisible()
@@ -535,6 +543,7 @@ test('theme and mobile navigation survive the migration', async ({ page }) => {
   await page.reload()
   await page.getByRole('button', { name: /打开导航|Open navigation/ }).click()
   await expect(page.locator('[data-mobile="true"]')).toHaveCSS('border-right-color', 'oklch(1 0 0 / 0.1)')
+  await expect(page.locator('[data-mobile="true"]')).toHaveCSS('width', '288px')
   await expect(page.getByText('CPA-Helper', { exact: false }).last()).toBeVisible()
   await expect(page.getByRole('button', { name: /用量分析|Usage Analytics/ }).first()).toBeVisible()
   const mobileUserMenuButton = page.getByRole('button', { name: /admin.*管理员|admin.*Admin/i })

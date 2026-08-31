@@ -43,7 +43,10 @@ function handleMobileContentClick(event: MouseEvent) {
       data-slot="sidebar"
       data-mobile="true"
       :side="side"
-      class="border-sidebar-border bg-sidebar text-sidebar-foreground w-(--sidebar-width) p-0 [&>button]:hidden"
+      :class="cn(
+        'border-sidebar-border bg-sidebar text-sidebar-foreground p-0 data-[side=left]:w-(--sidebar-width) data-[side=right]:w-(--sidebar-width) [&>button]:hidden',
+        props.class,
+      )"
       :style="{
         '--sidebar-width': SIDEBAR_WIDTH_MOBILE,
       }"

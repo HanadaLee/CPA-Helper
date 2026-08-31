@@ -496,7 +496,7 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
 .brand-copy strong {
   color: var(--cpa-text-strong);
   font-size: 14px;
-  font-weight: 760;
+  font-weight: 600;
   line-height: 1.2;
 }
 
@@ -521,7 +521,7 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
 
 .brand-copy > span {
   color: var(--cpa-text-muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .sr-only {
@@ -739,12 +739,13 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
 
 .user-copy strong {
   color: var(--cpa-text-strong);
-  font-size: 13px;
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .user-copy span {
   color: var(--cpa-text-muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .user-menu-chevron {
