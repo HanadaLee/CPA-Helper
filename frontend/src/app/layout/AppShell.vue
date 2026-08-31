@@ -221,7 +221,6 @@ const accountMenuItems = computed<NavigationItem[]>(() => [
   ...(showAccountStatusForUser.value
     ? [{ label: t('账号状态', 'Account Status'), key: '/account/status', icon: ListChecks }]
     : []),
-  { label: t('账户设置', 'Account Settings'), key: '/account/settings', icon: UserRound },
 ])
 
 const isAdmin = computed(() => {

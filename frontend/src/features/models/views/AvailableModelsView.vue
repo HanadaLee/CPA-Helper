@@ -120,6 +120,16 @@ function renderPriceValue(row: AvailableModel, field: PriceField) {
   return formatUsdPerMtok(row.price[field])
 }
 
+function renderFastMultiplier(row: AvailableModel) {
+  const multiplier = row.price?.fast_multiplier
+  if (multiplier === null || multiplier === undefined) {
+    return h('span', { class: 'model-price-muted' }, '-')
+  }
+  return `×${multiplier.toLocaleString(currentLanguage.value === 'zh' ? 'zh-CN' : 'en-US', {
+    maximumFractionDigits: 4,
+  })}`
+}
+
 function goToApiKeys() {
   void router.push('/account/keys')
 }
@@ -141,27 +151,28 @@ const columns = computed<DataTableColumns<AvailableModel>>(() => [
   {
     title: t('模型 ID', 'Model ID'),
     key: 'id',
-    width: 270,
+    width: 220,
     ellipsis: { tooltip: true },
     render: (row) => h('span', { class: 'model-id' }, row.id),
   },
   {
     title: t('名称', 'Name'),
     key: 'name',
-    width: 220,
+    width: 170,
     ellipsis: { tooltip: true },
     render: (row) => displayText(row.name),
   },
   {
     title: t('所有者', 'Owner'),
     key: 'owner',
-    width: 150,
+    width: 100,
+    ellipsis: { tooltip: true },
     render: (row) => displayText(row.owner),
   },
   {
     title: t('来源 Key', 'Source Key'),
     key: 'sources',
-    width: 220,
+    width: 170,
     render: (row) =>
       h(
         AppStack,
@@ -181,38 +192,51 @@ const columns = computed<DataTableColumns<AvailableModel>>(() => [
   {
     title: t('计费方式', 'Billing'),
     key: 'billing_unit',
-    width: 110,
+    width: 90,
+    align: 'center',
     render: renderBillingUnit,
   },
   {
     title: t('每次 ($)', 'Per request ($)'),
     key: 'request_usd',
-    width: 110,
+    width: 90,
+    align: 'right',
     render: renderRequestPrice,
   },
   {
-    title: t('输入 ($/MTok)', 'Input ($/MTok)'),
+    title: t('输入 $/MTok', 'Input $/MTok'),
     key: 'input_usd_per_million',
-    width: 145,
+    width: 108,
+    align: 'right',
     render: (row) => renderPriceValue(row, 'input_usd_per_million'),
   },
   {
-    title: t('输出 ($/MTok)', 'Output ($/MTok)'),
+    title: t('输出 $/MTok', 'Output $/MTok'),
     key: 'output_usd_per_million',
-    width: 145,
+    width: 108,
+    align: 'right',
     render: (row) => renderPriceValue(row, 'output_usd_per_million'),
   },
   {
-    title: t('缓存读 ($/MTok)', 'Cache read ($/MTok)'),
+    title: t('缓存读 $/MTok', 'Cache read $/MTok'),
     key: 'cache_read_usd_per_million',
-    width: 145,
+    width: 108,
+    align: 'right',
     render: (row) => renderPriceValue(row, 'cache_read_usd_per_million'),
   },
   {
-    title: t('缓存写 ($/MTok)', 'Cache write ($/MTok)'),
+    title: t('缓存写 $/MTok', 'Cache write $/MTok'),
     key: 'cache_creation_usd_per_million',
-    width: 145,
+    width: 108,
+    align: 'right',
     render: (row) => renderPriceValue(row, 'cache_creation_usd_per_million'),
+  },
+  {
+    title: t('FAST 倍率', 'FAST multiplier'),
+    key: 'fast_multiplier',
+    width: 88,
+    align: 'right',
+    render: renderFastMultiplier,
   },
 ])
 
@@ -329,7 +353,7 @@ onMounted(refresh)
             :data="response.models"
             :pagination="{ pageSize: 20 }"
             max-height="max(240px, calc(100dvh - 360px))"
-            :scroll-x="1660"
+            :scroll-x="1360"
             table-layout="fixed"
           />
         </template>

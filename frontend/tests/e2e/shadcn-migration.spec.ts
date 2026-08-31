@@ -16,7 +16,6 @@ const accountRoutes = [
   ['/account/records', /我的明细|My Records/i],
   ['/account/keys', /API 密钥|API Keys/i],
   ['/account/models', /可用模型|Available Models/i],
-  ['/account/settings', /账户设置|Account Settings/i],
 ] as const
 
 async function setupOrLogin(page: Page) {
@@ -76,6 +75,9 @@ test('all migrated routes render and core controls remain interactive', async ({
     await expect(page.locator('.desktop-location')).toContainText(title)
     await expect(page.locator('[data-page-title]')).toBeVisible()
   }
+  await expect(page.getByRole('button', { name: /账户设置|Account Settings/ })).toHaveCount(0)
+  await page.goto('/account/settings')
+  await page.waitForURL(/\/account\/usage$/)
 
   await page.goto('/admin/account-mgmt')
   const accountTypeFilter = page.getByRole('combobox', { name: /账号类型|Account Type/ })
@@ -86,6 +88,9 @@ test('all migrated routes render and core controls remain interactive', async ({
   await accountTypeSearch.press('Escape')
   await expect(page.locator('.account-table-footer .n-pagination')).toBeVisible()
   await expect(page.locator('.account-table-footer').getByRole('combobox')).toBeVisible()
+  const latestActionHeaderBox = await page.getByRole('columnheader', { name: /最近操作|Latest Action/ }).boundingBox()
+  expect(latestActionHeaderBox).not.toBeNull()
+  expect(latestActionHeaderBox?.width).toBeLessThanOrEqual(170)
 
   await page.goto('/admin/pricing')
   const statusFilter = page.getByRole('combobox').nth(1)
@@ -100,8 +105,12 @@ test('all migrated routes render and core controls remain interactive', async ({
   await page.getByRole('button', { name: /新增价格|Add price/ }).click()
   const priceDialog = page.getByRole('dialog', { name: /新增价格|Add price/ })
   const priceCancelButton = priceDialog.getByRole('button', { name: /取消|Cancel/ })
+  const priceDialogFooter = priceDialog.locator('[data-slot="dialog-footer"]')
   await expect(priceCancelButton).toHaveCSS('cursor', 'pointer')
   await expect(priceCancelButton).toHaveCSS('border-top-width', '1px')
+  await expect(priceDialogFooter).toHaveCSS('border-top-width', '0px')
+  await expect(priceDialogFooter).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+  await expect(priceDialogFooter).toHaveCSS('box-shadow', 'none')
   await priceCancelButton.click()
 
   await page.goto('/admin/upstreams')
@@ -192,17 +201,71 @@ test('all migrated routes render and core controls remain interactive', async ({
   expect(editorSaveBox).not.toBeNull()
   expect((editorSaveBox?.y ?? 0) - ((editorInputBox?.y ?? 0) + (editorInputBox?.height ?? 0))).toBeGreaterThanOrEqual(8)
   await page.getByRole('button', { name: /取消|Cancel/ }).click()
-  await expect(page.locator('.api-endpoint-type-options .n-radio-button').first()).toHaveCSS('justify-content', 'center')
-  await expect(page.locator('.api-endpoint-type-options .n-radio-button').first()).toHaveCSS('cursor', 'pointer')
-  const endpointSwitchBox = await page.locator('.api-endpoint-panel .request-endpoint-switch').boundingBox()
-  const endpointOptionsBox = await page.locator('.api-endpoint-type-options').boundingBox()
-  expect(endpointSwitchBox).not.toBeNull()
-  expect(endpointOptionsBox).not.toBeNull()
-  expect((endpointOptionsBox?.x ?? 0) + (endpointOptionsBox?.width ?? 0)).toBeLessThan(
-    (endpointSwitchBox?.x ?? 0) + (endpointSwitchBox?.width ?? 0) - 12,
-  )
+  const endpointTypeButtons = page.locator('.api-endpoint-type-options .n-radio-button')
+  await expect(endpointTypeButtons).toHaveCount(4)
+  await expect(endpointTypeButtons.first()).toHaveCSS('justify-content', 'center')
+  await expect(endpointTypeButtons.first()).toHaveCSS('text-align', 'center')
+  await expect(endpointTypeButtons.first()).toHaveCSS('cursor', 'pointer')
+  const endpointTypeLayout = await endpointTypeButtons.evaluateAll((elements) => {
+    const boxes = elements.map((element) => element.getBoundingClientRect())
+    const widths = boxes.map((box) => box.width)
+    const yPositions = boxes.map((box) => box.y)
+    return {
+      widthDifference: Math.max(...widths) - Math.min(...widths),
+      yDifference: Math.max(...yPositions) - Math.min(...yPositions),
+    }
+  })
+  expect(endpointTypeLayout.widthDifference).toBeLessThanOrEqual(1)
+  expect(endpointTypeLayout.yDifference).toBeLessThanOrEqual(1)
 
   expect(consoleErrors).toEqual([])
+})
+
+test('available models uses compact price columns and shows the FAST multiplier', async ({ page }) => {
+  await setupOrLogin(page)
+  await page.route('**/api/account/models', async (route) => {
+    await route.fulfill({
+      json: {
+        has_api_keys: true,
+        api_key_count: 1,
+        queryable_api_key_count: 1,
+        errors: [],
+        models: [
+          {
+            id: 'gpt-5.6-terra',
+            name: 'GPT 5.6 Terra',
+            object: 'model',
+            owner: 'openai',
+            created: null,
+            metadata: {},
+            sources: [
+              {
+                api_key_hash: 'fixture-key',
+                api_key_preview: 'sk-…test',
+                description: 'Test key',
+              },
+            ],
+            price: {
+              provider: 'openai',
+              model: 'gpt-5.6-terra',
+              input_usd_per_million: 2,
+              output_usd_per_million: 12,
+              cache_read_usd_per_million: 0.2,
+              cache_creation_usd_per_million: 2.5,
+              request_usd: null,
+              fast_multiplier: 1.8,
+              billing_unit: 'token',
+            },
+          },
+        ],
+      },
+    })
+  })
+
+  await page.goto('/account/models')
+  await expect(page.getByRole('columnheader', { name: /FAST 倍率|FAST multiplier/ })).toBeVisible()
+  await expect(page.getByRole('cell', { name: '×1.8' })).toBeVisible()
+  await expect(page.locator('.available-models-table [data-slot="table-container"]')).toHaveCSS('min-width', '1360px')
 })
 
 test('theme and mobile navigation survive the migration', async ({ page }) => {
@@ -210,6 +273,7 @@ test('theme and mobile navigation survive the migration', async ({ page }) => {
   await expect.poll(() =>
     page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--cpa-primary').trim()),
   ).toBe('#2563eb')
+  await expect(page.locator('[data-slot="sidebar-container"]')).toHaveCSS('border-right-color', 'rgba(15, 23, 42, 0.1)')
   await expect(page.getByRole('button', { name: /用量分析|Usage Analytics/ })).toHaveCSS('cursor', 'pointer')
   await expect(page.locator('a[href*="github.com/walkingddd/CPA-Helper"]')).toHaveCount(0)
   await page.getByRole('button', { name: /admin.*管理员|admin.*Admin/i }).click()
@@ -225,6 +289,7 @@ test('theme and mobile navigation survive the migration', async ({ page }) => {
   await expect.poll(() =>
     page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--cpa-primary').trim()),
   ).toBe('#60a5fa')
+  await expect(page.locator('[data-slot="sidebar-container"]')).toHaveCSS('border-right-color', 'rgba(148, 163, 184, 0.16)')
 
   await page.setViewportSize({ width: 390, height: 844 })
   await page.reload()

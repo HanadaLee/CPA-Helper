@@ -122,8 +122,7 @@ export const router = createRouter({
         },
         {
           path: 'account/settings',
-          name: 'account-settings',
-          component: () => import('@/features/settings/views/AccountSettingsView.vue'),
+          redirect: '/account/usage',
         },
       ],
     },
@@ -161,7 +160,7 @@ export const router = createRouter({
       path: '/settings',
       name: 'legacy-settings',
       component: () => import('@/app/layout/AppShell.vue'),
-      meta: { adminTarget: '/admin/settings', accountTarget: '/account/settings' },
+      meta: { adminTarget: '/admin/settings', accountTarget: '/account/usage' },
     },
   ],
 })

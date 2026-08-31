@@ -2252,7 +2252,7 @@ const baseColumns = computed<DataTableColumns<CodexKeeperAccount>>(() => [
   {
     title: t('最近操作', 'Latest Action'),
     key: 'latest_action',
-    width: 240,
+    width: 160,
     render: (row) => renderLatestActionCell(row),
   },
 ])

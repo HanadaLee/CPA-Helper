@@ -1061,19 +1061,23 @@ onMounted(refresh)
 
 .api-endpoint-type-options {
   display: grid;
-  grid-template-columns: repeat(2, max-content);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  flex: 1 1 0;
   width: auto;
   max-width: 100%;
-  align-items: center;
+  min-width: 0;
+  align-items: stretch;
   justify-content: flex-start;
 }
 
 .api-endpoint-type-options :deep(.n-radio-button) {
   justify-content: center;
-  min-width: max-content;
-  padding-inline: 8px;
+  min-width: 0;
+  min-height: 36px;
+  padding-inline: 6px;
+  line-height: 1.2;
   text-align: center;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .api-key-metrics {
@@ -1379,8 +1383,6 @@ onMounted(refresh)
   }
 
   .api-endpoint-type-options {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
     width: 100%;
   }
 
