@@ -313,15 +313,6 @@ pre {
   padding: 16px 18px 18px;
 }
 
-.table-panel > .n-data-table {
-  min-width: 0;
-}
-
-.table-panel .n-data-table-wrapper {
-  overflow: hidden;
-  border-radius: var(--cpa-radius);
-}
-
 .toolbar-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(120px, 1fr));
@@ -489,74 +480,6 @@ pre {
   white-space: pre;
 }
 
-.n-button:not(:disabled) {
-  transition:
-    color 150ms ease,
-    background-color 160ms ease,
-    border-color 160ms ease;
-}
-
-.n-base-selection-label {
-  background: var(--cpa-surface-raised);
-  box-shadow: 0 1px 2px rgb(15 23 42 / 4%);
-}
-
-.n-base-selection-label:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--cpa-primary) 28%, var(--cpa-border-strong));
-}
-
-.n-input,
-.n-base-selection {
-  --n-border-radius: var(--cpa-radius-sm);
-}
-
-.n-data-table {
-  --n-td-color-hover: color-mix(in srgb, var(--cpa-primary-wash) 58%, transparent);
-  --n-th-color: color-mix(in srgb, var(--cpa-surface-muted) 72%, transparent);
-  --n-border-color: var(--cpa-border);
-  --n-merged-border-color: var(--cpa-border);
-}
-
-.n-data-table .n-data-table-th {
-  color: var(--cpa-text-strong);
-  font-weight: 600;
-}
-
-.n-data-table .n-data-table-wrapper {
-  border-radius: var(--cpa-radius);
-}
-
-.n-data-table .n-data-table-td {
-  color: var(--cpa-text);
-}
-
-.n-data-table .n-data-table-tbody .n-data-table-tr:last-child {
-  border-bottom: 0;
-}
-
-.n-card,
-.n-modal,
-.n-drawer,
-.n-drawer-content {
-  border-radius: var(--cpa-radius);
-}
-
-.n-card {
-  box-shadow: var(--cpa-shadow-card);
-}
-
-.n-modal {
-  box-shadow: var(--cpa-shadow);
-}
-
-.n-modal [data-slot="dialog-title"],
-.n-drawer [data-slot="sheet-title"] {
-  color: var(--cpa-text-strong);
-  font-size: 17px;
-  font-weight: 650;
-  letter-spacing: -0.015em;
-}
-
 .status-dot {
   display: inline-flex;
   width: 8px;
@@ -668,11 +591,5 @@ pre {
     margin-top: 10px;
     font-size: 11px;
     line-height: 1.22;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .n-button:not(:disabled) {
-    transition: none;
   }
 }

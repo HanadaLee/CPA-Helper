@@ -1,23 +1,26 @@
 <script setup lang="ts">
 import type { Component } from 'vue'
-import { computed, h, onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { toast } from 'vue-sonner'
-import {
-  AppAlert,
-  AppButton,
-  AppDataTable,
-  AppForm,
-  AppFormItem,
-  AppInput,
-  AppNumberInput,
-  AppModal,
-  AppStack,
-  AppSwitch,
-  AppBadge,
-  type DataTableColumns,
-} from '@/shared/ui/app-kit'
 import { useConfirmDialog } from '@/shared/ui/confirm-dialog'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,15 +34,39 @@ import {
   FieldContent,
   FieldDescription,
   FieldGroup,
+  FieldLabel,
   FieldLegend,
   FieldSet,
-  FieldTitle,
 } from '@/components/ui/field'
+import { Input } from '@/components/ui/input'
 import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/components/ui/pagination'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Spinner } from '@/components/ui/spinner'
+import { Switch } from '@/components/ui/switch'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableEmpty,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import {
+  AlertTriangle,
   CircleDollarSign,
   KeyRound,
   MoreHorizontal,
   Pencil,
+  Plus,
+  RefreshCw,
   ShieldCheck,
   UserCheck,
   UserRound,
@@ -75,6 +102,8 @@ const quotaLifetimeUsd = ref(0)
 const quotaMonthlyUsd = ref(0)
 const quotaWeeklyUsd = ref(0)
 const quotaDailyUsd = ref(0)
+const page = ref(1)
+const pageSize = 12
 const isEditingFirstUser = computed(() => editingUserId.value === 1)
 
 interface UserMetricCard {
@@ -82,7 +111,6 @@ interface UserMetricCard {
   label: string
   value: string
   footnote: string
-  tone: 'primary' | 'blue' | 'purple' | 'green'
   icon: Component
 }
 
@@ -97,7 +125,6 @@ const userMetrics = computed<UserMetricCard[]>(() => {
       label: t('启用用户', 'Active users'),
       value: formatInteger(activeUsers),
       footnote: t(`共 ${formatInteger(users.value.length)} 个账号`, `${formatInteger(users.value.length)} accounts total`),
-      tone: 'primary',
       icon: UserRound,
     },
     {
@@ -105,7 +132,6 @@ const userMetrics = computed<UserMetricCard[]>(() => {
       label: t('管理员', 'Admins'),
       value: formatInteger(adminUsers),
       footnote: t('拥有管理权限', 'Have admin access'),
-      tone: 'purple',
       icon: ShieldCheck,
     },
     {
@@ -113,7 +139,6 @@ const userMetrics = computed<UserMetricCard[]>(() => {
       label: t('绑定 Key', 'Bound keys'),
       value: formatInteger(boundKeys),
       footnote: t('当前用户集合', 'Current users'),
-      tone: 'blue',
       icon: KeyRound,
     },
     {
@@ -121,7 +146,6 @@ const userMetrics = computed<UserMetricCard[]>(() => {
       label: t('今日费用', 'Today cost'),
       value: formatUsd(todayCost),
       footnote: t('按现价估算', 'Estimated at current prices'),
-      tone: 'green',
       icon: CircleDollarSign,
     },
   ]
@@ -146,11 +170,11 @@ function quotaBalanceValue(row: UserSummary, bucket: 'monthly' | 'weekly' | 'dai
   return formatUsd(value)
 }
 
-function quotaBalanceClass(row: UserSummary): string {
+function quotaBadgeVariant(row: UserSummary): 'destructive' | 'secondary' | 'outline' {
   if (row.quota.paused || !row.quota.can_create_keys) {
-    return 'is-error'
+    return 'destructive'
   }
-  return row.quota.unlimited ? 'is-unlimited' : 'is-normal'
+  return row.quota.unlimited ? 'secondary' : 'outline'
 }
 
 function quotaDetail(row: UserSummary): string | null {
@@ -192,12 +216,17 @@ function lastProviderLabel(row: UserSummary): string {
   return row.last_provider ?? t('未知服务商', 'Unknown provider')
 }
 
-function setQuotaLifetimeUsd(value: number | null) {
-  quotaLifetimeUsd.value = value ?? 0
+function normalizeQuotaInput(value: string | number): number {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0
 }
 
-function setQuotaMonthlyUsd(value: number | null) {
-  quotaMonthlyUsd.value = value ?? 0
+function setQuotaLifetimeUsd(value: string | number) {
+  quotaLifetimeUsd.value = normalizeQuotaInput(value)
+}
+
+function setQuotaMonthlyUsd(value: string | number) {
+  quotaMonthlyUsd.value = normalizeQuotaInput(value)
 }
 
 function todayTokenDetail(row: UserSummary): string {
@@ -207,12 +236,21 @@ function todayTokenDetail(row: UserSummary): string {
   )
 }
 
-function setQuotaWeeklyUsd(value: number | null) {
-  quotaWeeklyUsd.value = value ?? 0
+function setQuotaWeeklyUsd(value: string | number) {
+  quotaWeeklyUsd.value = normalizeQuotaInput(value)
 }
 
-function setQuotaDailyUsd(value: number | null) {
-  quotaDailyUsd.value = value ?? 0
+function setQuotaDailyUsd(value: string | number) {
+  quotaDailyUsd.value = normalizeQuotaInput(value)
+}
+
+const pagedUsers = computed(() => {
+  const start = (page.value - 1) * pageSize
+  return users.value.slice(start, start + pageSize)
+})
+
+function handlePageChange(value: number) {
+  page.value = value
 }
 
 function resetEditor() {
@@ -252,6 +290,8 @@ async function refresh() {
   isLoading.value = true
   try {
     users.value = await listUsers()
+    const lastPage = Math.max(1, Math.ceil(users.value.length / pageSize))
+    page.value = Math.min(page.value, lastPage)
   } catch (error) {
     message.error(errorText(error, '加载用户列表失败', 'Failed to load users'))
   } finally {
@@ -355,190 +395,6 @@ async function saveUser() {
   }
 }
 
-const columns = computed<DataTableColumns<UserSummary>>(() => [
-  {
-    title: t('用户', 'User'),
-    key: 'nickname',
-    width: 145,
-    render: (row) =>
-      h('div', { class: 'metric-stack' }, [
-        h('span', { class: 'metric-primary' }, userLabel(row)),
-        h('span', { class: 'metric-muted' }, row.username),
-      ]),
-  },
-  {
-    title: t('角色 / 状态', 'Role / status'),
-    key: 'is_admin',
-    width: 110,
-    render: (row) =>
-      h('div', { class: 'metric-stack is-compact' }, [
-        h('span', { class: 'metric-primary' }, row.is_admin ? t('管理员', 'Admin') : t('普通用户', 'Standard user')),
-        h(
-          AppBadge,
-          {
-            size: 'small',
-            type: isUserDisabled(row) ? 'warning' : 'success',
-            bordered: false,
-            class: 'user-status-badge',
-          },
-          { default: () => (isUserDisabled(row) ? t('已禁用', 'Disabled') : t('启用中', 'Enabled')) },
-        ),
-      ]),
-  },
-  {
-    title: t('余额', 'Balance'),
-    key: 'quota',
-    width: 150,
-    render: (row) => {
-      const detail = quotaDetail(row)
-      return h('div', { class: ['metric-stack', 'quota-balance-stack'] }, [
-        h('div', { class: ['quota-balance-row', 'is-daily', quotaBalanceClass(row)] }, [
-          h('span', { class: 'quota-balance-label' }, t('每日：', 'Daily: ')),
-          h('strong', { class: 'quota-balance-value' }, quotaBalanceValue(row, 'daily')),
-        ]),
-        h('div', { class: ['quota-balance-row', 'is-weekly', quotaBalanceClass(row)] }, [
-          h('span', { class: 'quota-balance-label' }, t('每周：', 'Weekly: ')),
-          h('strong', { class: 'quota-balance-value' }, quotaBalanceValue(row, 'weekly')),
-        ]),
-        h('div', { class: ['quota-balance-row', 'is-monthly', quotaBalanceClass(row)] }, [
-          h('span', { class: 'quota-balance-label' }, t('每月：', 'Monthly: ')),
-          h('strong', { class: 'quota-balance-value' }, quotaBalanceValue(row, 'monthly')),
-        ]),
-        h('div', { class: ['quota-balance-row', 'is-lifetime', quotaBalanceClass(row)] }, [
-          h('span', { class: 'quota-balance-label' }, t('不限时：', 'Lifetime: ')),
-          h('strong', { class: 'quota-balance-value' }, quotaBalanceValue(row, 'lifetime')),
-        ]),
-        ...(detail
-          ? [
-              h(
-                'span',
-                { class: ['metric-muted', 'quota-balance-detail', { 'is-error': row.quota.sync_error || row.quota.paused }] },
-                detail,
-              ),
-            ]
-          : []),
-      ])
-    },
-  },
-  {
-    title: t('API KEY 数量', 'API keys'),
-    key: 'key_count',
-    width: 72,
-    render: (row) => t(`${formatInteger(row.key_count)} 个`, `${formatInteger(row.key_count)} keys`),
-  },
-  {
-    title: t('今日请求', 'Today requests'),
-    key: 'today_records',
-    width: 95,
-    render: (row) =>
-      h('div', { class: 'metric-stack' }, [
-        h('span', { class: 'metric-primary' }, formatInteger(row.today_records)),
-        h('span', { class: 'metric-muted' }, todayRequestDetail(row)),
-      ]),
-  },
-  {
-    title: t('今日 Token', 'Today tokens'),
-    key: 'today_total_tokens',
-    width: 145,
-    render: (row) =>
-      h('div', { class: 'metric-stack' }, [
-        h('span', { class: 'metric-primary' }, formatCompact(row.today_total_tokens)),
-        h('span', { class: 'metric-muted' }, todayTokenDetail(row)),
-      ]),
-  },
-  {
-    title: t('今日费用', 'Today cost'),
-    key: 'today_estimated_cost_usd',
-    width: 105,
-    render: (row) =>
-      h('div', { class: 'metric-stack' }, [
-        h('span', { class: 'metric-primary' }, formatUsd(row.today_estimated_cost_usd)),
-        h(
-          'span',
-          { class: ['metric-muted', { 'is-error': row.today_unpriced_records > 0 }] },
-          todayCostDetail(row),
-        ),
-      ]),
-  },
-  {
-    title: t('最近使用', 'Last used'),
-    key: 'last_seen_at',
-    width: 178,
-    render: (row) =>
-      h('div', { class: 'metric-stack' }, [
-        h('span', { class: 'model-value' }, lastModelLabel(row)),
-        h('span', { class: 'metric-muted' }, lastProviderLabel(row)),
-        h('span', { class: 'metric-muted' }, formatDateTime(row.last_seen_at)),
-      ]),
-  },
-  {
-    title: '',
-    key: 'actions',
-    width: 56,
-    align: 'right',
-    render: (row) =>
-      h(
-        DropdownMenu,
-        {},
-        {
-          default: () => [
-            h(
-              DropdownMenuTrigger,
-              { asChild: true },
-              {
-                default: () =>
-                  h(
-                    Button,
-                    {
-                      variant: 'ghost',
-                      size: 'icon-sm',
-                      class: 'row-actions-trigger',
-                      'aria-label': t(`打开 ${userLabel(row)} 的操作菜单`, `Open actions for ${userLabel(row)}`),
-                    },
-                    { default: () => h(MoreHorizontal) },
-                  ),
-              },
-            ),
-            h(
-              DropdownMenuContent,
-              { align: 'end', sideOffset: 4, class: 'w-40' },
-              {
-                default: () => [
-                  h(
-                    DropdownMenuGroup,
-                    {},
-                    {
-                      default: () =>
-                        h(
-                          DropdownMenuItem,
-                          { onSelect: () => editUser(row) },
-                          { default: () => [h(Pencil), h('span', t('编辑', 'Edit'))] },
-                        ),
-                    },
-                  ),
-                  row.id === 1 ? null : h(DropdownMenuSeparator),
-                  row.id === 1
-                    ? null
-                    : isUserDisabled(row)
-                      ? h(
-                          DropdownMenuItem,
-                          { onSelect: () => confirmEnableUser(row) },
-                          { default: () => [h(UserCheck), h('span', t('启用', 'Enable'))] },
-                        )
-                      : h(
-                          DropdownMenuItem,
-                          { variant: 'destructive', onSelect: () => confirmDisableUser(row) },
-                          { default: () => [h(UserX), h('span', t('禁用', 'Disable'))] },
-                        ),
-                ],
-              },
-            ),
-          ],
-        },
-      ),
-  },
-])
-
 onMounted(refresh)
 </script>
 
@@ -546,123 +402,362 @@ onMounted(refresh)
   <section class="page">
     <div class="page-toolbar">
       <h1 data-page-title class="page-title">{{ t('用户管理', 'User Management') }}</h1>
-      <AppStack>
-        <AppButton secondary :loading="isLoading" @click="refresh">{{ t('刷新', 'Refresh') }}</AppButton>
-        <AppButton type="primary" @click="openCreateUser">{{ t('增加用户', 'Add user') }}</AppButton>
-      </AppStack>
-    </div>
-
-    <div class="metric-grid user-metrics">
-      <div v-for="metric in userMetrics" :key="metric.key" class="metric-card" :class="`is-${metric.tone}`">
-        <div class="metric-icon" aria-hidden="true">
-          <component :is="metric.icon" :size="20" :stroke-width="2.2" />
-        </div>
-        <div class="metric-label">{{ metric.label }}</div>
-        <div class="metric-value">{{ metric.value }}</div>
-        <div class="metric-footnote">{{ metric.footnote }}</div>
+      <div class="flex flex-wrap items-center justify-end gap-2">
+        <Button variant="outline" :disabled="isLoading" @click="refresh">
+          <Spinner v-if="isLoading" data-icon="inline-start" />
+          <RefreshCw v-else data-icon="inline-start" />
+          {{ t('刷新', 'Refresh') }}
+        </Button>
+        <Button @click="openCreateUser">
+          <Plus data-icon="inline-start" />
+          {{ t('增加用户', 'Add user') }}
+        </Button>
       </div>
     </div>
 
-    <section class="panel table-panel">
-      <AppDataTable
-        size="small"
-        :loading="isLoading"
-        :columns="columns"
-        :data="users"
-        :pagination="{ pageSize: 12 }"
-        table-layout="fixed"
-        :scroll-x="1056"
-      />
+    <div class="metric-grid user-metrics">
+      <Card v-for="metric in userMetrics" :key="metric.key" class="user-metric-card">
+        <CardHeader class="flex flex-row items-start justify-between gap-3">
+          <div class="flex min-w-0 flex-col gap-1">
+            <CardDescription>{{ metric.label }}</CardDescription>
+            <CardTitle class="text-2xl tabular-nums">{{ metric.value }}</CardTitle>
+          </div>
+          <div class="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary" aria-hidden="true">
+            <component :is="metric.icon" class="size-5" />
+          </div>
+        </CardHeader>
+        <CardContent class="text-xs text-muted-foreground">
+          {{ metric.footnote }}
+        </CardContent>
+      </Card>
+    </div>
+
+    <section class="panel table-panel user-table-panel">
+      <div class="user-table">
+        <Table class="min-w-[1056px] table-fixed">
+          <TableHeader>
+            <TableRow>
+              <TableHead class="w-[145px]">{{ t('用户', 'User') }}</TableHead>
+              <TableHead class="w-[110px]">{{ t('角色 / 状态', 'Role / status') }}</TableHead>
+              <TableHead class="w-[150px]">{{ t('余额', 'Balance') }}</TableHead>
+              <TableHead class="w-[72px]">{{ t('API KEY 数量', 'API keys') }}</TableHead>
+              <TableHead class="w-[95px]">{{ t('今日请求', 'Today requests') }}</TableHead>
+              <TableHead class="w-[145px]">{{ t('今日 Token', 'Today tokens') }}</TableHead>
+              <TableHead class="w-[105px]">{{ t('今日费用', 'Today cost') }}</TableHead>
+              <TableHead class="w-[178px]">{{ t('最近使用', 'Last used') }}</TableHead>
+              <TableHead class="w-[56px]">
+                <span class="sr-only">{{ t('操作', 'Actions') }}</span>
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <template v-if="isLoading && users.length === 0">
+              <TableRow v-for="rowIndex in 8" :key="`user-skeleton-${rowIndex}`">
+                <TableCell v-for="columnIndex in 9" :key="columnIndex">
+                  <Skeleton class="h-4 w-full" />
+                </TableCell>
+              </TableRow>
+            </template>
+
+            <TableEmpty v-else-if="users.length === 0" :colspan="9">
+              {{ t('暂无用户', 'No users') }}
+            </TableEmpty>
+
+            <TableRow v-for="row in pagedUsers" v-else :key="row.id">
+              <TableCell>
+                <div class="metric-stack">
+                  <span class="metric-primary">{{ userLabel(row) }}</span>
+                  <span class="metric-muted" :title="row.username">{{ row.username }}</span>
+                </div>
+              </TableCell>
+              <TableCell>
+                <div class="metric-stack is-compact">
+                  <Badge :variant="row.is_admin ? 'default' : 'secondary'">
+                    {{ row.is_admin ? t('管理员', 'Admin') : t('普通用户', 'Standard user') }}
+                  </Badge>
+                  <Badge :variant="isUserDisabled(row) ? 'destructive' : 'outline'">
+                    {{ isUserDisabled(row) ? t('已禁用', 'Disabled') : t('启用中', 'Enabled') }}
+                  </Badge>
+                </div>
+              </TableCell>
+              <TableCell>
+                <div class="metric-stack quota-balance-stack">
+                  <Badge :variant="quotaBadgeVariant(row)" class="quota-balance-row">
+                    <span>{{ t('每日', 'Daily') }}</span>
+                    <strong>{{ quotaBalanceValue(row, 'daily') }}</strong>
+                  </Badge>
+                  <Badge :variant="quotaBadgeVariant(row)" class="quota-balance-row">
+                    <span>{{ t('每周', 'Weekly') }}</span>
+                    <strong>{{ quotaBalanceValue(row, 'weekly') }}</strong>
+                  </Badge>
+                  <Badge :variant="quotaBadgeVariant(row)" class="quota-balance-row">
+                    <span>{{ t('每月', 'Monthly') }}</span>
+                    <strong>{{ quotaBalanceValue(row, 'monthly') }}</strong>
+                  </Badge>
+                  <Badge :variant="quotaBadgeVariant(row)" class="quota-balance-row">
+                    <span>{{ t('不限时', 'Lifetime') }}</span>
+                    <strong>{{ quotaBalanceValue(row, 'lifetime') }}</strong>
+                  </Badge>
+                  <span
+                    v-if="quotaDetail(row)"
+                    class="metric-muted quota-balance-detail"
+                    :class="{ 'is-error': row.quota.sync_error || row.quota.paused }"
+                  >
+                    {{ quotaDetail(row) }}
+                  </span>
+                </div>
+              </TableCell>
+              <TableCell>{{ t(`${formatInteger(row.key_count)} 个`, `${formatInteger(row.key_count)} keys`) }}</TableCell>
+              <TableCell>
+                <div class="metric-stack">
+                  <span class="metric-primary">{{ formatInteger(row.today_records) }}</span>
+                  <span class="metric-muted">{{ todayRequestDetail(row) }}</span>
+                </div>
+              </TableCell>
+              <TableCell>
+                <div class="metric-stack">
+                  <span class="metric-primary">{{ formatCompact(row.today_total_tokens) }}</span>
+                  <span class="metric-muted" :title="todayTokenDetail(row)">{{ todayTokenDetail(row) }}</span>
+                </div>
+              </TableCell>
+              <TableCell>
+                <div class="metric-stack">
+                  <span class="metric-primary">{{ formatUsd(row.today_estimated_cost_usd) }}</span>
+                  <span class="metric-muted" :class="{ 'is-error': row.today_unpriced_records > 0 }">
+                    {{ todayCostDetail(row) }}
+                  </span>
+                </div>
+              </TableCell>
+              <TableCell>
+                <div class="metric-stack">
+                  <span class="model-value" :title="lastModelLabel(row)">{{ lastModelLabel(row) }}</span>
+                  <span class="metric-muted">{{ lastProviderLabel(row) }}</span>
+                  <span class="metric-muted">{{ formatDateTime(row.last_seen_at) }}</span>
+                </div>
+              </TableCell>
+              <TableCell class="text-right">
+                <DropdownMenu>
+                  <DropdownMenuTrigger as-child>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      class="row-actions-trigger"
+                      :aria-label="t(`打开 ${userLabel(row)} 的操作菜单`, `Open actions for ${userLabel(row)}`)"
+                    >
+                      <MoreHorizontal />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" :side-offset="4" class="w-40">
+                    <DropdownMenuGroup>
+                      <DropdownMenuItem @select="editUser(row)">
+                        <Pencil />
+                        <span>{{ t('编辑', 'Edit') }}</span>
+                      </DropdownMenuItem>
+                    </DropdownMenuGroup>
+                    <template v-if="row.id !== 1">
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        v-if="isUserDisabled(row)"
+                        @select="confirmEnableUser(row)"
+                      >
+                        <UserCheck />
+                        <span>{{ t('启用', 'Enable') }}</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        v-else
+                        variant="destructive"
+                        @select="confirmDisableUser(row)"
+                      >
+                        <UserX />
+                        <span>{{ t('禁用', 'Disable') }}</span>
+                      </DropdownMenuItem>
+                    </template>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+      </div>
+
+      <div v-if="users.length > pageSize" class="user-pagination">
+        <span>{{ t(`共 ${formatInteger(users.length)} 个用户`, `${formatInteger(users.length)} users total`) }}</span>
+        <Pagination
+          :page="page"
+          :items-per-page="pageSize"
+          :total="users.length"
+          :sibling-count="1"
+          @update:page="handlePageChange"
+        >
+          <PaginationContent v-slot="{ items }">
+            <PaginationPrevious />
+            <template v-for="(item, index) in items" :key="index">
+              <PaginationItem
+                v-if="item.type === 'page'"
+                :value="item.value"
+                :is-active="item.value === page"
+              >
+                {{ item.value }}
+              </PaginationItem>
+              <PaginationEllipsis v-else :index="index" />
+            </template>
+            <PaginationNext />
+          </PaginationContent>
+        </Pagination>
+      </div>
     </section>
 
-    <AppModal
-      v-model:show="editorVisible"
-      preset="card"
-      :mask-closable="false"
-      :closable="false"
-      :title="editingUserId ? t('编辑用户', 'Edit user') : t('增加用户', 'Add user')"
-      :style="{ width: 'min(640px, calc(100vw - 32px))' }"
-    >
-      <AppAlert v-if="editingUserId === null" type="warning" :bordered="false" class="user-editor-warning">
-        {{ t('账号一旦创建，不允许删除，只允许禁用，请谨慎操作。', 'Accounts cannot be deleted after creation. They can only be disabled, so proceed carefully.') }}
-      </AppAlert>
+    <Dialog v-model:open="editorVisible">
+      <DialogContent
+        :show-close-button="false"
+        class="max-h-[calc(100svh-2rem)] overflow-y-auto sm:max-w-2xl"
+      >
+        <form class="flex flex-col gap-5" @submit.prevent="saveUser">
+          <DialogHeader>
+            <DialogTitle>
+              {{ editingUserId ? t('编辑用户', 'Edit user') : t('增加用户', 'Add user') }}
+            </DialogTitle>
+            <DialogDescription>
+              {{ t('配置登录身份、管理权限和分层余额。', 'Configure sign-in identity, administrator access, and balance buckets.') }}
+            </DialogDescription>
+          </DialogHeader>
 
-      <AppForm label-placement="top" class="user-editor-form">
-        <FieldGroup>
-          <FieldGroup class="identity-fields">
-            <AppFormItem :label="t('用户昵称', 'User nickname')" required>
-              <AppInput
-                v-model:value="userNickname"
-                :placeholder="t('例如：研发用户', 'Example: Engineering user')"
-                @keyup.enter="saveUser"
-              />
-            </AppFormItem>
-            <AppFormItem :label="t('账号', 'Account')" required>
-              <AppInput
-                v-model:value="userAccount"
-                autocomplete="username"
-                :disabled="editingUserId !== null"
-                :placeholder="t('例如：user001', 'Example: user001')"
-                @keyup.enter="saveUser"
-              />
-            </AppFormItem>
-            <AppFormItem class="password-field" :label="t('密码', 'Password')" :required="editingUserId === null">
-              <AppInput
-                v-model:value="userPassword"
-                type="password"
-                show-password-on="mousedown"
-                autocomplete="new-password"
-                :placeholder="editingUserId ? t('留空不修改密码', 'Leave blank to keep the current password') : t('请输入登录密码', 'Enter a sign-in password')"
-                @keyup.enter="saveUser"
-              />
-            </AppFormItem>
+          <Alert v-if="editingUserId === null" class="user-editor-warning">
+            <AlertTriangle />
+            <AlertDescription>
+              {{ t('账号一旦创建，不允许删除，只允许禁用，请谨慎操作。', 'Accounts cannot be deleted after creation. They can only be disabled, so proceed carefully.') }}
+            </AlertDescription>
+          </Alert>
+
+          <FieldGroup class="user-editor-form">
+            <FieldGroup class="identity-fields">
+              <Field>
+                <FieldLabel for="user-nickname">{{ t('用户昵称', 'User nickname') }}</FieldLabel>
+                <Input
+                  id="user-nickname"
+                  v-model="userNickname"
+                  required
+                  :placeholder="t('例如：研发用户', 'Example: Engineering user')"
+                />
+              </Field>
+              <Field :data-disabled="editingUserId !== null || undefined">
+                <FieldLabel for="user-account">{{ t('账号', 'Account') }}</FieldLabel>
+                <Input
+                  id="user-account"
+                  v-model="userAccount"
+                  required
+                  autocomplete="username"
+                  :disabled="editingUserId !== null"
+                  :placeholder="t('例如：user001', 'Example: user001')"
+                />
+              </Field>
+              <Field class="password-field">
+                <FieldLabel for="user-password">{{ t('密码', 'Password') }}</FieldLabel>
+                <Input
+                  id="user-password"
+                  v-model="userPassword"
+                  type="password"
+                  :required="editingUserId === null"
+                  autocomplete="new-password"
+                  :placeholder="editingUserId ? t('留空不修改密码', 'Leave blank to keep the current password') : t('请输入登录密码', 'Enter a sign-in password')"
+                />
+                <FieldDescription v-if="editingUserId !== null">
+                  {{ t('留空时保留当前密码。', 'Leave blank to keep the current password.') }}
+                </FieldDescription>
+              </Field>
+            </FieldGroup>
+
+            <Field orientation="horizontal" class="switch-setting" :data-disabled="isEditingFirstUser || undefined">
+              <FieldContent>
+                <FieldLabel for="user-admin">{{ t('管理员权限', 'Administrator access') }}</FieldLabel>
+                <FieldDescription>
+                  {{ t('管理员可以管理用户、价格、上游和系统设置。', 'Administrators can manage users, prices, upstreams, and system settings.') }}
+                </FieldDescription>
+              </FieldContent>
+              <Switch id="user-admin" v-model="isUserAdmin" :disabled="isEditingFirstUser" />
+            </Field>
+
+            <FieldSet class="quota-fieldset">
+              <FieldLegend>{{ t('余额设置', 'Balance settings') }}</FieldLegend>
+              <FieldDescription>
+                {{ t('扣费顺序为每日、每周、每月、不限时。', 'Charges are deducted from daily, weekly, monthly, then lifetime balance.') }}
+              </FieldDescription>
+              <FieldGroup>
+                <Field orientation="horizontal" class="switch-setting">
+                  <FieldContent>
+                    <FieldLabel for="quota-unlimited">{{ t('不限制余额', 'Unlimited balance') }}</FieldLabel>
+                    <FieldDescription>
+                      {{ t('开启后不扣余额，也不会因余额暂停 API Key。', 'Balances are not deducted and API keys are not paused due to balance.') }}
+                    </FieldDescription>
+                  </FieldContent>
+                  <Switch id="quota-unlimited" v-model="quotaUnlimited" />
+                </Field>
+                <FieldGroup class="quota-editor-grid">
+                  <Field>
+                    <FieldLabel for="quota-daily">{{ t('每日余额 USD', 'Daily balance USD') }}</FieldLabel>
+                    <Input
+                      id="quota-daily"
+                      type="number"
+                      min="0"
+                      step="0.00000001"
+                      :model-value="quotaDailyUsd"
+                      :disabled="quotaUnlimited"
+                      @update:model-value="setQuotaDailyUsd"
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel for="quota-weekly">{{ t('每周余额 USD', 'Weekly balance USD') }}</FieldLabel>
+                    <Input
+                      id="quota-weekly"
+                      type="number"
+                      min="0"
+                      step="0.00000001"
+                      :model-value="quotaWeeklyUsd"
+                      :disabled="quotaUnlimited"
+                      @update:model-value="setQuotaWeeklyUsd"
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel for="quota-monthly">{{ t('每月余额 USD', 'Monthly balance USD') }}</FieldLabel>
+                    <Input
+                      id="quota-monthly"
+                      type="number"
+                      min="0"
+                      step="0.00000001"
+                      :model-value="quotaMonthlyUsd"
+                      :disabled="quotaUnlimited"
+                      @update:model-value="setQuotaMonthlyUsd"
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel for="quota-lifetime">{{ t('不限时余额 USD', 'Lifetime balance USD') }}</FieldLabel>
+                    <Input
+                      id="quota-lifetime"
+                      type="number"
+                      min="0"
+                      step="0.00000001"
+                      :model-value="quotaLifetimeUsd"
+                      :disabled="quotaUnlimited"
+                      @update:model-value="setQuotaLifetimeUsd"
+                    />
+                  </Field>
+                </FieldGroup>
+              </FieldGroup>
+            </FieldSet>
           </FieldGroup>
 
-          <Field orientation="horizontal" class="switch-setting" :data-disabled="isEditingFirstUser || undefined">
-            <FieldContent>
-              <FieldTitle>{{ t('管理员权限', 'Administrator access') }}</FieldTitle>
-              <FieldDescription>{{ t('管理员可以管理用户、价格、上游和系统设置。', 'Administrators can manage users, prices, upstreams, and system settings.') }}</FieldDescription>
-            </FieldContent>
-            <AppSwitch v-model:value="isUserAdmin" :disabled="isEditingFirstUser" />
-          </Field>
-
-          <FieldSet class="quota-fieldset">
-            <FieldLegend>{{ t('余额设置', 'Balance settings') }}</FieldLegend>
-            <FieldDescription>{{ t('扣费顺序为每日、每周、每月、不限时。', 'Charges are deducted from daily, weekly, monthly, then lifetime balance.') }}</FieldDescription>
-            <FieldGroup>
-              <Field orientation="horizontal" class="switch-setting">
-                <FieldContent>
-                  <FieldTitle>{{ t('不限制余额', 'Unlimited balance') }}</FieldTitle>
-                  <FieldDescription>{{ t('开启后不扣余额，也不会因余额暂停 API Key。', 'Balances are not deducted and API keys are not paused due to balance.') }}</FieldDescription>
-                </FieldContent>
-                <AppSwitch v-model:value="quotaUnlimited" />
-              </Field>
-              <FieldGroup class="quota-editor-grid">
-                <AppFormItem :label="t('每日余额 USD', 'Daily balance USD')">
-                  <AppNumberInput :value="quotaDailyUsd" :disabled="quotaUnlimited" :min="0" :precision="8" placeholder="0" @update:value="setQuotaDailyUsd" />
-                </AppFormItem>
-                <AppFormItem :label="t('每周余额 USD', 'Weekly balance USD')">
-                  <AppNumberInput :value="quotaWeeklyUsd" :disabled="quotaUnlimited" :min="0" :precision="8" placeholder="0" @update:value="setQuotaWeeklyUsd" />
-                </AppFormItem>
-                <AppFormItem :label="t('每月余额 USD', 'Monthly balance USD')">
-                  <AppNumberInput :value="quotaMonthlyUsd" :disabled="quotaUnlimited" :min="0" :precision="8" placeholder="0" @update:value="setQuotaMonthlyUsd" />
-                </AppFormItem>
-                <AppFormItem :label="t('不限时余额 USD', 'Lifetime balance USD')">
-                  <AppNumberInput :value="quotaLifetimeUsd" :disabled="quotaUnlimited" :min="0" :precision="8" placeholder="0" @update:value="setQuotaLifetimeUsd" />
-                </AppFormItem>
-              </FieldGroup>
-            </FieldGroup>
-          </FieldSet>
-
-          <div class="user-editor-actions">
-            <AppButton secondary @click="editorVisible = false">{{ t('取消', 'Cancel') }}</AppButton>
-            <AppButton type="primary" :loading="isSavingUser" @click="saveUser">
+          <DialogFooter>
+            <Button type="button" variant="outline" :disabled="isSavingUser" @click="editorVisible = false">
+              {{ t('取消', 'Cancel') }}
+            </Button>
+            <Button type="submit" :disabled="isSavingUser">
+              <Spinner v-if="isSavingUser" data-icon="inline-start" />
               {{ editingUserId ? t('保存', 'Save') : t('创建', 'Create') }}
-            </AppButton>
-          </div>
-        </FieldGroup>
-      </AppForm>
-    </AppModal>
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   </section>
 </template>
 
@@ -671,14 +766,38 @@ onMounted(refresh)
   grid-template-columns: repeat(4, minmax(150px, 1fr));
 }
 
-.user-editor-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
+.user-metric-card {
+  min-width: 0;
 }
 
-.user-editor-warning {
-  margin-bottom: 16px;
+.user-metric-card :deep([data-slot="card-header"]) {
+  padding-bottom: 10px;
+}
+
+.user-metric-card :deep([data-slot="card-content"]) {
+  padding-top: 0;
+}
+
+.user-table-panel {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.user-table {
+  min-width: 0;
+  overflow: auto;
+}
+
+.user-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  color: var(--muted-foreground);
+  font-size: 12px;
 }
 
 .identity-fields,
@@ -695,119 +814,61 @@ onMounted(refresh)
 .switch-setting {
   gap: 20px;
   padding: 14px 16px;
-  border: 1px solid var(--cpa-border);
-  border-radius: var(--cpa-radius);
-  background: var(--cpa-surface-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: color-mix(in oklch, var(--muted) 45%, transparent);
 }
 
 .quota-fieldset {
   padding: 16px;
-  border: 1px solid var(--cpa-border);
-  border-radius: var(--cpa-radius);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
 }
 
-:global(.row-actions-trigger) {
+.row-actions-trigger {
   margin-left: auto;
-  color: var(--cpa-text-muted);
+  color: var(--muted-foreground);
 }
 
-:global(.metric-stack) {
+.metric-stack {
   display: grid;
-  gap: 2px;
+  gap: 3px;
   min-width: 0;
   line-height: 1.28;
 }
 
-:global(.quota-balance-stack) {
-  gap: 3px;
-}
-
-:global(.quota-balance-row) {
-  display: inline-flex;
-  align-items: center;
-  min-width: 0;
-  width: fit-content;
-  max-width: 100%;
-  padding: 2px 7px;
-  overflow: hidden;
-  border-radius: var(--cpa-radius-sm);
-  font-size: 12px;
-  line-height: 1.35;
-  white-space: nowrap;
-}
-
-:global(.quota-balance-row.is-monthly.is-normal) {
-  background: var(--cpa-success-weak);
-  color: var(--cpa-success);
-}
-
-:global(.metric-stack.is-compact) {
+.metric-stack.is-compact {
   align-items: start;
 }
 
-:global(.user-status-badge) {
-  width: fit-content;
+.quota-balance-stack {
+  gap: 4px;
 }
 
-:global(.quota-balance-row.is-weekly.is-normal) {
-  background: var(--cpa-accent-blue-weak);
-  color: var(--cpa-accent-blue);
-}
-
-:global(.quota-balance-row.is-daily.is-normal) {
-  background: var(--cpa-accent-orange-weak);
-  color: var(--cpa-accent-orange);
-}
-
-:global(.quota-balance-row.is-lifetime.is-normal) {
-  background: var(--cpa-accent-purple-weak);
-  color: var(--cpa-accent-purple);
-}
-
-:global(.quota-balance-row.is-unlimited) {
-  background: var(--cpa-primary-wash);
-  color: var(--cpa-primary);
-}
-
-:global(.quota-balance-row.is-error) {
-  background: var(--cpa-danger-weak);
-  color: var(--cpa-danger);
-}
-
-:global(.quota-balance-label),
-:global(.quota-balance-value) {
+.quota-balance-row {
+  width: 100%;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  justify-content: space-between;
 }
 
-:global(.quota-balance-label) {
-  flex: 0 0 auto;
+.metric-primary {
   font-weight: 600;
 }
 
-:global(.quota-balance-value) {
-  font-weight: 760;
-}
-
-:global(.metric-primary) {
-  font-weight: 600;
-}
-
-:global(.metric-muted) {
+.metric-muted {
   min-width: 0;
   overflow: hidden;
-  color: var(--cpa-muted);
+  color: var(--muted-foreground);
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-:global(.metric-muted.is-error) {
-  color: var(--cpa-danger);
+.metric-muted.is-error {
+  color: var(--destructive);
 }
 
-:global(.model-value) {
+.model-value {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -821,20 +882,18 @@ onMounted(refresh)
 }
 
 @media (max-width: 560px) {
-  .user-metrics {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .quota-editor-grid {
-    grid-template-columns: 1fr;
-  }
-
+  .quota-editor-grid,
   .identity-fields {
     grid-template-columns: 1fr;
   }
 
   .password-field {
     grid-column: auto;
+  }
+
+  .user-pagination {
+    justify-content: flex-start;
+    overflow-x: auto;
   }
 }
 </style>

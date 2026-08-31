@@ -1,25 +1,26 @@
 <script setup lang="ts">
-import type { Component, CSSProperties } from 'vue'
-import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import type { Component } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
-import {
-  AppAlert,
-  AppButton,
-  AppDataTable,
-  AppForm,
-  AppFormItem,
-  AppIcon,
-  AppInput,
-  AppNumberInput,
-  AppModal,
-  AppSelect,
-  AppStack,
-  AppSwitch,
-  AppBadge,
-  type DataTableColumns,
-} from '@/shared/ui/app-kit'
 import { useConfirmDialog } from '@/shared/ui/confirm-dialog'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,6 +30,48 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from '@/components/ui/field'
+import { Input } from '@/components/ui/input'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from '@/components/ui/input-group'
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/components/ui/pagination'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Spinner } from '@/components/ui/spinner'
+import { Switch } from '@/components/ui/switch'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableEmpty,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import {
+  CircleAlert,
   Database,
   Layers3,
   ListFilter,
@@ -40,6 +83,7 @@ import {
   Server,
   Settings2,
   Trash2,
+  X,
 } from '@lucide/vue'
 
 import {
@@ -60,10 +104,6 @@ import type {
 } from '@/shared/types/api'
 import { formatDateTime, formatInteger } from '@/shared/utils/format'
 import { useI18n } from '@/shared/i18n'
-
-type PriceTableLayoutProps =
-  | { flexHeight: true }
-  | { flexHeight: false; maxHeight: string }
 
 type PriceRowStatus = 'missing' | 'litellm' | 'manual'
 type PriceStatusFilter = 'cpa' | 'missing' | 'litellm' | 'manual' | 'library'
@@ -90,12 +130,6 @@ interface PriceDisplayRow {
   status: PriceRowStatus
 }
 
-const PRICE_TABLE_FALLBACK_MAX_HEIGHT = 'max(240px, calc(100dvh - 360px))'
-const priceModalStyle: CSSProperties = { width: 'min(640px, calc(100vw - 32px))' }
-const proxyModalStyle: CSSProperties = { width: 'min(460px, calc(100vw - 32px))' }
-const proxyModalContentStyle: CSSProperties = { padding: '16px 22px 4px' }
-const proxyModalFooterStyle: CSSProperties = { padding: '12px 22px 18px' }
-const desktopPriceLayoutQuery = window.matchMedia('(min-width: 861px)')
 const message = toast
 const dialog = useConfirmDialog()
 const { errorText, serverText, t } = useI18n()
@@ -112,12 +146,8 @@ const catalog = ref<ModelPriceCatalogResponse | null>(null)
 const selectedProvider = ref<string | null>(null)
 const selectedStatus = ref<PriceStatusFilter | null>(null)
 const searchQuery = ref('')
-const isDesktopPriceLayout = ref(desktopPriceLayoutQuery.matches)
-const pagination = reactive({
-  page: 1,
-  pageSize: 20,
-  onUpdatePage: updatePricePage,
-})
+const page = ref(1)
+const pageSize = 20
 const form = reactive<ModelPricePayload>({
   provider: '',
   model: '',
@@ -210,16 +240,31 @@ const filteredPrices = computed(() => {
   })
 })
 
-watch([selectedProvider, selectedStatus, searchQuery], () => {
-  pagination.page = 1
+const pagedPrices = computed(() => {
+  const start = (page.value - 1) * pageSize
+  return filteredPrices.value.slice(start, start + pageSize)
 })
 
-function renderSearchIcon() {
-  return h(AppIcon, { component: Search })
+const selectedStatusLabel = computed(() =>
+  statusOptions.value.find((option) => option.value === selectedStatus.value)?.label ?? null,
+)
+
+watch([selectedProvider, selectedStatus, searchQuery], () => {
+  page.value = 1
+})
+
+function updatePricePage(value: number) {
+  page.value = value
 }
 
-function updatePricePage(page: number) {
-  pagination.page = page
+function handleProviderFilterChange(value: unknown) {
+  selectedProvider.value = typeof value === 'string' ? value : null
+}
+
+function handleStatusFilterChange(value: unknown) {
+  selectedStatus.value = statusOptions.value.some((option) => option.value === value)
+    ? value as PriceStatusFilter
+    : null
 }
 
 function normalizePriceSearch(value: string) {
@@ -306,11 +351,6 @@ const catalogNotice = computed(() => {
   }
   return ''
 })
-const priceTableLayoutProps = computed<PriceTableLayoutProps>(() =>
-  isDesktopPriceLayout.value
-    ? { flexHeight: true }
-    : { flexHeight: false, maxHeight: PRICE_TABLE_FALLBACK_MAX_HEIGHT },
-)
 const isRequestPriceForm = computed(() => billingUnitForModel(form.model) === 'request')
 const priceSaveHint = computed(() =>
   isRequestPriceForm.value
@@ -329,7 +369,6 @@ interface PriceMetricCard {
   label: string
   value: string
   footnote: string
-  tone: 'primary' | 'blue' | 'purple' | 'orange'
   icon: Component
 }
 
@@ -344,7 +383,6 @@ const priceMetrics = computed<PriceMetricCard[]>(() => [
           `Queryable keys ${formatInteger(catalog.value.queryable_api_key_count)} / ${formatInteger(catalog.value.api_key_count)}`,
         )
       : t('等待刷新', 'Waiting for refresh'),
-    tone: 'primary',
     icon: Layers3,
   },
   {
@@ -355,7 +393,6 @@ const priceMetrics = computed<PriceMetricCard[]>(() => [
       `筛选后 ${formatInteger(filteredPriceCount.value)} / ${formatInteger(totalPriceCount.value)}`,
       `Filtered ${formatInteger(filteredPriceCount.value)} / ${formatInteger(totalPriceCount.value)}`,
     ),
-    tone: 'blue',
     icon: Server,
   },
   {
@@ -363,7 +400,6 @@ const priceMetrics = computed<PriceMetricCard[]>(() => [
     label: t('LiteLLM 同步', 'LiteLLM sync'),
     value: formatInteger(syncedPriceCount.value),
     footnote: t('自动维护', 'Auto maintained'),
-    tone: 'purple',
     icon: RefreshCw,
   },
   {
@@ -371,7 +407,6 @@ const priceMetrics = computed<PriceMetricCard[]>(() => [
     label: t('手动价格', 'Manual prices'),
     value: formatInteger(manualPriceCount.value),
     footnote: t('优先保留', 'Preserved first'),
-    tone: 'orange',
     icon: Database,
   },
 ])
@@ -408,6 +443,8 @@ async function refresh() {
     const [nextPrices, nextCatalog] = await Promise.all([listModelPrices(), listModelPriceCatalog()])
     prices.value = nextPrices
     catalog.value = nextCatalog
+    const lastPage = Math.max(1, Math.ceil(filteredPrices.value.length / pageSize))
+    page.value = Math.min(page.value, lastPage)
   } catch (error) {
     message.error(errorText(error, '加载模型价格失败', 'Failed to load model prices'))
   } finally {
@@ -446,6 +483,22 @@ function openEdit(row: ModelPrice) {
   form.request_usd = row.request_usd
   form.fast_multiplier = row.fast_multiplier
   modalOpen.value = true
+}
+
+function normalizeNumberInput(value: string | number, fallback = 0): number {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : fallback
+}
+
+function setPriceNumber(
+  field: PriceFieldName | 'fast_multiplier',
+  value: string | number,
+) {
+  form[field] = normalizeNumberInput(value)
+}
+
+function setRequestPrice(value: string | number) {
+  form.request_usd = value === '' ? null : normalizeNumberInput(value)
 }
 
 async function savePrice() {
@@ -561,469 +614,511 @@ function confirmDelete(row: ModelPrice) {
   })
 }
 
-function handleDesktopPriceLayoutChange(event: MediaQueryListEvent) {
-  isDesktopPriceLayout.value = event.matches
-}
-
-function rowKey(row: PriceDisplayRow) {
-  return row.key
-}
-
-function formatPriceValue(value: number | null | undefined) {
+function formatPriceValue(value: number | null | undefined): string {
   return typeof value === 'number' ? String(value) : '-'
 }
 
-function renderBillingUnitCell(row: PriceDisplayRow) {
-  const isRequest = row.billing_unit === 'request'
-  return h(
-    AppBadge,
-    { size: 'small', type: isRequest ? 'success' : 'info', bordered: false },
-    { default: () => (isRequest ? t('按次', 'Per call') : t('按 Token', 'Per token')) },
-  )
+function tokenPriceValue(row: PriceDisplayRow, field: PriceFieldName): string {
+  return row.billing_unit === 'request' ? '-' : formatPriceValue(row.price?.[field])
 }
 
-function renderTokenPriceValue(row: PriceDisplayRow, field: PriceFieldName) {
-  if (row.billing_unit === 'request') {
-    return h('span', { class: 'price-muted' }, '-')
-  }
-  return formatPriceValue(row.price?.[field])
-}
-
-function renderRequestPriceValue(row: PriceDisplayRow) {
+function requestPriceValue(row: PriceDisplayRow): string {
   if (row.billing_unit !== 'request') {
-    return h('span', { class: 'price-muted' }, '-')
+    return '-'
   }
-  if (row.price?.request_usd === null || row.price?.request_usd === undefined) {
-    return h('span', { class: 'price-muted' }, t('未定价', 'Unpriced'))
-  }
-  return formatPriceValue(row.price.request_usd)
+  return row.price?.request_usd === null || row.price?.request_usd === undefined
+    ? t('未定价', 'Unpriced')
+    : formatPriceValue(row.price.request_usd)
 }
 
-function renderFastMultiplier(row: PriceDisplayRow) {
+function fastMultiplierValue(row: PriceDisplayRow): string {
   return row.price ? `×${row.price.fast_multiplier}` : '-'
 }
 
-function renderModelCell(row: PriceDisplayRow) {
-  return h('div', { class: 'model-cell' }, [
-    h('div', { class: 'model-title-row' }, [
-      h('span', { class: 'model-name' }, row.id),
-      row.in_cpa
-        ? h(
-            AppBadge,
-            {
-              class: 'model-availability-tag',
-              size: 'small',
-              type: 'success',
-              bordered: false,
-              style: { marginLeft: '16px' },
-            },
-            { default: () => t('CPA 可用模型', 'CPA available model') },
-          )
-        : null,
-    ]),
-    row.name && row.name !== row.id ? h('div', { class: 'model-sub' }, row.name) : null,
-  ])
+function billingUnitLabel(row: PriceDisplayRow): string {
+  return row.billing_unit === 'request' ? t('按次', 'Per call') : t('按 Token', 'Per token')
 }
 
-function renderProviderCell(row: PriceDisplayRow) {
-  return h('div', { class: 'provider-cell' }, [
-    h('div', { class: 'provider-main' }, row.provider || '-'),
-    row.owner && row.owner !== row.provider
-      ? h('div', { class: 'model-sub' }, t('所有者', 'Owner') + `: ${row.owner}`)
-      : null,
-  ])
+function billingUnitVariant(row: PriceDisplayRow): 'secondary' | 'outline' {
+  return row.billing_unit === 'request' ? 'secondary' : 'outline'
 }
 
-function renderStatusCell(row: PriceDisplayRow) {
-  const label = row.status === 'missing' ? t('未定价', 'Unpriced') : row.status === 'litellm' ? 'LiteLLM' : t('手动', 'Manual')
-  const type = row.status === 'missing' ? 'warning' : row.status === 'litellm' ? 'info' : 'default'
-  return h(
-    AppBadge,
-    { size: 'small', type, bordered: false },
-    { default: () => label },
-  )
+function priceStatusLabel(row: PriceDisplayRow): string {
+  if (row.status === 'missing') {
+    return t('未定价', 'Unpriced')
+  }
+  return row.status === 'litellm' ? 'LiteLLM' : t('手动', 'Manual')
 }
 
-const columns = computed<DataTableColumns<PriceDisplayRow>>(() => [
-  {
-    title: t('模型', 'Model'),
-    key: 'id',
-    width: 300,
-    ellipsis: { tooltip: true },
-    render: renderModelCell,
-  },
-  {
-    title: t('服务商', 'Provider'),
-    key: 'provider',
-    width: 130,
-    ellipsis: { tooltip: true },
-    render: renderProviderCell,
-  },
-  {
-    title: t('定价', 'Pricing'),
-    key: 'status',
-    width: 90,
-    render: renderStatusCell,
-  },
-  {
-    title: t('计费方式', 'Billing'),
-    key: 'billing_unit',
-    width: 100,
-    render: renderBillingUnitCell,
-  },
-  {
-    title: t('FAST 倍率', 'FAST multiplier'),
-    key: 'fast_multiplier',
-    width: 100,
-    render: renderFastMultiplier,
-  },
-  {
-    title: t('每次 ($)', 'Per call ($)'),
-    key: 'request_usd',
-    width: 100,
-    render: renderRequestPriceValue,
-  },
-  {
-    title: t('输入 ($/MTok)', 'Input ($/MTok)'),
-    key: 'input_usd_per_million',
-    width: 110,
-    render: (row) => renderTokenPriceValue(row, 'input_usd_per_million'),
-  },
-  {
-    title: t('输出 ($/MTok)', 'Output ($/MTok)'),
-    key: 'output_usd_per_million',
-    width: 110,
-    render: (row) => renderTokenPriceValue(row, 'output_usd_per_million'),
-  },
-  {
-    title: t('缓存读 ($/MTok)', 'Cache read ($/MTok)'),
-    key: 'cache_read_usd_per_million',
-    width: 120,
-    render: (row) => renderTokenPriceValue(row, 'cache_read_usd_per_million'),
-  },
-  {
-    title: t('缓存写 ($/MTok)', 'Cache write ($/MTok)'),
-    key: 'cache_creation_usd_per_million',
-    width: 120,
-    render: (row) => renderTokenPriceValue(row, 'cache_creation_usd_per_million'),
-  },
-  {
-    title: t('更新', 'Updated'),
-    key: 'updated_at',
-    width: 120,
-    render: (row) => (row.price ? formatDateTime(row.price.updated_at) : '-'),
-  },
-  {
-    title: '',
-    key: 'actions',
-    width: 56,
-    align: 'right',
-    fixed: 'right',
-    render: (row) =>
-      h(
-        DropdownMenu,
-        {},
-        {
-          default: () => [
-            h(
-              DropdownMenuTrigger,
-              { asChild: true },
-              {
-                default: () =>
-                  h(
-                    Button,
-                    {
-                      variant: 'ghost',
-                      size: 'icon-sm',
-                      class: 'price-actions-trigger',
-                      'aria-label': t(`打开 ${row.id} 的操作菜单`, `Open actions for ${row.id}`),
-                    },
-                    { default: () => h(MoreHorizontal) },
-                  ),
-              },
-            ),
-            h(
-              DropdownMenuContent,
-              { align: 'end', sideOffset: 4, class: 'w-40' },
-              {
-                default: () => [
-                  h(
-                    DropdownMenuGroup,
-                    {},
-                    {
-                      default: () =>
-                        h(
-                          DropdownMenuItem,
-                          { onSelect: () => (row.price ? openEdit(row.price) : openCreateForRow(row)) },
-                          {
-                            default: () => [
-                              h(row.price ? Pencil : Plus),
-                              h('span', row.price ? t('改价', 'Edit price') : t('设价', 'Set price')),
-                            ],
-                          },
-                        ),
-                    },
-                  ),
-                  row.price ? h(DropdownMenuSeparator) : null,
-                  row.price
-                    ? h(
-                        DropdownMenuItem,
-                        { variant: 'destructive', onSelect: () => confirmDelete(row.price as ModelPrice) },
-                        { default: () => [h(Trash2), h('span', t('删除', 'Delete'))] },
-                      )
-                    : null,
-                ],
-              },
-            ),
-          ],
-        },
-      ),
-  },
-])
+function priceStatusVariant(row: PriceDisplayRow): 'destructive' | 'secondary' | 'outline' {
+  if (row.status === 'missing') {
+    return 'destructive'
+  }
+  return row.status === 'litellm' ? 'secondary' : 'outline'
+}
 
 onMounted(() => {
-  desktopPriceLayoutQuery.addEventListener('change', handleDesktopPriceLayoutChange)
   void refresh()
 })
 
-onBeforeUnmount(() => {
-  desktopPriceLayoutQuery.removeEventListener('change', handleDesktopPriceLayoutChange)
-})
 </script>
 
 <template>
   <section class="page price-page">
     <div class="page-toolbar">
       <h1 data-page-title class="page-title">{{ t('模型价格', 'Model prices') }}</h1>
-      <AppStack>
-        <AppButton secondary :loading="isSyncing" @click="syncPrices">
-          <template #icon>
-            <AppIcon :component="RefreshCw" />
-          </template>
+      <div class="flex flex-wrap items-center justify-end gap-2">
+        <Button variant="outline" :disabled="isSyncing" @click="syncPrices">
+          <Spinner v-if="isSyncing" data-icon="inline-start" />
+          <RefreshCw v-else data-icon="inline-start" />
           {{ t('同步 LiteLLM', 'Sync LiteLLM') }}
-        </AppButton>
-        <AppButton secondary :disabled="isSyncing" @click="openProxySettings">
-          <template #icon>
-            <AppIcon :component="Settings2" />
-          </template>
+        </Button>
+        <Button variant="outline" :disabled="isSyncing" @click="openProxySettings">
+          <Settings2 data-icon="inline-start" />
           {{ t('代理配置', 'Proxy settings') }}
-        </AppButton>
-        <AppButton type="primary" @click="() => openCreate()">{{ t('新增价格', 'Add price') }}</AppButton>
-      </AppStack>
+        </Button>
+        <Button @click="openCreate()">
+          <Plus data-icon="inline-start" />
+          {{ t('新增价格', 'Add price') }}
+        </Button>
+      </div>
     </div>
 
     <div class="metric-grid price-metrics">
-      <div v-for="metric in priceMetrics" :key="metric.key" class="metric-card" :class="`is-${metric.tone}`">
-        <div class="metric-icon" aria-hidden="true">
-          <component :is="metric.icon" :size="20" :stroke-width="2.2" />
-        </div>
-        <div class="metric-label">{{ metric.label }}</div>
-        <div class="metric-value">{{ metric.value }}</div>
-        <div class="metric-footnote">{{ metric.footnote }}</div>
-      </div>
+      <Card v-for="metric in priceMetrics" :key="metric.key" class="price-metric-card">
+        <CardHeader class="flex flex-row items-start justify-between gap-3">
+          <div class="flex min-w-0 flex-col gap-1">
+            <CardDescription>{{ metric.label }}</CardDescription>
+            <CardTitle class="text-2xl tabular-nums">{{ metric.value }}</CardTitle>
+          </div>
+          <div class="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary" aria-hidden="true">
+            <component :is="metric.icon" class="size-5" />
+          </div>
+        </CardHeader>
+        <CardContent class="text-xs text-muted-foreground">
+          {{ metric.footnote }}
+        </CardContent>
+      </Card>
     </div>
 
     <section class="panel table-panel price-table-panel">
       <div class="price-table-top">
-        <AppAlert v-if="catalogNotice" class="price-alert" type="warning" :show-icon="false">
-          {{ catalogNotice }}
-        </AppAlert>
+        <Alert v-if="catalogNotice" class="price-alert">
+          <CircleAlert />
+          <AlertDescription>{{ catalogNotice }}</AlertDescription>
+        </Alert>
+
         <div class="table-toolbar">
-          <AppStack class="price-toolbar-layout" justify="space-between" align="center">
-            <AppStack class="price-filters" align="center" :size="8">
-              <span class="filter-label">{{ t('服务商', 'Provider') }}</span>
-              <AppSelect
-                v-model:value="selectedProvider"
-                class="provider-filter"
-                :icon="Server"
-                :options="providerOptions"
-                clearable
-                filterable
-                :placeholder="t('全部服务商', 'All providers')"
-              />
-              <AppSelect
-                v-model:value="selectedStatus"
-                class="status-filter"
-                :icon="ListFilter"
-                :options="statusOptions"
-                clearable
-                :placeholder="t('全部状态', 'All statuses')"
-              />
-              <AppInput
-                v-model:value="searchQuery"
-                class="price-search"
-                clearable
-                :placeholder="t('搜索模型或服务商', 'Search models or providers')"
-                :render-prefix="renderSearchIcon"
-              />
-            </AppStack>
+          <div class="price-toolbar-layout">
+            <div class="price-filters">
+              <span class="filter-label">{{ t('筛选', 'Filters') }}</span>
+
+              <div class="filter-control">
+                <Select :model-value="selectedProvider ?? undefined" @update:model-value="handleProviderFilterChange">
+                  <SelectTrigger
+                    class="provider-filter"
+                    :aria-label="selectedProvider || t('全部服务商', 'All providers')"
+                  >
+                    <Server />
+                    <SelectValue :placeholder="t('全部服务商', 'All providers')" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectItem
+                        v-for="option in providerOptions"
+                        :key="option.value"
+                        :value="option.value"
+                      >
+                        {{ option.label }}
+                      </SelectItem>
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+                <Button
+                  v-if="selectedProvider"
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Clear selection"
+                  @click="selectedProvider = null"
+                >
+                  <X />
+                </Button>
+              </div>
+
+              <div class="filter-control">
+                <Select :model-value="selectedStatus ?? undefined" @update:model-value="handleStatusFilterChange">
+                  <SelectTrigger
+                    class="status-filter"
+                    :aria-label="selectedStatusLabel || t('全部状态', 'All statuses')"
+                  >
+                    <ListFilter />
+                    <SelectValue :placeholder="t('全部状态', 'All statuses')" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectItem
+                        v-for="option in statusOptions"
+                        :key="option.value"
+                        :value="option.value"
+                      >
+                        {{ option.label }}
+                      </SelectItem>
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+                <Button
+                  v-if="selectedStatus"
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Clear selection"
+                  @click="selectedStatus = null"
+                >
+                  <X />
+                </Button>
+              </div>
+
+              <InputGroup class="price-search">
+                <InputGroupAddon>
+                  <Search />
+                </InputGroupAddon>
+                <InputGroupInput
+                  v-model="searchQuery"
+                  :placeholder="t('搜索模型或服务商', 'Search models or providers')"
+                />
+              </InputGroup>
+            </div>
+
             <span class="result-count">
               {{ t(`共 ${filteredPriceCount} / ${totalPriceCount} 条`, `${filteredPriceCount} / ${totalPriceCount} items`) }}
             </span>
-          </AppStack>
+          </div>
         </div>
       </div>
-      <AppDataTable
-        class="price-table"
-        v-bind="priceTableLayoutProps"
-        size="small"
-        :loading="isLoading"
-        :columns="columns"
-        :data="filteredPrices"
-        :pagination="pagination"
-        :row-key="rowKey"
-        :scroll-x="1456"
-        table-layout="fixed"
-      />
+
+      <div class="price-table">
+        <Table class="min-w-[1456px] table-fixed">
+          <TableHeader class="sticky top-0 bg-card">
+            <TableRow>
+              <TableHead class="w-[300px]">{{ t('模型', 'Model') }}</TableHead>
+              <TableHead class="w-[130px]">{{ t('服务商', 'Provider') }}</TableHead>
+              <TableHead class="w-[90px]">{{ t('定价', 'Pricing') }}</TableHead>
+              <TableHead class="w-[100px]">{{ t('计费方式', 'Billing') }}</TableHead>
+              <TableHead class="w-[100px] text-right">{{ t('FAST 倍率', 'FAST multiplier') }}</TableHead>
+              <TableHead class="w-[100px] text-right">{{ t('每次 ($)', 'Per call ($)') }}</TableHead>
+              <TableHead class="w-[110px] text-right">{{ t('输入 ($/MTok)', 'Input ($/MTok)') }}</TableHead>
+              <TableHead class="w-[110px] text-right">{{ t('输出 ($/MTok)', 'Output ($/MTok)') }}</TableHead>
+              <TableHead class="w-[120px] text-right">{{ t('缓存读 ($/MTok)', 'Cache read ($/MTok)') }}</TableHead>
+              <TableHead class="w-[120px] text-right">{{ t('缓存写 ($/MTok)', 'Cache write ($/MTok)') }}</TableHead>
+              <TableHead class="w-[120px]">{{ t('更新', 'Updated') }}</TableHead>
+              <TableHead class="w-[56px]">
+                <span class="sr-only">{{ t('操作', 'Actions') }}</span>
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <template v-if="isLoading && filteredPrices.length === 0">
+              <TableRow v-for="rowIndex in 8" :key="`price-skeleton-${rowIndex}`">
+                <TableCell v-for="columnIndex in 12" :key="columnIndex">
+                  <Skeleton class="h-4 w-full" />
+                </TableCell>
+              </TableRow>
+            </template>
+
+            <TableEmpty v-else-if="filteredPrices.length === 0" :colspan="12">
+              {{ t('暂无模型价格', 'No model prices') }}
+            </TableEmpty>
+
+            <TableRow v-for="row in pagedPrices" v-else :key="row.key">
+              <TableCell>
+                <div class="model-cell">
+                  <div class="model-title-row">
+                    <span class="model-name" :title="row.id">{{ row.id }}</span>
+                    <Badge v-if="row.in_cpa" variant="secondary" class="model-availability-tag">
+                      {{ t('CPA 可用模型', 'CPA available model') }}
+                    </Badge>
+                  </div>
+                  <div v-if="row.name && row.name !== row.id" class="model-sub" :title="row.name">
+                    {{ row.name }}
+                  </div>
+                </div>
+              </TableCell>
+              <TableCell>
+                <div class="provider-cell">
+                  <div class="provider-main" :title="row.provider || '-'">{{ row.provider || '-' }}</div>
+                  <div v-if="row.owner && row.owner !== row.provider" class="model-sub">
+                    {{ t('所有者', 'Owner') }}: {{ row.owner }}
+                  </div>
+                </div>
+              </TableCell>
+              <TableCell>
+                <Badge :variant="priceStatusVariant(row)">{{ priceStatusLabel(row) }}</Badge>
+              </TableCell>
+              <TableCell>
+                <Badge :variant="billingUnitVariant(row)">{{ billingUnitLabel(row) }}</Badge>
+              </TableCell>
+              <TableCell class="text-right tabular-nums">{{ fastMultiplierValue(row) }}</TableCell>
+              <TableCell class="text-right tabular-nums">{{ requestPriceValue(row) }}</TableCell>
+              <TableCell class="text-right tabular-nums">
+                {{ tokenPriceValue(row, 'input_usd_per_million') }}
+              </TableCell>
+              <TableCell class="text-right tabular-nums">
+                {{ tokenPriceValue(row, 'output_usd_per_million') }}
+              </TableCell>
+              <TableCell class="text-right tabular-nums">
+                {{ tokenPriceValue(row, 'cache_read_usd_per_million') }}
+              </TableCell>
+              <TableCell class="text-right tabular-nums">
+                {{ tokenPriceValue(row, 'cache_creation_usd_per_million') }}
+              </TableCell>
+              <TableCell class="tabular-nums">
+                {{ row.price ? formatDateTime(row.price.updated_at) : '-' }}
+              </TableCell>
+              <TableCell class="text-right">
+                <DropdownMenu>
+                  <DropdownMenuTrigger as-child>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      class="price-actions-trigger"
+                      :aria-label="t(`打开 ${row.id} 的操作菜单`, `Open actions for ${row.id}`)"
+                    >
+                      <MoreHorizontal />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" :side-offset="4" class="w-40">
+                    <DropdownMenuGroup>
+                      <DropdownMenuItem @select="row.price ? openEdit(row.price) : openCreateForRow(row)">
+                        <Pencil v-if="row.price" />
+                        <Plus v-else />
+                        <span>{{ row.price ? t('改价', 'Edit price') : t('设价', 'Set price') }}</span>
+                      </DropdownMenuItem>
+                    </DropdownMenuGroup>
+                    <template v-if="row.price">
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        variant="destructive"
+                        @select="confirmDelete(row.price)"
+                      >
+                        <Trash2 />
+                        <span>{{ t('删除', 'Delete') }}</span>
+                      </DropdownMenuItem>
+                    </template>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+
+        <div v-if="isLoading && filteredPrices.length > 0" class="table-loading-overlay">
+          <Spinner />
+        </div>
+      </div>
+
+      <div class="price-pagination">
+        <span>
+          {{ t(`共 ${filteredPriceCount} 条`, `${filteredPriceCount} items total`) }}
+        </span>
+        <Pagination
+          v-if="filteredPriceCount > pageSize"
+          :page="page"
+          :items-per-page="pageSize"
+          :total="filteredPriceCount"
+          :sibling-count="1"
+          @update:page="updatePricePage"
+        >
+          <PaginationContent v-slot="{ items }">
+            <PaginationPrevious />
+            <template v-for="(item, index) in items" :key="index">
+              <PaginationItem
+                v-if="item.type === 'page'"
+                :value="item.value"
+                :is-active="item.value === page"
+              >
+                {{ item.value }}
+              </PaginationItem>
+              <PaginationEllipsis v-else :index="index" />
+            </template>
+            <PaginationNext />
+          </PaginationContent>
+        </Pagination>
+      </div>
     </section>
 
-    <AppModal
-      v-model:show="modalOpen"
-      preset="card"
-      :title="editingId === null ? t('新增价格', 'Add price') : t('编辑价格', 'Edit price')"
-      :style="priceModalStyle"
-      class="price-modal"
-    >
-      <AppForm :model="form" label-placement="top">
-        <div class="form-grid">
-          <AppFormItem :label="t('服务商', 'Provider')">
-            <AppInput v-model:value="form.provider" />
-          </AppFormItem>
-          <AppFormItem :label="t('模型', 'Model')">
-            <AppInput v-model:value="form.model" />
-          </AppFormItem>
-          <AppFormItem :label="t('FAST 倍率', 'FAST multiplier')" class="wide-form-item">
-            <AppNumberInput v-model:value="form.fast_multiplier" :min="0.01" :step="0.1" />
-          </AppFormItem>
-          <AppFormItem v-if="isRequestPriceForm" :label="t('每次调用价格 USD', 'Per-call price USD')" class="wide-form-item">
-            <AppNumberInput v-model:value="form.request_usd" :min="0" :placeholder="t('例如：0.04', 'Example: 0.04')" />
-          </AppFormItem>
-          <template v-else>
-            <AppFormItem :label="t('输入价格', 'Input price')">
-              <AppNumberInput v-model:value="form.input_usd_per_million" :min="0" />
-            </AppFormItem>
-            <AppFormItem :label="t('输出价格', 'Output price')">
-              <AppNumberInput v-model:value="form.output_usd_per_million" :min="0" />
-            </AppFormItem>
-            <AppFormItem :label="t('缓存读价格', 'Cache read price')">
-              <AppNumberInput v-model:value="form.cache_read_usd_per_million" :min="0" />
-            </AppFormItem>
-            <AppFormItem :label="t('缓存写价格', 'Cache write price')">
-              <AppNumberInput v-model:value="form.cache_creation_usd_per_million" :min="0" />
-            </AppFormItem>
-          </template>
-        </div>
-      </AppForm>
-      <p class="price-save-hint">{{ priceSaveHint }}</p>
-      <template #footer>
-        <AppStack justify="end">
-          <AppButton secondary :disabled="isPriceSaving" @click="modalOpen = false">{{ t('取消', 'Cancel') }}</AppButton>
-          <AppButton type="primary" :loading="isPriceSaving" @click="savePrice">{{ t('保存', 'Save') }}</AppButton>
-        </AppStack>
-      </template>
-    </AppModal>
+    <Dialog v-model:open="modalOpen">
+      <DialogContent class="max-h-[calc(100svh-2rem)] overflow-y-auto sm:max-w-2xl">
+        <form class="flex flex-col gap-5" @submit.prevent="savePrice">
+          <DialogHeader>
+            <DialogTitle>
+              {{ editingId === null ? t('新增价格', 'Add price') : t('编辑价格', 'Edit price') }}
+            </DialogTitle>
+            <DialogDescription>{{ priceSaveHint }}</DialogDescription>
+          </DialogHeader>
 
-    <AppModal
-      v-model:show="proxyModalOpen"
-      preset="card"
-      :title="t('LiteLLM 代理配置', 'LiteLLM proxy settings')"
-      :style="proxyModalStyle"
-      :content-style="proxyModalContentStyle"
-      :footer-style="proxyModalFooterStyle"
-      class="proxy-modal"
-    >
-      <AppForm :model="proxyForm" label-placement="top">
-        <div class="proxy-form">
-          <p class="proxy-hint">{{ liteLLMProxyHint }}</p>
-          <div class="proxy-switch-row">
-            <span class="proxy-switch-label">{{ t('使用代理', 'Use proxy') }}</span>
-            <AppSwitch
-              v-model:value="proxyForm.enabled"
-              :disabled="isProxyLoading || isProxySaving"
-              :aria-label="t('使用代理', 'Use proxy')"
-            />
-          </div>
-          <AppFormItem :label="t('代理地址', 'Proxy URL')">
-            <AppInput
-              v-model:value="proxyForm.proxy_url"
-              :disabled="!proxyForm.enabled || isProxyLoading || isProxySaving"
-              :placeholder="t('http://127.0.0.1:7890 或 socks5://127.0.0.1:1080', 'http://127.0.0.1:7890 or socks5://127.0.0.1:1080')"
-            />
-          </AppFormItem>
-        </div>
-      </AppForm>
-      <template #footer>
-        <AppStack justify="end">
-          <AppButton :disabled="isProxySaving" @click="proxyModalOpen = false">{{ t('取消', 'Cancel') }}</AppButton>
-          <AppButton type="primary" :loading="isProxySaving" @click="saveProxySettings">{{ t('保存', 'Save') }}</AppButton>
-        </AppStack>
-      </template>
-    </AppModal>
+          <FieldGroup class="form-grid">
+            <Field>
+              <FieldLabel for="price-provider">{{ t('服务商', 'Provider') }}</FieldLabel>
+              <Input id="price-provider" v-model="form.provider" required />
+            </Field>
+            <Field>
+              <FieldLabel for="price-model">{{ t('模型', 'Model') }}</FieldLabel>
+              <Input id="price-model" v-model="form.model" required />
+            </Field>
+            <Field class="wide-form-item">
+              <FieldLabel for="price-fast-multiplier">{{ t('FAST 倍率', 'FAST multiplier') }}</FieldLabel>
+              <Input
+                id="price-fast-multiplier"
+                type="number"
+                min="0.01"
+                step="0.1"
+                :model-value="form.fast_multiplier"
+                @update:model-value="setPriceNumber('fast_multiplier', $event)"
+              />
+            </Field>
+            <Field v-if="isRequestPriceForm" class="wide-form-item">
+              <FieldLabel for="price-per-request">{{ t('每次调用价格 USD', 'Per-call price USD') }}</FieldLabel>
+              <Input
+                id="price-per-request"
+                type="number"
+                min="0"
+                step="any"
+                :model-value="form.request_usd ?? ''"
+                :placeholder="t('例如：0.04', 'Example: 0.04')"
+                @update:model-value="setRequestPrice"
+              />
+            </Field>
+            <template v-else>
+              <Field>
+                <FieldLabel for="price-input">{{ t('输入价格', 'Input price') }}</FieldLabel>
+                <Input
+                  id="price-input"
+                  type="number"
+                  min="0"
+                  step="any"
+                  :model-value="form.input_usd_per_million"
+                  @update:model-value="setPriceNumber('input_usd_per_million', $event)"
+                />
+              </Field>
+              <Field>
+                <FieldLabel for="price-output">{{ t('输出价格', 'Output price') }}</FieldLabel>
+                <Input
+                  id="price-output"
+                  type="number"
+                  min="0"
+                  step="any"
+                  :model-value="form.output_usd_per_million"
+                  @update:model-value="setPriceNumber('output_usd_per_million', $event)"
+                />
+              </Field>
+              <Field>
+                <FieldLabel for="price-cache-read">{{ t('缓存读价格', 'Cache read price') }}</FieldLabel>
+                <Input
+                  id="price-cache-read"
+                  type="number"
+                  min="0"
+                  step="any"
+                  :model-value="form.cache_read_usd_per_million"
+                  @update:model-value="setPriceNumber('cache_read_usd_per_million', $event)"
+                />
+              </Field>
+              <Field>
+                <FieldLabel for="price-cache-write">{{ t('缓存写价格', 'Cache write price') }}</FieldLabel>
+                <Input
+                  id="price-cache-write"
+                  type="number"
+                  min="0"
+                  step="any"
+                  :model-value="form.cache_creation_usd_per_million"
+                  @update:model-value="setPriceNumber('cache_creation_usd_per_million', $event)"
+                />
+              </Field>
+            </template>
+          </FieldGroup>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" :disabled="isPriceSaving" @click="modalOpen = false">
+              {{ t('取消', 'Cancel') }}
+            </Button>
+            <Button type="submit" :disabled="isPriceSaving">
+              <Spinner v-if="isPriceSaving" data-icon="inline-start" />
+              {{ t('保存', 'Save') }}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog v-model:open="proxyModalOpen">
+      <DialogContent class="max-h-[calc(100svh-2rem)] overflow-y-auto sm:max-w-lg">
+        <form class="flex flex-col gap-5" @submit.prevent="saveProxySettings">
+          <DialogHeader>
+            <DialogTitle>{{ t('LiteLLM 代理配置', 'LiteLLM proxy settings') }}</DialogTitle>
+            <DialogDescription>
+              {{ t('为 LiteLLM 价格同步配置网络代理。', 'Configure a network proxy for LiteLLM price synchronization.') }}
+            </DialogDescription>
+          </DialogHeader>
+
+          <Alert>
+            <CircleAlert />
+            <AlertDescription>{{ liteLLMProxyHint }}</AlertDescription>
+          </Alert>
+
+          <FieldGroup>
+            <Field orientation="horizontal" class="proxy-switch-row">
+              <FieldContent>
+                <FieldLabel for="litellm-proxy-enabled">{{ t('使用代理', 'Use proxy') }}</FieldLabel>
+                <FieldDescription>
+                  {{ t('同步时通过下方代理地址访问 GitHub。', 'Use the proxy URL below when synchronizing from GitHub.') }}
+                </FieldDescription>
+              </FieldContent>
+              <Switch
+                id="litellm-proxy-enabled"
+                v-model="proxyForm.enabled"
+                :disabled="isProxyLoading || isProxySaving"
+              />
+            </Field>
+            <Field :data-disabled="!proxyForm.enabled || isProxyLoading || isProxySaving || undefined">
+              <FieldLabel for="litellm-proxy-url">{{ t('代理地址', 'Proxy URL') }}</FieldLabel>
+              <Input
+                id="litellm-proxy-url"
+                v-model="proxyForm.proxy_url"
+                :disabled="!proxyForm.enabled || isProxyLoading || isProxySaving"
+                :placeholder="t('http://127.0.0.1:7890 或 socks5://127.0.0.1:1080', 'http://127.0.0.1:7890 or socks5://127.0.0.1:1080')"
+              />
+            </Field>
+          </FieldGroup>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" :disabled="isProxySaving" @click="proxyModalOpen = false">
+              {{ t('取消', 'Cancel') }}
+            </Button>
+            <Button type="submit" :disabled="isProxySaving">
+              <Spinner v-if="isProxySaving" data-icon="inline-start" />
+              {{ t('保存', 'Save') }}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   </section>
 </template>
-
 <style scoped>
-.price-modal {
-  width: min(640px, calc(100vw - 24px));
-}
-
-.proxy-modal {
-  width: min(520px, calc(100vw - 24px));
-}
-
-.form-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px 12px;
-}
-
-.wide-form-item {
-  grid-column: 1 / -1;
-}
-
-.proxy-form {
-  display: grid;
-  gap: 14px;
-}
-
-.proxy-hint {
-  margin: 0;
-  padding: 10px 12px;
-  border: 1px solid color-mix(in srgb, var(--cpa-primary) 22%, var(--cpa-border));
-  border-radius: var(--cpa-radius);
-  background: color-mix(in srgb, var(--cpa-primary-wash) 74%, var(--cpa-surface));
-  color: var(--cpa-text-muted);
-  font-size: 13px;
-  line-height: 1.55;
-}
-
-.proxy-switch-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 34px;
-  padding: 8px 10px;
-  border: 1px solid var(--cpa-border);
-  border-radius: var(--cpa-radius);
-  background: var(--cpa-surface-raised);
-}
-
-.proxy-switch-label {
-  color: var(--cpa-text);
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.proxy-form :deep(.n-form-item) {
-  margin-bottom: 0;
-}
-
 .price-metrics {
   grid-template-columns: repeat(4, minmax(150px, 1fr));
 }
 
-.price-alert {
-  border-radius: var(--cpa-radius);
+.price-metric-card {
+  min-width: 0;
+}
+
+.price-metric-card :deep([data-slot="card-header"]) {
+  padding-bottom: 10px;
+}
+
+.price-metric-card :deep([data-slot="card-content"]) {
+  padding-top: 0;
 }
 
 .price-table-panel,
@@ -1043,51 +1138,97 @@ onBeforeUnmount(() => {
 }
 
 .table-toolbar {
-  padding: 14px 16px;
-  border: 1px solid var(--cpa-border);
+  padding: 12px 16px;
+  border: 1px solid var(--border);
   border-bottom: 0;
-  border-radius: var(--cpa-radius) var(--cpa-radius) 0 0;
-  background: var(--cpa-surface-raised);
-  box-shadow: var(--cpa-shadow-hairline);
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: var(--card);
 }
 
 .price-toolbar-layout {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   width: 100%;
   min-width: 0;
 }
 
-.price-table :deep(.n-data-table-wrapper) {
-  border-radius: 0 0 var(--cpa-radius) var(--cpa-radius);
+.price-filters {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.filter-control {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
 }
 
 .filter-label,
-.result-count {
-  color: var(--cpa-text-muted);
-  font-size: 13px;
+.result-count,
+.price-pagination {
+  color: var(--muted-foreground);
+  font-size: 12px;
   white-space: nowrap;
 }
 
 .provider-filter {
-  width: 220px;
+  width: 210px;
 }
 
 .status-filter {
-  width: 150px;
-}
-
-.price-filters {
-  min-width: 0;
-  max-width: 100%;
-  flex: 1 1 auto;
+  width: 160px;
 }
 
 .price-search {
-  width: 280px;
+  width: min(300px, 100%);
 }
 
-:global(.price-actions-trigger) {
+.price-table {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-top: 0;
+  background: var(--card);
+}
+
+.price-table :deep([data-slot="table-container"]) {
+  max-height: max(240px, calc(100dvh - 420px));
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.table-loading-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: color-mix(in oklch, var(--background) 62%, transparent);
+}
+
+.price-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-top: 0;
+  border-radius: 0 0 var(--radius) var(--radius);
+  background: var(--card);
+}
+
+.price-actions-trigger {
   margin-left: auto;
-  color: var(--cpa-text-muted);
+  color: var(--muted-foreground);
 }
 
 .model-cell,
@@ -1098,20 +1239,19 @@ onBeforeUnmount(() => {
 .model-title-row {
   display: flex;
   align-items: center;
-  gap: 0;
+  gap: 6px;
   min-width: 0;
 }
 
 .model-availability-tag {
   flex: 0 0 auto;
-  margin-left: 2px;
 }
 
 .model-name,
 .provider-main {
   min-width: 0;
   overflow: hidden;
-  color: var(--cpa-text);
+  color: var(--foreground);
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1120,20 +1260,28 @@ onBeforeUnmount(() => {
 .model-sub {
   margin-top: 2px;
   overflow: hidden;
-  color: var(--cpa-text-muted);
+  color: var(--muted-foreground);
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.price-muted {
-  color: var(--cpa-text-muted);
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
 }
 
-.price-save-hint {
-  margin: 4px 0 0;
-  color: var(--cpa-text-muted);
-  font-size: 13px;
+.wide-form-item {
+  grid-column: 1 / -1;
+}
+
+.proxy-switch-row {
+  gap: 20px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: color-mix(in oklch, var(--muted) 45%, transparent);
 }
 
 @media (min-width: 861px) {
@@ -1146,25 +1294,24 @@ onBeforeUnmount(() => {
 
   .price-table-panel {
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
     min-height: 0;
   }
 
   .price-table {
     height: 100%;
-    min-height: 0;
   }
 
-  .price-table :deep(.n-data-table-wrapper),
-  .price-table :deep(.n-data-table-base-table),
-  .price-table :deep(.n-data-table-base-table-body) {
-    min-height: 0;
+  .price-table :deep([data-slot="table-container"]) {
+    height: 100%;
+    max-height: none;
   }
 }
 
 @media (max-width: 980px) {
-  .table-toolbar {
-    padding: 12px;
+  .price-toolbar-layout {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .provider-filter {
@@ -1172,11 +1319,11 @@ onBeforeUnmount(() => {
   }
 
   .status-filter {
-    width: min(160px, calc(100vw - 32px));
+    width: min(170px, calc(100vw - 32px));
   }
 
   .price-search {
-    width: min(240px, calc(100vw - 32px));
+    width: min(260px, calc(100vw - 32px));
   }
 }
 
@@ -1189,15 +1336,13 @@ onBeforeUnmount(() => {
     grid-template-columns: 1fr;
   }
 
-  .price-toolbar-layout {
-    display: grid !important;
-    gap: 8px !important;
+  .wide-form-item {
+    grid-column: auto;
   }
 
   .price-filters {
-    display: grid !important;
+    display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px !important;
     width: 100%;
   }
 
@@ -1205,14 +1350,23 @@ onBeforeUnmount(() => {
     display: none;
   }
 
-  .provider-filter,
-  .status-filter,
+  .filter-control,
   .price-search {
     width: 100%;
   }
 
-  .result-count {
-    justify-self: start;
+  .filter-control :deep([data-slot="select-trigger"]) {
+    flex: 1 1 auto;
+    width: auto;
+  }
+
+  .price-search {
+    grid-column: 1 / -1;
+  }
+
+  .price-pagination {
+    justify-content: flex-start;
+    overflow-x: auto;
   }
 }
 </style>

@@ -187,23 +187,24 @@ test('all migrated routes render and core controls remain interactive', async ({
   await expect(accountTypeSearch).toBeVisible()
   await accountTypeSearch.fill('missing-account-type')
   await accountTypeSearch.press('Escape')
-  await expect(page.locator('.account-table-footer .n-pagination')).toBeVisible()
+  await expect(page.locator('.account-table-footer [data-slot="pagination"]')).toBeVisible()
   await expect(page.locator('.account-table-footer').getByRole('combobox')).toBeVisible()
   const latestActionHeaderBox = await page.getByRole('columnheader', { name: /最近操作|Latest Action/ }).boundingBox()
   expect(latestActionHeaderBox).not.toBeNull()
   expect(latestActionHeaderBox?.width).toBeLessThanOrEqual(170)
-  const accountActionHeaderBox = await page.locator('.account-table .n-data-table-th').last().boundingBox()
+  const accountActionHeaderBox = await page.locator('.account-table thead th').last().boundingBox()
   expect(accountActionHeaderBox).not.toBeNull()
   expect(accountActionHeaderBox?.width).toBeLessThanOrEqual(64)
-  const accountRow = page.locator('.account-table .n-data-table-base-table-body .n-data-table-tr').first()
-  const accountFixedCell = accountRow.locator('.n-data-table-td').last()
+  const accountRow = page.locator('.account-table tbody tr').first()
+  const accountFirstCell = accountRow.locator('td').first()
+  const accountFixedCell = accountRow.locator('td').last()
   await accountRow.hover()
   await expect.poll(async () => {
-    const [rowColor, fixedCellColor] = await Promise.all([
-      accountRow.evaluate((element) => getComputedStyle(element).backgroundColor),
+    const [firstCellColor, fixedCellColor] = await Promise.all([
+      accountFirstCell.evaluate((element) => getComputedStyle(element).backgroundColor),
       accountFixedCell.evaluate((element) => getComputedStyle(element).backgroundColor),
     ])
-    return fixedCellColor === rowColor
+    return fixedCellColor === firstCellColor
   }).toBe(true)
   await page.getByRole('button', { name: /打开 .*操作菜单|Open actions for/ }).first().click()
   await expect(page.getByRole('menuitem', { name: /详情|Details/ })).toBeVisible()

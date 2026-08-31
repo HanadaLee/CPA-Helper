@@ -1,6 +1,36 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { AppAlert, AppButton, AppIcon, AppInput, AppModal, AppSelect, AppSpinner, AppSwitch, AppBadge } from '@/shared/ui/app-kit'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Spinner } from '@/components/ui/spinner'
+import { Switch } from '@/components/ui/switch'
 import {
   AlertTriangle,
   Clock3,
@@ -17,6 +47,7 @@ import {
   Star,
   Store,
   Trash2,
+  X,
 } from '@lucide/vue'
 
 import {
@@ -361,6 +392,12 @@ function isCardShopSortKey(value: unknown): value is CardShopSortKey {
     value === 'recent' ||
     value === 'salesDesc'
   )
+}
+
+function setSortKey(value: unknown) {
+  if (isCardShopSortKey(value)) {
+    sortKey.value = value
+  }
 }
 
 function defaultQuickTags(): string[] {
@@ -783,317 +820,334 @@ function telegramHref(value: string | null | undefined): string | null {
   <section class="page card-shops-page">
     <div class="page-toolbar card-shops-header">
       <h1 data-page-title class="page-title">{{ t('卡网收录', 'Card shops') }}</h1>
-      <AppButton type="primary" :loading="isLoading" @click="refresh">
-        <template #icon>
-          <AppIcon :component="RefreshCw" />
-        </template>
+      <Button :disabled="isLoading" @click="refresh">
+        <Spinner v-if="isLoading" data-icon="inline-start" />
+        <RefreshCw v-else data-icon="inline-start" />
         {{ t('刷新', 'Refresh') }}
-      </AppButton>
+      </Button>
     </div>
 
-    <AppAlert class="risk-alert" type="warning" :show-icon="false">
-      <div class="risk-alert-content">
-        <AppIcon :component="AlertTriangle" :size="18" />
-        <span>{{ t('仅做公开店铺信息收录，不参与交易，也不对店铺商品、售后和风险负责。使用前请自行甄别。', 'This only indexes public shop information. CPA-Helper does not participate in transactions and is not responsible for products, after-sales service, or risk. Assess independently before use.') }}</span>
-      </div>
-    </AppAlert>
+    <Alert class="risk-alert">
+      <AlertTriangle />
+      <AlertTitle>{{ t('风险提示', 'Risk notice') }}</AlertTitle>
+      <AlertDescription>
+        {{ t('仅做公开店铺信息收录，不参与交易，也不对店铺商品、售后和风险负责。使用前请自行甄别。', 'This only indexes public shop information. CPA-Helper does not participate in transactions and is not responsible for products, after-sales service, or risk. Assess independently before use.') }}
+      </AlertDescription>
+    </Alert>
 
-    <section class="panel">
-      <div class="panel-inner card-shop-toolbar">
+    <Card>
+      <CardHeader>
+        <CardTitle>{{ t('筛选店铺', 'Filter shops') }}</CardTitle>
+        <CardDescription>{{ t('可组合商品关键字、排序与收藏条件。', 'Combine product keywords, sorting, and favorites.') }}</CardDescription>
+      </CardHeader>
+      <CardContent class="card-shop-toolbar">
         <div class="search-row">
-          <AppInput
-            v-model:value="searchDraft"
-            clearable
-            :placeholder="t('商品标题名', 'Product title')"
-            @keydown.enter.prevent="addSearchDraft"
-          >
-            <template #prefix>
-              <AppIcon :component="Search" />
-            </template>
-          </AppInput>
+          <InputGroup>
+            <InputGroupAddon><Search /></InputGroupAddon>
+            <InputGroupInput
+              v-model="searchDraft"
+              :placeholder="t('商品标题名', 'Product title')"
+              @keydown.enter.prevent="addSearchDraft"
+            />
+          </InputGroup>
           <div class="sort-control">
             <span>{{ t('排序', 'Sort') }}</span>
-            <AppSelect v-model:value="sortKey" :options="sortOptions" />
+            <Select :model-value="sortKey" @update:model-value="setSortKey">
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem v-for="option in sortOptions" :key="option.value" :value="option.value">
+                    {{ option.label }}
+                  </SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
           </div>
-          <label class="favorite-filter">
+          <div class="favorite-filter">
             <span>{{ t('收藏筛选', 'Favorites') }}</span>
-            <span class="favorite-switch-line">
-              <AppSwitch v-model:value="favoriteOnly" />
-              <span>
+            <label class="favorite-switch-line">
+              <Switch v-model="favoriteOnly" />
+              <span class="truncate">
                 {{ t(`仅看收藏 ${formatInteger(favoriteShopCount)}`, `Favorites only ${formatInteger(favoriteShopCount)}`) }}
               </span>
-            </span>
-          </label>
+            </label>
+          </div>
         </div>
         <div class="tag-row">
           <span>{{ t('快速搜索标签:', 'Quick search tags:') }}</span>
-          <AppButton
+          <Button
             v-for="tag in quickTags"
             :key="tag"
-            size="small"
-            secondary
-            :type="isSearchTermActive(tag) ? 'primary' : 'default'"
+            size="sm"
+            :variant="isSearchTermActive(tag) ? 'default' : 'outline'"
             @click="applyQuickTag(tag)"
           >
             {{ tag }}
-          </AppButton>
-          <AppButton class="tag-manage-button" size="small" secondary @click="openTagManager">
-            <template #icon>
-              <AppIcon :component="Settings2" />
-            </template>
+          </Button>
+          <Button class="tag-manage-button" size="sm" variant="secondary" @click="openTagManager">
+            <Settings2 data-icon="inline-start" />
             {{ t('管理标签', 'Manage tags') }}
-          </AppButton>
+          </Button>
         </div>
         <div v-if="searchTerms.length > 0" class="selected-term-row">
           <span>{{ t('已选条件:', 'Selected filters:') }}</span>
-          <AppBadge
-            v-for="term in searchTerms"
-            :key="term"
-            size="small"
-            type="info"
-            closable
-            :bordered="false"
-            @close="removeSearchTerm(term)"
-          >
-            {{ term }}
-          </AppBadge>
-          <AppButton size="tiny" quaternary @click="clearSearchFilters">
+          <Badge v-for="term in searchTerms" :key="term" variant="secondary" class="selected-term-badge">
+            <span class="truncate">{{ term }}</span>
+            <button
+              type="button"
+              :aria-label="t(`移除 ${term}`, `Remove ${term}`)"
+              @click="removeSearchTerm(term)"
+            >
+              <X />
+            </button>
+          </Badge>
+          <Button size="sm" variant="ghost" @click="clearSearchFilters">
             {{ t('清空', 'Clear') }}
-          </AppButton>
+          </Button>
         </div>
-      </div>
-    </section>
+      </CardContent>
+    </Card>
 
-    <AppAlert v-if="favoriteError" class="favorite-error" type="error" :show-icon="false">
-      {{ favoriteError }}
-    </AppAlert>
+    <Alert v-if="favoriteError" class="favorite-error" variant="destructive">
+      <AlertDescription>{{ favoriteError }}</AlertDescription>
+    </Alert>
 
-    <div class="metric-grid card-shop-metrics">
-      <div v-for="metric in metricItems" :key="metric.key" class="metric-card card-shop-metric" :class="metric.tone">
-        <div class="metric-icon">
-          <AppIcon :component="metric.icon" :size="24" />
-        </div>
-        <div class="metric-label">{{ metric.label }}</div>
-        <div class="metric-value">{{ metric.value }}</div>
-        <div class="metric-footnote">{{ metric.footnote }}</div>
-      </div>
+    <div class="card-shop-metrics">
+      <Card v-for="metric in metricItems" :key="metric.key" size="sm" class="card-shop-metric" :class="metric.tone">
+        <CardHeader class="flex flex-row items-start justify-between gap-3">
+          <div class="flex min-w-0 flex-col gap-1">
+            <CardDescription>{{ metric.label }}</CardDescription>
+            <CardTitle class="text-xl tabular-nums">{{ metric.value }}</CardTitle>
+          </div>
+          <div class="card-shop-metric__icon">
+            <component :is="metric.icon" class="size-5" />
+          </div>
+        </CardHeader>
+        <CardContent class="truncate text-xs text-muted-foreground" :title="metric.footnote">
+          {{ metric.footnote }}
+        </CardContent>
+      </Card>
     </div>
 
-    <section v-if="loadError" class="panel error-panel">
-      <div class="panel-inner error-state">
+    <Alert v-if="loadError" variant="destructive">
+      <AlertDescription class="error-state">
         <strong>{{ loadError }}</strong>
-        <AppButton secondary :loading="isLoading" @click="refresh">
-          <template #icon>
-            <AppIcon :component="RefreshCw" />
-          </template>
+        <Button variant="outline" :disabled="isLoading" @click="refresh">
+          <Spinner v-if="isLoading" data-icon="inline-start" />
+          <RefreshCw v-else data-icon="inline-start" />
           {{ t('重试', 'Retry') }}
-        </AppButton>
-      </div>
+        </Button>
+      </AlertDescription>
+    </Alert>
+
+    <section v-if="isLoading && shops.length === 0" class="shop-list" aria-busy="true">
+      <Card v-for="index in 3" :key="index" class="shop-card">
+        <div class="flex items-start justify-between gap-4">
+          <div class="grid flex-1 gap-2">
+            <Skeleton class="h-5 w-40" />
+            <Skeleton class="h-4 w-64 max-w-full" />
+          </div>
+          <Skeleton class="h-8 w-20" />
+        </div>
+        <Skeleton class="h-20 w-full" />
+      </Card>
     </section>
 
-    <AppSpinner :show="isLoading && shops.length === 0">
-      <section v-if="!loadError && rows.length > 0" class="shop-list">
-        <article v-for="row in rows" :key="row.shopKey" class="panel shop-card" :class="{ 'is-favorite': row.isFavorite }">
-          <div class="shop-card-head">
-            <div class="shop-title-block">
-              <div class="shop-title-line">
-                <h2>{{ displayText(row.shop.shopName) }}</h2>
-                <a
-                  v-if="textValue(row.shop.shopUrl)"
-                  class="external-link"
-                  :href="textValue(row.shop.shopUrl)"
-                  target="_blank"
-                  rel="noreferrer"
-                  :aria-label="t('打开店铺链接', 'Open shop link')"
-                >
-                  <AppIcon :component="ExternalLink" :size="16" />
-                </a>
-              </div>
+    <section v-else-if="!loadError && rows.length > 0" class="shop-list">
+      <Card v-for="row in rows" :key="row.shopKey" class="shop-card" :class="{ 'is-favorite': row.isFavorite }">
+        <div class="shop-card-head">
+          <div class="shop-title-block">
+            <div class="shop-title-line">
+              <h2>{{ displayText(row.shop.shopName) }}</h2>
               <a
                 v-if="textValue(row.shop.shopUrl)"
-                class="shop-url"
+                class="external-link"
                 :href="textValue(row.shop.shopUrl)"
                 target="_blank"
                 rel="noreferrer"
+                :aria-label="t('打开店铺链接', 'Open shop link')"
               >
-                {{ textValue(row.shop.shopUrl) }}
+                <ExternalLink class="size-4" />
               </a>
             </div>
-            <div class="shop-actions">
-              <AppButton
-                size="small"
-                secondary
-                :type="row.isFavorite ? 'warning' : 'default'"
-                :loading="isFavoriteUpdating(row.shopKey)"
-                @click="toggleFavorite(row)"
-              >
-                <template #icon>
-                  <AppIcon :component="Star" />
-                </template>
-                {{ row.isFavorite ? t('已收藏', 'Favorited') : t('收藏', 'Favorite') }}
-              </AppButton>
-              <div class="shop-tags">
-                <AppBadge size="small" type="success" :bordered="false">
-                  {{ t(`销量 ${formatCount(row.shop.shopSellCount)}`, `Sales ${formatCount(row.shop.shopSellCount)}`) }}
-                </AppBadge>
-                <AppBadge size="small" type="info" :bordered="false">
-                  {{ t(`商品 ${formatInteger(row.productCount)}`, `${formatInteger(row.productCount)} products`) }}
-                </AppBadge>
-                <AppBadge size="small" :bordered="false">
-                  {{ t(`库存 ${formatInteger(row.totalStock)}`, `Stock ${formatInteger(row.totalStock)}`) }}
-                </AppBadge>
-              </div>
-            </div>
-          </div>
-
-          <div class="shop-meta-row">
-            <span>
-              <AppIcon :component="MessageCircle" :size="15" />
-              <a
-                v-if="telegramHref(row.shop.telegram)"
-                :href="telegramHref(row.shop.telegram) ?? undefined"
-                target="_blank"
-                rel="noreferrer"
-              >
-                {{ displayText(row.shop.telegram) }}
-              </a>
-              <template v-else>{{ displayText(row.shop.telegram) }}</template>
-            </span>
-            <span>
-              <AppIcon :component="Clock3" :size="15" />
-              {{ formatDateTime(row.shop.updatedAt ?? null, { includeSecond: false }) }}
-            </span>
-            <span>
-              <AppIcon :component="ShoppingBag" :size="15" />
-              {{ t(`展示 ${formatInteger(row.matchedProductCount)} 个商品`, `${formatInteger(row.matchedProductCount)} products shown`) }}
-            </span>
-          </div>
-
-          <p v-if="textValue(row.shop.notes)" class="shop-notes">{{ textValue(row.shop.notes) }}</p>
-
-          <div v-if="row.visibleProducts.length > 0" class="product-grid">
-            <div
-              v-for="(product, index) in row.visibleProducts"
-              :key="`${row.shopKey}-${textValue(product.itemUrl) || textValue(product.name) || index}`"
-              class="product-item"
+            <a
+              v-if="textValue(row.shop.shopUrl)"
+              class="shop-url"
+              :href="textValue(row.shop.shopUrl)"
+              target="_blank"
+              rel="noreferrer"
             >
-              <a
-                v-if="textValue(product.itemUrl)"
-                class="product-name"
-                :href="textValue(product.itemUrl)"
-                target="_blank"
-                rel="noreferrer"
-              >
-                {{ displayText(product.name) }}
-              </a>
-              <strong v-else class="product-name">{{ displayText(product.name) }}</strong>
-              <div class="product-meta">
-                <span>{{ formatShopPrice(product.price) }}</span>
-                <span>{{ t(`库存 ${formatCount(product.stockCount)}`, `Stock ${formatCount(product.stockCount)}`) }}</span>
-                <span>{{ displayText(product.group) }}</span>
-                <span>{{ displayText(product.category) }}</span>
-              </div>
+              {{ textValue(row.shop.shopUrl) }}
+            </a>
+          </div>
+          <div class="shop-actions">
+            <Button
+              size="sm"
+              :variant="row.isFavorite ? 'secondary' : 'outline'"
+              :disabled="isFavoriteUpdating(row.shopKey)"
+              @click="toggleFavorite(row)"
+            >
+              <Spinner v-if="isFavoriteUpdating(row.shopKey)" data-icon="inline-start" />
+              <Star v-else data-icon="inline-start" :class="{ 'fill-current': row.isFavorite }" />
+              {{ row.isFavorite ? t('已收藏', 'Favorited') : t('收藏', 'Favorite') }}
+            </Button>
+            <div class="shop-tags">
+              <Badge variant="secondary">
+                {{ t(`销量 ${formatCount(row.shop.shopSellCount)}`, `Sales ${formatCount(row.shop.shopSellCount)}`) }}
+              </Badge>
+              <Badge variant="outline">
+                {{ t(`商品 ${formatInteger(row.productCount)}`, `${formatInteger(row.productCount)} products`) }}
+              </Badge>
+              <Badge variant="outline">
+                {{ t(`库存 ${formatInteger(row.totalStock)}`, `Stock ${formatInteger(row.totalStock)}`) }}
+              </Badge>
             </div>
           </div>
-          <div v-else class="product-empty">
-            {{ t('暂无匹配商品明细', 'No matching product details') }}
-          </div>
-        </article>
-      </section>
-
-      <section v-else-if="!loadError && !isLoading" class="panel empty-panel">
-        <div class="panel-inner empty-state">
-          {{ t('当前筛选下暂无店铺', 'No shops match the current filters') }}
-        </div>
-      </section>
-    </AppSpinner>
-
-    <AppModal
-      v-model:show="isTagModalOpen"
-      preset="card"
-      :title="t('管理快速搜索标签', 'Manage quick search tags')"
-      class="quick-tag-modal"
-      :bordered="false"
-      :style="{ width: 'min(620px, calc(100vw - 32px))' }"
-      @mask-click="closeTagManager"
-      @esc="closeTagManager"
-    >
-      <div class="quick-tag-editor">
-        <div class="quick-tag-add-row">
-          <AppInput
-            v-model:value="newTagDraft"
-            clearable
-            :maxlength="MAX_QUICK_TAG_LENGTH"
-            show-count
-            :placeholder="t('新增标签', 'New tag')"
-            @keydown.enter.prevent="addEditableTag"
-          />
-          <AppButton secondary :disabled="editableTags.length >= MAX_QUICK_TAGS" @click="addEditableTag">
-            <template #icon>
-              <AppIcon :component="PlusIcon" />
-            </template>
-            {{ t('新增', 'Add') }}
-          </AppButton>
         </div>
 
-        <AppAlert v-if="tagEditorError" type="error" :show-icon="false">
-          {{ tagEditorError }}
-        </AppAlert>
+        <div class="shop-meta-row">
+          <span>
+            <MessageCircle class="size-4" />
+            <a
+              v-if="telegramHref(row.shop.telegram)"
+              :href="telegramHref(row.shop.telegram) ?? undefined"
+              target="_blank"
+              rel="noreferrer"
+            >
+              {{ displayText(row.shop.telegram) }}
+            </a>
+            <template v-else>{{ displayText(row.shop.telegram) }}</template>
+          </span>
+          <span>
+            <Clock3 class="size-4" />
+            {{ formatDateTime(row.shop.updatedAt ?? null, { includeSecond: false }) }}
+          </span>
+          <span>
+            <ShoppingBag class="size-4" />
+            {{ t(`展示 ${formatInteger(row.matchedProductCount)} 个商品`, `${formatInteger(row.matchedProductCount)} products shown`) }}
+          </span>
+        </div>
 
-        <div v-if="editableTags.length > 0" class="quick-tag-list">
+        <p v-if="textValue(row.shop.notes)" class="shop-notes">{{ textValue(row.shop.notes) }}</p>
+
+        <div v-if="row.visibleProducts.length > 0" class="product-grid">
           <div
-            v-for="(tag, index) in editableTags"
-            :key="`${tag}-${index}`"
-            class="quick-tag-editor-item"
-            :class="{ 'is-dragging': draggingTagIndex === index }"
-            @dragover.prevent="dragOverTag(index, $event)"
-            @drop.prevent="dropTag"
+            v-for="(product, index) in row.visibleProducts"
+            :key="`${row.shopKey}-${textValue(product.itemUrl) || textValue(product.name) || index}`"
+            class="product-item"
           >
-            <button
-              type="button"
-              class="quick-tag-drag-handle"
-              draggable="true"
-              :aria-label="t('拖动排序', 'Drag to reorder')"
-              @dragstart="startTagDrag(index, $event)"
-              @dragend="endTagDrag"
+            <a
+              v-if="textValue(product.itemUrl)"
+              class="product-name"
+              :href="textValue(product.itemUrl)"
+              target="_blank"
+              rel="noreferrer"
             >
-              <AppIcon :component="GripVertical" />
-            </button>
-            <AppInput
-              :value="tag"
-              clearable
-              :maxlength="MAX_QUICK_TAG_LENGTH"
-              @update:value="updateEditableTag(index, $event)"
-            />
-            <AppButton size="small" quaternary type="error" :aria-label="t('删除', 'Delete')" @click="removeEditableTag(index)">
-              <template #icon>
-                <AppIcon :component="Trash2" />
-              </template>
-            </AppButton>
+              {{ displayText(product.name) }}
+            </a>
+            <strong v-else class="product-name">{{ displayText(product.name) }}</strong>
+            <div class="product-meta">
+              <span>{{ formatShopPrice(product.price) }}</span>
+              <span>{{ t(`库存 ${formatCount(product.stockCount)}`, `Stock ${formatCount(product.stockCount)}`) }}</span>
+              <span>{{ displayText(product.group) }}</span>
+              <span>{{ displayText(product.category) }}</span>
+            </div>
           </div>
         </div>
-        <div v-else class="quick-tag-empty">
-          {{ t('保存后将显示默认快速搜索标签', 'Default quick search tags will be shown after saving') }}
+        <div v-else class="product-empty">
+          {{ t('暂无匹配商品明细', 'No matching product details') }}
         </div>
+      </Card>
+    </section>
 
-        <div class="quick-tag-footer">
-          <AppButton secondary @click="restoreDefaultTags">
-            <template #icon>
-              <AppIcon :component="RotateCcw" />
-            </template>
-            {{ t('恢复默认', 'Restore default') }}
-          </AppButton>
-          <div class="quick-tag-footer-actions">
-            <AppButton quaternary :disabled="isSavingTags" @click="closeTagManager">
-              {{ t('取消', 'Cancel') }}
-            </AppButton>
-            <AppButton type="primary" :loading="isSavingTags" @click="saveQuickTags">
-              {{ t('保存', 'Save') }}
-            </AppButton>
+    <Card v-else-if="!loadError && !isLoading" class="empty-panel">
+      <CardContent class="empty-state">
+        {{ t('当前筛选下暂无店铺', 'No shops match the current filters') }}
+      </CardContent>
+    </Card>
+
+    <Dialog v-model:open="isTagModalOpen">
+      <DialogContent class="max-h-[calc(100svh-2rem)] overflow-hidden sm:max-w-[620px]">
+        <DialogHeader>
+          <DialogTitle>{{ t('管理快速搜索标签', 'Manage quick search tags') }}</DialogTitle>
+          <DialogDescription>
+            {{ t(`最多 ${MAX_QUICK_TAGS} 个标签，可拖动调整顺序。`, `Up to ${MAX_QUICK_TAGS} tags; drag to reorder.`) }}
+          </DialogDescription>
+        </DialogHeader>
+        <div class="quick-tag-editor">
+          <div class="quick-tag-add-row">
+            <div class="grid gap-1">
+              <Input
+                v-model="newTagDraft"
+                :maxlength="MAX_QUICK_TAG_LENGTH"
+                :placeholder="t('新增标签', 'New tag')"
+                @keydown.enter.prevent="addEditableTag"
+              />
+              <span class="text-right text-xs text-muted-foreground">{{ [...newTagDraft].length }} / {{ MAX_QUICK_TAG_LENGTH }}</span>
+            </div>
+            <Button variant="outline" :disabled="editableTags.length >= MAX_QUICK_TAGS" @click="addEditableTag">
+              <PlusIcon data-icon="inline-start" />
+              {{ t('新增', 'Add') }}
+            </Button>
           </div>
+
+          <Alert v-if="tagEditorError" variant="destructive">
+            <AlertDescription>{{ tagEditorError }}</AlertDescription>
+          </Alert>
+
+          <div v-if="editableTags.length > 0" class="quick-tag-list">
+            <div
+              v-for="(tag, index) in editableTags"
+              :key="`${tag}-${index}`"
+              class="quick-tag-editor-item"
+              :class="{ 'is-dragging': draggingTagIndex === index }"
+              @dragover.prevent="dragOverTag(index, $event)"
+              @drop.prevent="dropTag"
+            >
+              <button
+                type="button"
+                class="quick-tag-drag-handle"
+                draggable="true"
+                :aria-label="t('拖动排序', 'Drag to reorder')"
+                @dragstart="startTagDrag(index, $event)"
+                @dragend="endTagDrag"
+              >
+                <GripVertical class="size-4" />
+              </button>
+              <Input
+                :model-value="tag"
+                :maxlength="MAX_QUICK_TAG_LENGTH"
+                @update:model-value="updateEditableTag(index, String($event))"
+              />
+              <Button size="icon-sm" variant="ghost" :aria-label="t('删除', 'Delete')" @click="removeEditableTag(index)">
+                <Trash2 />
+              </Button>
+            </div>
+          </div>
+          <div v-else class="quick-tag-empty">
+            {{ t('保存后将显示默认快速搜索标签', 'Default quick search tags will be shown after saving') }}
+          </div>
+
+          <DialogFooter class="quick-tag-footer sm:justify-between">
+            <Button variant="outline" @click="restoreDefaultTags">
+              <RotateCcw data-icon="inline-start" />
+              {{ t('恢复默认', 'Restore default') }}
+            </Button>
+            <div class="quick-tag-footer-actions">
+              <Button variant="ghost" :disabled="isSavingTags" @click="closeTagManager">
+                {{ t('取消', 'Cancel') }}
+              </Button>
+              <Button :disabled="isSavingTags" @click="saveQuickTags">
+                <Spinner v-if="isSavingTags" data-icon="inline-start" />
+                {{ t('保存', 'Save') }}
+              </Button>
+            </div>
+          </DialogFooter>
         </div>
-      </div>
-    </AppModal>
+      </DialogContent>
+    </Dialog>
   </section>
 </template>
 
@@ -1102,27 +1156,8 @@ function telegramHref(value: string | null | undefined): string | null {
   gap: 12px;
 }
 
-.card-shops-header :deep(.n-button) {
-  flex: 0 0 auto;
-}
-
 .risk-alert {
-  border-radius: var(--cpa-radius);
-}
-
-.risk-alert-content {
-  display: flex;
-  gap: 8px;
-  align-items: flex-start;
-  color: var(--cpa-warning);
-  font-size: 13px;
-  line-height: 1.55;
-  text-wrap: pretty;
-}
-
-.risk-alert-content :deep(.n-icon) {
-  flex: 0 0 auto;
-  margin-top: 1px;
+  border-radius: var(--radius-lg);
 }
 
 .card-shop-toolbar {
@@ -1182,49 +1217,34 @@ function telegramHref(value: string | null | undefined): string | null {
   min-width: 0;
 }
 
-.tag-row :deep(.n-button) {
+.tag-row > button {
   min-width: 58px;
-  border-radius: var(--cpa-radius-sm);
 }
 
 .tag-manage-button {
   margin-left: 2px;
-  --n-border: 1px solid color-mix(in srgb, var(--cpa-primary) 20%, var(--cpa-border)) !important;
-  --n-border-hover: 1px solid color-mix(in srgb, var(--cpa-primary) 36%, var(--cpa-border)) !important;
-  --n-border-pressed: 1px solid color-mix(in srgb, var(--cpa-primary) 44%, var(--cpa-border)) !important;
-  --n-color: color-mix(in srgb, var(--cpa-primary) 12%, var(--cpa-surface-raised)) !important;
-  --n-color-hover: color-mix(in srgb, var(--cpa-primary) 18%, var(--cpa-surface-raised)) !important;
-  --n-color-pressed: color-mix(in srgb, var(--cpa-primary) 22%, var(--cpa-surface-raised)) !important;
-  --n-icon-color: var(--cpa-primary) !important;
-  --n-icon-color-hover: var(--cpa-primary) !important;
-  --n-text-color: var(--cpa-primary) !important;
-  --n-text-color-hover: var(--cpa-primary) !important;
-  --n-text-color-pressed: var(--cpa-primary) !important;
-  font-weight: 700;
+  color: var(--primary);
+  font-weight: 600;
 }
 
 .selected-term-row {
   padding-top: 2px;
 }
 
-.selected-term-row :deep(.n-tag) {
+.selected-term-badge {
+  display: inline-flex;
   max-width: min(260px, 100%);
-  border-radius: var(--cpa-radius-sm);
+  gap: .25rem;
 }
 
-.selected-term-row :deep(.n-tag__content) {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.favorite-error {
-  border-radius: var(--cpa-radius);
-}
-
-.quick-tag-modal :deep(.n-card-header) {
-  padding-bottom: 10px;
+.selected-term-badge button {
+  display: inline-flex;
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
 }
 
 .quick-tag-editor {
@@ -1259,11 +1279,10 @@ function telegramHref(value: string | null | undefined): string | null {
     opacity 0.15s ease;
 }
 
-.quick-tag-editor-item :deep(.n-button) {
+.quick-tag-editor-item > button:last-child {
   width: 32px;
   min-width: 32px;
   padding-inline: 0;
-  border-radius: var(--cpa-radius-sm);
 }
 
 .quick-tag-editor-item.is-dragging {
@@ -1320,24 +1339,41 @@ function telegramHref(value: string | null | undefined): string | null {
 }
 
 .card-shop-metrics {
+  display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
 }
 
 .card-shop-metric {
-  min-height: 96px;
-  padding: 14px;
-}
-
-.card-shop-metric .metric-value {
-  font-size: 20px;
-}
-
-.card-shop-metric .metric-footnote {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-height: 96px;
+}
+
+.card-shop-metric__icon {
+  display: flex;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  color: var(--primary);
+}
+
+.card-shop-metric.is-blue .card-shop-metric__icon {
+  background: color-mix(in srgb, var(--chart-2) 12%, transparent);
+  color: var(--chart-2);
+}
+
+.card-shop-metric.is-purple .card-shop-metric__icon {
+  background: color-mix(in srgb, var(--chart-4) 12%, transparent);
+  color: var(--chart-4);
+}
+
+.card-shop-metric.is-orange .card-shop-metric__icon {
+  background: color-mix(in srgb, var(--cpa-warning) 12%, transparent);
+  color: var(--cpa-warning);
 }
 
 .error-state {
@@ -1481,10 +1517,6 @@ function telegramHref(value: string | null | undefined): string | null {
   display: grid;
   justify-items: end;
   gap: 8px;
-}
-
-.shop-actions :deep(.n-button) {
-  border-radius: var(--cpa-radius-sm);
 }
 
 .shop-tags {
@@ -1702,8 +1734,8 @@ function telegramHref(value: string | null | undefined): string | null {
     flex-direction: column;
   }
 
-  .quick-tag-footer-actions :deep(.n-button),
-  .quick-tag-footer > :deep(.n-button) {
+  .quick-tag-footer-actions button,
+  .quick-tag-footer > button {
     width: 100%;
   }
 }

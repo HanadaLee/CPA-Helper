@@ -632,19 +632,6 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
   cursor: progress;
 }
 
-.content.is-route-pending :deep(.records-table .n-scrollbar-container),
-.content.is-route-transitioning :deep(.records-table .n-scrollbar-container) {
-  scrollbar-gutter: auto;
-  scrollbar-width: none;
-}
-
-.content.is-route-pending :deep(.records-table .n-scrollbar-container::-webkit-scrollbar),
-.content.is-route-transitioning :deep(.records-table .n-scrollbar-container::-webkit-scrollbar) {
-  display: none;
-  width: 0;
-  height: 0;
-}
-
 .route-progress {
   position: absolute;
   z-index: 3;

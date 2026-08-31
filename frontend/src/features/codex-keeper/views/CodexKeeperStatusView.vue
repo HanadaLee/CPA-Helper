@@ -1,27 +1,36 @@
 <script setup lang="ts">
-import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
-import {
-  AppButton,
-  AppDataTable,
-  AppDescriptions,
-  AppDescriptionsItem,
-  AppDrawer,
-  AppDrawerContent,
-  AppDropdown,
-  AppIcon,
-  AppInput,
-  AppNumberInput,
-  AppModal,
-  AppPagination,
-  AppSelect,
-  AppStack,
-  AppSwitch,
-  AppBadge,
-  type DataTableColumns,
-  type DataTableRowKey,
-} from '@/shared/ui/app-kit'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
+import {
+  Combobox,
+  ComboboxAnchor,
+  ComboboxEmpty,
+  ComboboxGroup,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxItemIndicator,
+  ComboboxList,
+  ComboboxTrigger,
+} from '@/components/ui/combobox'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,8 +40,54 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from '@/components/ui/field'
+import { Input } from '@/components/ui/input'
+import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group'
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/components/ui/pagination'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Spinner } from '@/components/ui/spinner'
+import { Switch } from '@/components/ui/switch'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableEmpty,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { Textarea } from '@/components/ui/textarea'
+import {
   Activity,
   ArrowLeft,
+  Check,
+  ChevronsUpDown,
   Copy,
   Eye,
   ExternalLink,
@@ -42,6 +97,7 @@ import {
   PauseCircle,
   Pencil,
   RefreshCw,
+  Search,
   ShieldAlert,
   ShieldCheck,
   Trash2,
@@ -170,7 +226,7 @@ const selectedAccount = ref<CodexKeeperAccount | null>(null)
 const selectedAccountNote = ref<string | null>(null)
 const isSelectedAccountNoteLoading = ref(false)
 let selectedAccountNoteRequestID = 0
-const selectedAccountKeys = ref<DataTableRowKey[]>([])
+const selectedAccountKeys = ref<string[]>([])
 const detailOpen = ref(false)
 const authFileInput = ref<HTMLInputElement | null>(null)
 const isUploadingAuthFiles = ref(false)
@@ -221,13 +277,13 @@ let oauthPollToken = 0
 const oauthStatusType = computed(() => {
   switch (oauthDialogStatus.value) {
     case 'waiting':
-      return 'warning'
+      return 'secondary'
     case 'success':
-      return 'success'
-    case 'error':
-      return 'error'
-    default:
       return 'default'
+    case 'error':
+      return 'destructive'
+    default:
+      return 'outline'
   }
 })
 const oauthStatusText = computed(() => {
@@ -274,6 +330,9 @@ const accountTypeOptions = computed(() =>
     .sort((a, b) => String(a).localeCompare(String(b)))
     .map((value) => ({ label: accountTypeLabel(String(value)), value: String(value) })),
 )
+const selectedAccountTypeOption = computed(
+  () => accountTypeOptions.value.find((option) => option.value === filters.accountType) ?? null,
+)
 
 const filteredAccounts = computed(() =>
   accounts.value.filter((account) => {
@@ -304,7 +363,6 @@ const sortedListAccounts = computed(() =>
     ? [...filteredDisabledAccounts.value, ...filteredNormalAccounts.value]
     : sortAccountsForDisplay(filteredAccounts.value),
 )
-const tableLoading = computed(() => isLoading.value)
 const enabledAccountCount = computed(() => accounts.value.filter((account) => !account.disabled).length)
 const disabledAccountCount = computed(() => accounts.value.filter((account) => account.disabled).length)
 const hasDisabledAccounts = computed(() => disabledAccountCount.value > 0)
@@ -318,15 +376,15 @@ const isAccountInspectionBlocked = computed(
 )
 const keeperStateType = computed(() => {
   if (isKeeperRunning.value || isKeeperDaemonRunning.value) {
-    return 'success'
+    return 'default'
   }
   if (keeperStatus.value?.state === 'error' || keeperStatus.value?.state === 'failed') {
-    return 'error'
+    return 'destructive'
   }
   if (keeperStatus.value?.state === 'stopping') {
-    return 'warning'
+    return 'secondary'
   }
-  return 'default'
+  return 'outline'
 })
 const keeperStatusDetailText = computed(() => {
   const detail = keeperStatus.value?.detail
@@ -358,6 +416,27 @@ const accountListPageCount = computed(() => accountPageCount(sortedListAccounts.
 const visibleListAccounts = computed(() =>
   pagedAccounts(sortedListAccounts.value, accountListPage.value),
 )
+const accountRangeStart = computed(() =>
+  sortedListAccounts.value.length === 0
+    ? 0
+    : (accountListPage.value - 1) * accountDisplaySize.value + 1,
+)
+const accountRangeEnd = computed(() =>
+  Math.min(accountListPage.value * accountDisplaySize.value, sortedListAccounts.value.length),
+)
+const selectableVisibleAccounts = computed(() =>
+  visibleListAccounts.value.filter((account) => !isRowActing(account) && !isBulkOperationRunning.value),
+)
+const visibleSelectedCount = computed(() => {
+  const selected = new Set(selectedAccountKeys.value)
+  return selectableVisibleAccounts.value.filter((account) => selected.has(account.name)).length
+})
+const visibleSelectionState = computed<boolean | 'indeterminate'>(() => {
+  if (selectableVisibleAccounts.value.length === 0 || visibleSelectedCount.value === 0) {
+    return false
+  }
+  return visibleSelectedCount.value === selectableVisibleAccounts.value.length ? true : 'indeterminate'
+})
 const activeQuotaSortLabel = computed(() => {
   if (accountSort.key === 'quotaDay') {
     return t('天', 'Day')
@@ -529,15 +608,6 @@ const priorityDialogHint = computed(() => {
     ? t('该账号类型没有配置默认优先级，不能使用类型默认值。', 'This account type has no default priority, so the type default cannot be used.')
     : t(`将优先级设置为当前账号类型默认值 ${value}。`, `Set the priority to the current account type default: ${value}.`)
 })
-const priorityDialogBounds = computed(() => {
-  if (priorityDialog.mode === 'low') {
-    return { max: -2 }
-  }
-  if (priorityDialog.mode === 'high') {
-    return { min: 21 }
-  }
-  return {}
-})
 const priorityModeOptions = computed(() => {
   const defaultValue = priorityDialog.account ? defaultPriority(priorityDialog.account) : null
   return [
@@ -597,6 +667,28 @@ function toggleStatusFilter(value: Exclude<AccountStatusFilter, 'all'>) {
 
 function isStatusFilterActive(value: Exclude<AccountStatusFilter, 'all'>): boolean {
   return filters.status === value
+}
+
+function setAccountTypeFilter(value: unknown) {
+  const option = value as { value?: unknown } | null
+  filters.accountType = typeof option?.value === 'string' ? option.value : null
+}
+
+function setPriorityFilter(value: unknown) {
+  if (typeof value === 'string' && priorityFilterOptions.value.some((option) => option.value === value)) {
+    filters.priority = value as PriorityFilter
+  }
+}
+
+function setAccountDisplaySize(value: unknown) {
+  const parsed = typeof value === 'number' ? value : Number(value)
+  if (isAccountDisplaySize(parsed)) {
+    accountDisplaySize.value = parsed
+  }
+}
+
+function handleAccountPageChange(value: number) {
+  accountListPage.value = value
 }
 
 function defaultSortDirection(key: AccountSortKey): SortDirection {
@@ -1019,122 +1111,7 @@ function latestActionText(account: CodexKeeperAccount): string {
   return text ? serverText(text, '账号状态', 'Account status') : '-'
 }
 
-function renderQuotaCell(account: CodexKeeperAccount) {
-  const items = quotaWindowItems(account)
-  if (items.length === 0) {
-    return '-'
-  }
-  return h(
-    'div',
-    { class: 'quota-window-cell' },
-    items.map((item) => {
-      const resetTime = formatQuotaResetTime(item.resetAt)
-      return h(
-        'div',
-        {
-          class: 'quota-window-item',
-          title: resetTime
-            ? t(
-                `${item.label}剩余 ${item.remainingPercent}%，刷新 ${resetTime}；${quotaWindowUsageTitle(item)}`,
-                `${item.label} ${item.remainingPercent}% remaining, refreshes ${resetTime}; ${quotaWindowUsageTitle(item)}`,
-              )
-            : t(
-                `${item.label}剩余 ${item.remainingPercent}%；${quotaWindowUsageTitle(item)}`,
-                `${item.label} ${item.remainingPercent}% remaining; ${quotaWindowUsageTitle(item)}`,
-              ),
-        },
-        [
-          h('div', { class: 'quota-window-head' }, [
-            h('span', { class: 'quota-window-label' }, item.label),
-            h('span', { class: 'quota-window-meta' }, [
-              h('span', { class: 'quota-window-percent' }, `${item.remainingPercent}%`),
-              resetTime ? h('span', { class: 'quota-window-reset' }, resetTime) : null,
-            ]),
-          ]),
-          h('div', { class: 'quota-window-track' }, [
-            h('div', {
-              class: ['quota-window-fill', quotaBarTone(item.remainingPercent)],
-              style: { width: `${item.remainingPercent}%` },
-            }),
-          ]),
-        ],
-      )
-    }),
-  )
-}
-
-function renderQuotaUsageCell(account: CodexKeeperAccount) {
-  const items = quotaWindowItems(account)
-  if (items.length === 0) {
-    return '-'
-  }
-  return h(
-    'div',
-    { class: 'quota-usage-cell' },
-    items.map((item) =>
-      h(
-        'div',
-        {
-          class: ['quota-usage-item', quotaWindowUsageTone(item)],
-          title: quotaWindowUsageTitle(item),
-        },
-        quotaWindowUsageTags(item).map((tag) =>
-          h(
-            'span',
-            { class: ['quota-usage-chip', tag.tone ? `is-${tag.tone}` : undefined] },
-            [
-              h('span', { class: 'quota-usage-chip-label' }, tag.label),
-              h('strong', { class: 'quota-usage-chip-value' }, tag.value),
-            ],
-          ),
-        ),
-      ),
-    ),
-  )
-}
-
-function renderQuotaPredictionCell(account: CodexKeeperAccount) {
-  const items = quotaWindowItems(account)
-  if (items.length === 0) {
-    return '-'
-  }
-  return h(
-    'div',
-    { class: 'quota-usage-cell' },
-    items.map((item) => {
-      const projectedCost = quotaWindowProjectedCost(item)
-      const needsRefresh = !item.resetAt || item.usage?.stale === true
-      return h(
-        'div',
-        {
-          class: 'quota-usage-item is-projection',
-          title: quotaWindowPredictionTitle(item),
-        },
-        [
-          h(
-            'span',
-            { class: ['quota-usage-chip', 'is-projection', needsRefresh ? 'is-stale' : undefined] },
-            [
-              h('span', { class: 'quota-usage-chip-label' }, t('额度', 'Quota')),
-              h(
-                'strong',
-                { class: 'quota-usage-chip-value' },
-                needsRefresh
-                  ? t('需刷新', 'Refresh needed')
-                  : projectedCost === null
-                    ? '-'
-                    : formatUsd(projectedCost),
-              ),
-            ],
-          ),
-        ],
-      )
-    }),
-  )
-}
-
-function renderAccountIdentityCell(account: CodexKeeperAccount) {
-  const primary = account.email ?? account.name
+function accountStatusTags(account: CodexKeeperAccount) {
   const statusTags = [
     {
       label: account.disabled ? t('已禁用', 'Disabled') : t('启用中', 'Enabled'),
@@ -1147,68 +1124,27 @@ function renderAccountIdentityCell(account: CodexKeeperAccount) {
       ? { label: t('额度耗尽', 'Quota Exhausted'), tone: 'is-purple' }
       : null,
   ].filter((item): item is { label: string; tone: string } => item !== null)
+  return statusTags
+}
+
+function accountIdentityTitle(account: CodexKeeperAccount): string {
+  const primary = account.email ?? account.name
+  const statusTags = accountStatusTags(account)
   const statusLabel = statusTags.map((item) => item.label).join(' / ')
-  return h(
-    'div',
-    {
-      class: 'account-table-identity',
-      title: `${primary}\n${account.name}\n${t('状态', 'Status')} ${statusLabel}`,
-    },
-    [
-      h('span', { class: 'account-table-email' }, primary),
-      h('span', { class: 'account-table-name' }, account.name),
-      h(
-        'span',
-        { class: 'account-table-meta' },
-        statusTags.map((item) =>
-          h('span', { class: ['account-table-chip', item.tone] }, item.label),
-        ),
-      ),
-    ],
-  )
+  return `${primary}\n${account.name}\n${t('状态', 'Status')} ${statusLabel}`
 }
 
-function renderAccountTypeCell(account: CodexKeeperAccount) {
-  const typeLabel = accountTypeLabel(account.account_type)
-  return h(
-    'span',
-    { class: ['account-table-chip', 'is-type'], title: typeLabel },
-    typeLabel,
-  )
-}
-
-function renderAccountPriorityCell(account: CodexKeeperAccount) {
-  const priorityLabel = formatInteger(accountPriority(account))
-  return h(
-    'span',
-    { class: ['account-table-chip', 'is-priority'], title: t(`优先级 ${priorityLabel}`, `Priority ${priorityLabel}`) },
-    priorityLabel,
-  )
-}
-
-function renderLastCheckedCell(account: CodexKeeperAccount) {
-  const text = formatRelativeTime(account.last_checked_at, relativeTimeNow.value)
-  const fullText = formatDateTime(account.last_checked_at)
-  return h(
-    'span',
-    {
-      class: ['account-table-value-pill', 'is-time', text === '-' ? 'is-empty' : ''],
-      title: fullText,
-    },
-    text,
-  )
-}
-
-function renderLatestActionCell(account: CodexKeeperAccount) {
-  const text = latestActionText(account)
-  return h(
-    'span',
-    {
-      class: ['account-table-value-pill', 'is-action', text === '-' ? 'is-empty' : ''],
-      title: text === '-' ? undefined : text,
-    },
-    text,
-  )
+function quotaWindowTooltip(item: QuotaWindowItem): string {
+  const resetTime = formatQuotaResetTime(item.resetAt)
+  return resetTime
+    ? t(
+        `${item.label}剩余 ${item.remainingPercent}%，刷新 ${resetTime}；${quotaWindowUsageTitle(item)}`,
+        `${item.label} ${item.remainingPercent}% remaining, refreshes ${resetTime}; ${quotaWindowUsageTitle(item)}`,
+      )
+    : t(
+        `${item.label}剩余 ${item.remainingPercent}%；${quotaWindowUsageTitle(item)}`,
+        `${item.label} ${item.remainingPercent}% remaining; ${quotaWindowUsageTitle(item)}`,
+      )
 }
 
 async function loadAccounts() {
@@ -1236,12 +1172,30 @@ async function loadKeeperStatus() {
   }
 }
 
-function accountRowKey(account: CodexKeeperAccount): string {
-  return account.name
+function isAccountSelected(account: CodexKeeperAccount): boolean {
+  return selectedAccountKeys.value.includes(account.name)
 }
 
-function handleAccountSelectionUpdate(keys: DataTableRowKey[]) {
-  selectedAccountKeys.value = keys
+function setAccountSelected(account: CodexKeeperAccount, selected: boolean | 'indeterminate') {
+  const names = new Set(selectedAccountKeys.value)
+  if (selected === true) {
+    names.add(account.name)
+  } else {
+    names.delete(account.name)
+  }
+  selectedAccountKeys.value = [...names]
+}
+
+function setAllVisibleAccounts(selected: boolean | 'indeterminate') {
+  const names = new Set(selectedAccountKeys.value)
+  for (const account of selectableVisibleAccounts.value) {
+    if (selected === true) {
+      names.add(account.name)
+    } else {
+      names.delete(account.name)
+    }
+  }
+  selectedAccountKeys.value = [...names]
 }
 
 function pruneSelectedAccountKeys() {
@@ -1551,6 +1505,21 @@ function closeAuthFileEditor() {
   }
 }
 
+function handleAuthFileEditorOpen(open: boolean) {
+  if (!open) {
+    closeAuthFileEditor()
+  }
+}
+
+function setAuthFileWebsockets(value: boolean) {
+  const editor = authFileEditor.value
+  if (!editor) {
+    return
+  }
+  editor.websockets = value
+  editor.websocketsTouched = true
+}
+
 async function saveAuthFileEditor() {
   const editor = authFileEditor.value
   if (!editor?.json || editor.loading || editor.saving || editor.headersError) {
@@ -1627,6 +1596,12 @@ function openCodexOAuthDialog() {
 function closeCodexOAuthDialog() {
   resetCodexOAuthDialog()
   oauthDialogOpen.value = false
+}
+
+function handleCodexOAuthDialogOpen(open: boolean) {
+  if (!open && !isStartingOAuth.value && !isSubmittingOAuthCallback.value) {
+    closeCodexOAuthDialog()
+  }
 }
 
 async function reloadAccountsAfterOAuth() {
@@ -1987,6 +1962,27 @@ function setPriorityDialogMode(mode: PriorityMode) {
   priorityDialog.value = defaultPriority(account)
 }
 
+function handlePriorityDialogMode(value: unknown) {
+  if (value === 'low' || value === 'high' || value === 'default') {
+    setPriorityDialogMode(value)
+  }
+}
+
+function setPriorityDialogValue(value: string | number) {
+  const parsed = Number(value)
+  priorityDialog.value = Number.isFinite(parsed) ? parsed : null
+}
+
+function accountConfirmButtonVariant(): 'default' | 'secondary' | 'destructive' {
+  if (accountConfirmDialog.type === 'error') {
+    return 'destructive'
+  }
+  if (accountConfirmDialog.type === 'warning') {
+    return 'secondary'
+  }
+  return 'default'
+}
+
 async function submitPriorityDialog() {
   if (!priorityDialog.account || !canSubmitPriority.value) {
     return
@@ -2217,189 +2213,6 @@ async function runAccountAction(
   }
 }
 
-const baseColumns = computed<DataTableColumns<CodexKeeperAccount>>(() => [
-  {
-    title: t('账号', 'Account'),
-    key: 'identity',
-    width: 220,
-    render: (row) => renderAccountIdentityCell(row),
-  },
-  {
-    title: t('类型', 'Type'),
-    key: 'account_type',
-    width: 96,
-    render: (row) => renderAccountTypeCell(row),
-  },
-  {
-    title: t('优先级', 'Priority'),
-    key: 'priority',
-    width: 88,
-    render: (row) => renderAccountPriorityCell(row),
-  },
-  {
-    title: t('额度窗口', 'Quota Window'),
-    key: 'quota',
-    width: 270,
-    render: (row) => renderQuotaCell(row),
-  },
-  {
-    title: t('窗口用量', 'Window Usage'),
-    key: 'quota_usage',
-    width: 266,
-    render: (row) => renderQuotaUsageCell(row),
-  },
-  {
-    title: t('窗口预测', 'Window Projection'),
-    key: 'quota_prediction',
-    width: 116,
-    render: (row) => renderQuotaPredictionCell(row),
-  },
-  {
-    title: t('最近巡检', 'Last Inspection'),
-    key: 'last_checked_at',
-    width: 100,
-    render: (row) => renderLastCheckedCell(row),
-  },
-  {
-    title: t('最近操作', 'Latest Action'),
-    key: 'latest_action',
-    width: 160,
-    render: (row) => renderLatestActionCell(row),
-  },
-])
-
-const manageActionColumn = computed<DataTableColumns<CodexKeeperAccount>[number]>(() => ({
-  title: '',
-  key: 'actions',
-  width: 56,
-  align: 'right',
-  fixed: 'right',
-  render: (row: CodexKeeperAccount) =>
-    h(
-      DropdownMenu,
-      {},
-      {
-        default: () => [
-          h(
-            DropdownMenuTrigger,
-            { asChild: true },
-            {
-              default: () =>
-                h(
-                  Button,
-                  {
-                    variant: 'ghost',
-                    size: 'icon-sm',
-                    class: 'account-actions-trigger',
-                    'aria-label': t(
-                      `打开 ${row.email ?? row.name} 的操作菜单`,
-                      `Open actions for ${row.email ?? row.name}`,
-                    ),
-                  },
-                  { default: () => h(MoreHorizontal) },
-                ),
-            },
-          ),
-          h(
-            DropdownMenuContent,
-            { align: 'end', sideOffset: 4, class: 'w-40' },
-            {
-              default: () => [
-                h(
-                  DropdownMenuGroup,
-                  {},
-                  {
-                    default: () =>
-                      h(
-                        DropdownMenuItem,
-                        { onSelect: () => openDetail(row) },
-                        { default: () => [h(Eye), h('span', t('详情', 'Details'))] },
-                      ),
-                  },
-                ),
-                h(DropdownMenuSeparator),
-                h(
-                  DropdownMenuGroup,
-                  {},
-                  {
-                    default: () => [
-                      h(
-                        DropdownMenuItem,
-                        {
-                          disabled: isRowActing(row) || isBulkOperationRunning.value,
-                          onSelect: () => row.disabled ? confirmEnableAccount(row) : confirmDisableAccount(row),
-                        },
-                        {
-                          default: () => [
-                            h(row.disabled ? ShieldCheck : PauseCircle),
-                            h('span', row.disabled ? t('启用', 'Enable') : t('禁用', 'Disable')),
-                          ],
-                        },
-                      ),
-                      h(
-                        DropdownMenuItem,
-                        {
-                          disabled: isRowActing(row) || isBulkOperationRunning.value,
-                          onSelect: () => refreshAccount(row),
-                        },
-                        { default: () => [h(RefreshCw), h('span', t('刷新', 'Refresh'))] },
-                      ),
-                    ],
-                  },
-                ),
-                h(DropdownMenuSeparator),
-                h(
-                  DropdownMenuGroup,
-                  {},
-                  {
-                    default: () =>
-                      h(
-                        DropdownMenuItem,
-                        {
-                          variant: 'destructive',
-                          disabled: isRowActing(row) || isBulkOperationRunning.value,
-                          onSelect: () => confirmDeleteAccount(row),
-                        },
-                        { default: () => [h(Trash2), h('span', t('删除', 'Delete'))] },
-                      ),
-                  },
-                ),
-              ],
-            },
-          ),
-        ],
-      },
-    ),
-}))
-
-const readOnlyActionColumn = computed<DataTableColumns<CodexKeeperAccount>[number]>(() => ({
-  title: '',
-  key: 'actions',
-  width: 72,
-  fixed: 'right',
-  render: (row: CodexKeeperAccount) =>
-    h(
-      AppButton,
-      { size: 'small', quaternary: true, onClick: () => openDetail(row) },
-      { default: () => t('详情', 'Details') },
-    ),
-}))
-
-const accountColumns = computed<DataTableColumns<CodexKeeperAccount>>(() =>
-  canManageAccounts.value
-    ? [
-        {
-          type: 'selection',
-          width: 44,
-          disabled: (row: CodexKeeperAccount) =>
-            isRowActing(row) || isBulkOperationRunning.value,
-        },
-        ...baseColumns.value,
-        manageActionColumn.value,
-      ]
-    : [...baseColumns.value, readOnlyActionColumn.value],
-)
-
 restoreAccountStatusPreferences()
 
 watch(
@@ -2444,45 +2257,34 @@ onBeforeUnmount(() => {
     <div class="page-toolbar account-page-header">
       <h1 data-page-title class="page-title">{{ accountPageTitle }}</h1>
       <div class="header-actions">
-        <AppButton
-          v-if="canManageAccounts"
-          secondary
-          @click="openCodexOAuthDialog"
-        >
-          <template #icon>
-            <AppIcon :component="LogIn" />
-          </template>
+        <Button v-if="canManageAccounts" variant="outline" @click="openCodexOAuthDialog">
+          <LogIn data-icon="inline-start" />
           {{ t('OAuth 登录', 'OAuth Login') }}
-        </AppButton>
-        <AppButton
+        </Button>
+        <Button
           v-if="canManageAccounts"
-          type="primary"
-          :loading="isUploadingAuthFiles"
+          :disabled="isUploadingAuthFiles"
           @click="triggerAuthFileUpload"
         >
-          <template #icon>
-            <AppIcon :component="Upload" />
-          </template>
+          <Spinner v-if="isUploadingAuthFiles" data-icon="inline-start" />
+          <Upload v-else data-icon="inline-start" />
           {{ t('上传文件', 'Upload Files') }}
-        </AppButton>
-        <AppButton
+        </Button>
+        <Button
           v-if="canManageAccounts"
-          secondary
-          :loading="isStartingAccountInspection || isAccountInspectionRunning"
-          :disabled="isAccountInspectionBlocked"
+          variant="outline"
+          :disabled="isAccountInspectionBlocked || isStartingAccountInspection"
           @click="startAccountInspection"
         >
-          <template #icon>
-            <AppIcon :component="ShieldCheck" />
-          </template>
+          <Spinner v-if="isStartingAccountInspection || isAccountInspectionRunning" data-icon="inline-start" />
+          <ShieldCheck v-else data-icon="inline-start" />
           {{ t('账号巡检', 'Inspect Accounts') }}
-        </AppButton>
-        <AppButton secondary :loading="isLoading" @click="reloadAccounts">
-          <template #icon>
-            <AppIcon :component="RefreshCw" />
-          </template>
+        </Button>
+        <Button variant="outline" :disabled="isLoading" @click="reloadAccounts">
+          <Spinner v-if="isLoading" data-icon="inline-start" />
+          <RefreshCw v-else data-icon="inline-start" />
           {{ t('重新加载', 'Reload') }}
-        </AppButton>
+        </Button>
         <input
           ref="authFileInput"
           class="auth-file-input"
@@ -2494,252 +2296,434 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <div class="metric-grid account-metrics">
-      <div class="metric-card inspection-status-card">
-        <div class="metric-icon" aria-hidden="true">
-          <Activity :size="20" :stroke-width="2.2" />
-        </div>
-        <div class="metric-label">{{ t('运行状态', 'Run Status') }}</div>
-        <div class="metric-value inspection-status-value" :title="keeperStatusDetailText">
-          <AppBadge class="inspection-status-tag" :type="keeperStateType" size="small" :bordered="false">
-            {{ keeperStatusDetailText }}
-          </AppBadge>
-        </div>
-        <div class="metric-footnote">{{ keeperStatusFootnoteText }}</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-icon" aria-hidden="true">
-          <Users :size="20" :stroke-width="2.2" />
-        </div>
-        <div class="metric-label">{{ t('账号总数', 'Total Accounts') }}</div>
-        <div class="metric-value">{{ formatInteger(accounts.length) }}</div>
-        <div class="metric-footnote">{{ t('全部认证文件', 'All auth files') }}</div>
-      </div>
-      <button
-        type="button"
-        class="metric-card metric-action is-green"
+    <div class="account-metrics">
+      <Card size="sm" class="account-metric-card inspection-status-card">
+        <CardHeader class="account-metric-header">
+          <div class="min-w-0">
+            <CardDescription>{{ t('运行状态', 'Run Status') }}</CardDescription>
+            <CardTitle class="inspection-status-value" :title="keeperStatusDetailText">
+              <Badge class="inspection-status-tag" :variant="keeperStateType">
+                {{ keeperStatusDetailText }}
+              </Badge>
+            </CardTitle>
+          </div>
+          <div class="account-metric-icon"><Activity /></div>
+        </CardHeader>
+        <CardContent class="text-xs text-muted-foreground">{{ keeperStatusFootnoteText }}</CardContent>
+      </Card>
+      <Card size="sm" class="account-metric-card">
+        <CardHeader class="account-metric-header">
+          <div class="min-w-0">
+            <CardDescription>{{ t('账号总数', 'Total Accounts') }}</CardDescription>
+            <CardTitle class="text-2xl tabular-nums">{{ formatInteger(accounts.length) }}</CardTitle>
+          </div>
+          <div class="account-metric-icon"><Users /></div>
+        </CardHeader>
+        <CardContent class="text-xs text-muted-foreground">{{ t('全部认证文件', 'All auth files') }}</CardContent>
+      </Card>
+      <Card
+        size="sm"
+        class="account-metric-card metric-action is-green"
         :class="{ 'is-active': isStatusFilterActive('enabled') }"
+        role="button"
+        tabindex="0"
         :aria-pressed="isStatusFilterActive('enabled')"
         @click="toggleStatusFilter('enabled')"
+        @keydown.enter="toggleStatusFilter('enabled')"
+        @keydown.space.prevent="toggleStatusFilter('enabled')"
       >
-        <div class="metric-icon" aria-hidden="true">
-          <ShieldCheck :size="20" :stroke-width="2.2" />
-        </div>
-        <div class="metric-label">{{ t('启用中', 'Enabled') }}</div>
-        <div class="metric-value">{{ formatInteger(enabledAccountCount) }}</div>
-        <div class="metric-footnote">{{ t('可参与调度', 'Available for scheduling') }}</div>
-      </button>
-      <button
-        type="button"
-        class="metric-card metric-action is-warning"
+        <CardHeader class="account-metric-header">
+          <div><CardDescription>{{ t('启用中', 'Enabled') }}</CardDescription><CardTitle class="text-2xl tabular-nums">{{ formatInteger(enabledAccountCount) }}</CardTitle></div>
+          <div class="account-metric-icon"><ShieldCheck /></div>
+        </CardHeader>
+        <CardContent class="text-xs text-muted-foreground">{{ t('可参与调度', 'Available for scheduling') }}</CardContent>
+      </Card>
+      <Card
+        size="sm"
+        class="account-metric-card metric-action is-warning"
         :class="{ 'is-active': isStatusFilterActive('disabled') }"
+        role="button"
+        tabindex="0"
         :aria-pressed="isStatusFilterActive('disabled')"
         @click="toggleStatusFilter('disabled')"
+        @keydown.enter="toggleStatusFilter('disabled')"
+        @keydown.space.prevent="toggleStatusFilter('disabled')"
       >
-        <div class="metric-icon" aria-hidden="true">
-          <PauseCircle :size="20" :stroke-width="2.2" />
-        </div>
-        <div class="metric-label">{{ t('已禁用', 'Disabled') }}</div>
-        <div class="metric-value">{{ formatInteger(disabledAccountCount) }}</div>
-        <div class="metric-footnote">{{ t('停用账号', 'Inactive accounts') }}</div>
-      </button>
-      <button
-        type="button"
-        class="metric-card metric-action is-danger"
+        <CardHeader class="account-metric-header">
+          <div><CardDescription>{{ t('已禁用', 'Disabled') }}</CardDescription><CardTitle class="text-2xl tabular-nums">{{ formatInteger(disabledAccountCount) }}</CardTitle></div>
+          <div class="account-metric-icon"><PauseCircle /></div>
+        </CardHeader>
+        <CardContent class="text-xs text-muted-foreground">{{ t('停用账号', 'Inactive accounts') }}</CardContent>
+      </Card>
+      <Card
+        size="sm"
+        class="account-metric-card metric-action is-danger"
         :class="{ 'is-active': isStatusFilterActive('unauthorized') }"
+        role="button"
+        tabindex="0"
         :aria-pressed="isStatusFilterActive('unauthorized')"
         @click="toggleStatusFilter('unauthorized')"
+        @keydown.enter="toggleStatusFilter('unauthorized')"
+        @keydown.space.prevent="toggleStatusFilter('unauthorized')"
       >
-        <div class="metric-icon" aria-hidden="true">
-          <ShieldAlert :size="20" :stroke-width="2.2" />
-        </div>
-        <div class="metric-label">{{ t('401报错', '401 Errors') }}</div>
-        <div class="metric-value">{{ formatInteger(unauthorizedErrorAccountCount) }}</div>
-        <div class="metric-footnote">HTTP 401</div>
-      </button>
-      <button
-        type="button"
-        class="metric-card metric-action is-purple"
+        <CardHeader class="account-metric-header">
+          <div><CardDescription>{{ t('401报错', '401 Errors') }}</CardDescription><CardTitle class="text-2xl tabular-nums">{{ formatInteger(unauthorizedErrorAccountCount) }}</CardTitle></div>
+          <div class="account-metric-icon"><ShieldAlert /></div>
+        </CardHeader>
+        <CardContent class="text-xs text-muted-foreground">HTTP 401</CardContent>
+      </Card>
+      <Card
+        size="sm"
+        class="account-metric-card metric-action is-purple"
         :class="{ 'is-active': isStatusFilterActive('quotaExhausted') }"
+        role="button"
+        tabindex="0"
         :aria-pressed="isStatusFilterActive('quotaExhausted')"
         @click="toggleStatusFilter('quotaExhausted')"
+        @keydown.enter="toggleStatusFilter('quotaExhausted')"
+        @keydown.space.prevent="toggleStatusFilter('quotaExhausted')"
       >
-        <div class="metric-icon" aria-hidden="true">
-          <Gauge :size="20" :stroke-width="2.2" />
-        </div>
-        <div class="metric-label">{{ t('额度耗尽', 'Quota Exhausted') }}</div>
-        <div class="metric-value">{{ formatInteger(quotaExhaustedAccountCount) }}</div>
-        <div class="metric-footnote">{{ t('临时降级', 'Temporary downgrade') }}</div>
-      </button>
+        <CardHeader class="account-metric-header">
+          <div><CardDescription>{{ t('额度耗尽', 'Quota Exhausted') }}</CardDescription><CardTitle class="text-2xl tabular-nums">{{ formatInteger(quotaExhaustedAccountCount) }}</CardTitle></div>
+          <div class="account-metric-icon"><Gauge /></div>
+        </CardHeader>
+        <CardContent class="text-xs text-muted-foreground">{{ t('临时降级', 'Temporary downgrade') }}</CardContent>
+      </Card>
     </div>
 
-    <section class="panel account-list-panel">
-      <div class="status-toolbar">
+    <Card class="account-list-panel">
+      <CardHeader class="status-toolbar">
         <div class="toolbar-heading">
           <div>
-            <h2 class="toolbar-title">{{ t('账号列表', 'Account List') }}</h2>
-            <p class="toolbar-subtitle">
+            <CardTitle>{{ t('账号列表', 'Account List') }}</CardTitle>
+            <CardDescription class="toolbar-subtitle">
               {{ t(`正常 ${filteredNormalAccounts.length} / ${enabledAccountCount} 个账号`, `Normal ${filteredNormalAccounts.length} / ${enabledAccountCount} accounts`) }}
               <template v-if="hasDisabledAccounts">
                 {{ t(`，已禁用 ${filteredDisabledAccounts.length} / ${disabledAccountCount} 个账号`, `, disabled ${filteredDisabledAccounts.length} / ${disabledAccountCount} accounts`) }}
               </template>
-            </p>
+            </CardDescription>
           </div>
-          <AppBadge v-if="activeFilterCount > 0" size="small" type="info" :bordered="false">
+          <Badge v-if="activeFilterCount > 0" variant="secondary">
             {{ t(`已筛选 ${activeFilterCount} 项`, `${activeFilterCount} filters active`) }}
-          </AppBadge>
+          </Badge>
         </div>
         <div class="filter-grid">
-          <AppInput v-model:value="filters.keyword" clearable :placeholder="t('搜索账号或邮箱', 'Search account or email')" />
-          <AppSelect
-            v-model:value="filters.accountType"
-            :options="accountTypeOptions"
-            clearable
-            filterable
-            :placeholder="t('账号类型', 'Account Type')"
-          />
-          <AppSelect
-            v-model:value="filters.priority"
-            :options="priorityFilterOptions"
-          />
+          <InputGroup>
+            <InputGroupAddon><Search /></InputGroupAddon>
+            <InputGroupInput v-model="filters.keyword" :placeholder="t('搜索账号或邮箱', 'Search account or email')" />
+          </InputGroup>
+          <Combobox
+            :model-value="selectedAccountTypeOption"
+            by="value"
+            @update:model-value="setAccountTypeFilter"
+          >
+            <ComboboxAnchor as-child>
+              <ComboboxTrigger as-child>
+                <Button
+                  variant="outline"
+                  class="filter-combobox-trigger"
+                  role="combobox"
+                  aria-haspopup="listbox"
+                  :aria-label="t('账号类型', 'Account Type')"
+                >
+                  <span class="min-w-0 flex-1 truncate text-left">{{ selectedAccountTypeOption?.label ?? t('账号类型', 'Account Type') }}</span>
+                  <ChevronsUpDown data-icon="inline-end" class="text-muted-foreground" />
+                </Button>
+              </ComboboxTrigger>
+            </ComboboxAnchor>
+            <ComboboxList align="start">
+              <ComboboxInput :placeholder="t('账号类型', 'Account Type')" />
+              <ComboboxEmpty>{{ t('没有匹配类型', 'No matching type') }}</ComboboxEmpty>
+              <ComboboxGroup>
+                <ComboboxItem :value="null">{{ t('全部类型', 'All types') }}</ComboboxItem>
+                <ComboboxItem v-for="option in accountTypeOptions" :key="option.value" :value="option">
+                  <span class="truncate">{{ option.label }}</span>
+                  <ComboboxItemIndicator><Check /></ComboboxItemIndicator>
+                </ComboboxItem>
+              </ComboboxGroup>
+            </ComboboxList>
+          </Combobox>
+          <Select :model-value="filters.priority" @update:model-value="setPriorityFilter">
+            <SelectTrigger :aria-label="t('优先级筛选', 'Priority filter')"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectItem v-for="option in priorityFilterOptions" :key="option.value" :value="option.value">
+                  {{ option.label }}
+                </SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
         </div>
-      </div>
+      </CardHeader>
 
-      <div class="account-sections">
+      <CardContent class="account-list-content">
         <section class="account-section">
           <div class="account-section-actions-row">
             <div class="sort-control-row" :aria-label="t('账号排序', 'Account Sorting')">
               <span class="sort-control-label">{{ t('排序', 'Sort') }}</span>
-              <AppDropdown trigger="click" :options="quotaSortOptions" @select="handleQuotaSortSelect">
-                <AppButton
-                  secondary
-                  size="small"
-                  :type="accountSort.key === 'quotaDay' || accountSort.key === 'quotaWeek' ? 'primary' : 'default'"
-                >
-                  {{ activeQuotaSortLabel ? t(`额度窗口：${activeQuotaSortLabel} ${sortDirectionMark}`, `Quota Window: ${activeQuotaSortLabel} ${sortDirectionMark}`) : t('额度窗口', 'Quota Window') }}
-                </AppButton>
-              </AppDropdown>
-              <AppButton
-                secondary
-                size="small"
-                :type="isAccountSortActive('accountType') ? 'primary' : 'default'"
+              <DropdownMenu>
+                <DropdownMenuTrigger as-child>
+                  <Button size="sm" :variant="accountSort.key === 'quotaDay' || accountSort.key === 'quotaWeek' ? 'secondary' : 'outline'">
+                    {{ activeQuotaSortLabel ? t(`额度窗口：${activeQuotaSortLabel} ${sortDirectionMark}`, `Quota Window: ${activeQuotaSortLabel} ${sortDirectionMark}`) : t('额度窗口', 'Quota Window') }}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuItem v-for="option in quotaSortOptions" :key="option.key" @select="handleQuotaSortSelect(option.key)">
+                    {{ option.label }} {{ accountSortMark(option.key as AccountSortKey) }}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <Button
+                size="sm"
+                :variant="isAccountSortActive('accountType') ? 'secondary' : 'outline'"
                 @click="toggleAccountSort('accountType')"
               >
                 {{ t('类型', 'Type') }} {{ accountSortMark('accountType') }}
-              </AppButton>
-              <AppButton
-                secondary
-                size="small"
-                :type="isAccountSortActive('status') ? 'primary' : 'default'"
+              </Button>
+              <Button
+                size="sm"
+                :variant="isAccountSortActive('status') ? 'secondary' : 'outline'"
                 @click="toggleAccountSort('status')"
               >
                 {{ t('状态', 'Status') }} {{ accountSortMark('status') }}
-              </AppButton>
-              <AppButton
-                secondary
-                size="small"
-                :type="isAccountSortActive('priority') ? 'primary' : 'default'"
+              </Button>
+              <Button
+                size="sm"
+                :variant="isAccountSortActive('priority') ? 'secondary' : 'outline'"
                 @click="toggleAccountSort('priority')"
               >
                 {{ t('优先级', 'Priority') }} {{ accountSortMark('priority') }}
-              </AppButton>
-              <AppButton
-                secondary
-                size="small"
-                :type="isAccountSortActive('lastCheckedAt') ? 'primary' : 'default'"
+              </Button>
+              <Button
+                size="sm"
+                :variant="isAccountSortActive('lastCheckedAt') ? 'secondary' : 'outline'"
                 @click="toggleAccountSort('lastCheckedAt')"
               >
                 {{ t('最近巡检', 'Last Inspection') }} {{ accountSortMark('lastCheckedAt') }}
-              </AppButton>
+              </Button>
             </div>
             <div v-if="canManageAccounts" class="account-section-actions">
-              <AppButton
-                secondary
-                type="primary"
-                size="small"
+              <Button
+                variant="outline"
+                size="sm"
                 :disabled="!canBulkEnable"
-                :loading="bulkToggleAction === 'enable'"
                 @click="confirmToggleSelectedAccounts('enable')"
               >
-                <template #icon>
-                  <AppIcon :component="ShieldCheck" />
-                </template>
+                <Spinner v-if="bulkToggleAction === 'enable'" data-icon="inline-start" />
+                <ShieldCheck v-else data-icon="inline-start" />
                 {{ t('启用', 'Enable') }}
-              </AppButton>
-              <AppButton
-                secondary
-                type="warning"
-                size="small"
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
                 :disabled="!canBulkDisable"
-                :loading="bulkToggleAction === 'disable'"
                 @click="confirmToggleSelectedAccounts('disable')"
               >
-                <template #icon>
-                  <AppIcon :component="PauseCircle" />
-                </template>
+                <Spinner v-if="bulkToggleAction === 'disable'" data-icon="inline-start" />
+                <PauseCircle v-else data-icon="inline-start" />
                 {{ t('禁用', 'Disable') }}
-              </AppButton>
-              <AppButton
-                secondary
-                type="primary"
-                size="small"
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
                 :disabled="!canRefreshSelected"
-                :loading="isBulkRefreshing"
                 @click="refreshSelectedAccounts"
               >
-                <template #icon>
-                  <AppIcon :component="RefreshCw" />
-                </template>
+                <Spinner v-if="isBulkRefreshing" data-icon="inline-start" />
+                <RefreshCw v-else data-icon="inline-start" />
                 {{ t('刷新', 'Refresh') }}
-              </AppButton>
-              <AppButton
-                secondary
-                type="error"
-                size="small"
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
                 :disabled="!canBulkDelete"
-                :loading="isBulkDeleting"
                 @click="openBulkDeleteDialog"
               >
-                <template #icon>
-                  <AppIcon :component="Trash2" />
-                </template>
+                <Spinner v-if="isBulkDeleting" data-icon="inline-start" />
+                <Trash2 v-else data-icon="inline-start" />
                 {{ t('删除', 'Delete') }}
-              </AppButton>
+              </Button>
             </div>
           </div>
-          <AppDataTable
-            class="account-table"
-            size="small"
-            :loading="tableLoading"
-            :columns="accountColumns"
-            :data="visibleListAccounts"
-            :row-key="accountRowKey"
-            :checked-row-keys="selectedAccountKeys"
-            :pagination="false"
-            table-layout="fixed"
-            :scroll-x="accountTableScrollX"
-            @update:checked-row-keys="handleAccountSelectionUpdate"
-          >
-            <template #empty>
-              <div class="empty-state">
-                {{ showListLoadingState ? t('账号加载中...', 'Loading accounts...') : t('当前筛选下暂无账号', 'No accounts match the current filter') }}
-              </div>
-            </template>
-          </AppDataTable>
-        </section>
-      </div>
 
-      <div class="account-table-footer">
-        <AppPagination
-          v-model:page="accountListPage"
-          v-model:page-size="accountDisplaySize"
-          show-size-picker
-          size="small"
-          :page-sizes="[50, 100, 150, 200]"
-          :item-count="sortedListAccounts.length"
-        />
-      </div>
-    </section>
+          <div class="account-table-shell">
+            <Table class="account-table table-fixed" :style="{ minWidth: `${accountTableScrollX}px` }">
+              <TableHeader>
+                <TableRow>
+                  <TableHead v-if="canManageAccounts" class="w-11">
+                    <Checkbox
+                      :model-value="visibleSelectionState"
+                      :disabled="selectableVisibleAccounts.length === 0"
+                      :aria-label="t('选择当前页账号', 'Select accounts on this page')"
+                      @update:model-value="setAllVisibleAccounts"
+                    />
+                  </TableHead>
+                  <TableHead class="w-[220px]">{{ t('账号', 'Account') }}</TableHead>
+                  <TableHead class="w-[96px]">{{ t('类型', 'Type') }}</TableHead>
+                  <TableHead class="w-[88px]">{{ t('优先级', 'Priority') }}</TableHead>
+                  <TableHead class="w-[270px]">{{ t('额度窗口', 'Quota Window') }}</TableHead>
+                  <TableHead class="w-[266px]">{{ t('窗口用量', 'Window Usage') }}</TableHead>
+                  <TableHead class="w-[116px]">{{ t('窗口预测', 'Window Projection') }}</TableHead>
+                  <TableHead class="w-[100px]">{{ t('最近巡检', 'Last Inspection') }}</TableHead>
+                  <TableHead class="w-[152px]">{{ t('最近操作', 'Latest Action') }}</TableHead>
+                  <TableHead class="w-[52px]"><span class="sr-only">{{ t('操作', 'Actions') }}</span></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <template v-if="showListLoadingState">
+                  <TableRow v-for="rowIndex in 6" :key="`account-skeleton-${rowIndex}`">
+                    <TableCell v-for="columnIndex in (canManageAccounts ? 10 : 9)" :key="columnIndex">
+                      <Skeleton class="h-4 w-full" />
+                    </TableCell>
+                  </TableRow>
+                </template>
+                <TableEmpty v-else-if="visibleListAccounts.length === 0" :colspan="canManageAccounts ? 10 : 9">
+                  {{ t('当前筛选下暂无账号', 'No accounts match the current filter') }}
+                </TableEmpty>
+                <TableRow v-for="row in visibleListAccounts" v-else :key="row.name">
+                  <TableCell v-if="canManageAccounts">
+                    <Checkbox
+                      :model-value="isAccountSelected(row)"
+                      :disabled="isRowActing(row) || isBulkOperationRunning"
+                      :aria-label="t(`选择 ${row.email ?? row.name}`, `Select ${row.email ?? row.name}`)"
+                      @update:model-value="setAccountSelected(row, $event)"
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <div class="account-table-identity" :title="accountIdentityTitle(row)">
+                      <span class="account-table-email">{{ row.email ?? row.name }}</span>
+                      <span class="account-table-name">{{ row.name }}</span>
+                      <span class="account-table-meta">
+                        <span v-for="tag in accountStatusTags(row)" :key="tag.label" class="account-table-chip" :class="tag.tone">
+                          {{ tag.label }}
+                        </span>
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell><span class="account-table-chip is-type" :title="accountTypeLabel(row.account_type)">{{ accountTypeLabel(row.account_type) }}</span></TableCell>
+                  <TableCell><span class="account-table-chip is-priority" :title="t(`优先级 ${formatInteger(accountPriority(row))}`, `Priority ${formatInteger(accountPriority(row))}`)">{{ formatInteger(accountPriority(row)) }}</span></TableCell>
+                  <TableCell>
+                    <div v-if="quotaWindowItems(row).length" class="quota-window-cell">
+                      <div v-for="item in quotaWindowItems(row)" :key="item.label" class="quota-window-item" :title="quotaWindowTooltip(item)">
+                        <div class="quota-window-head">
+                          <span class="quota-window-label">{{ item.label }}</span>
+                          <span class="quota-window-meta">
+                            <span class="quota-window-percent">{{ item.remainingPercent }}%</span>
+                            <span v-if="formatQuotaResetTime(item.resetAt)" class="quota-window-reset">{{ formatQuotaResetTime(item.resetAt) }}</span>
+                          </span>
+                        </div>
+                        <div class="quota-window-track">
+                          <div class="quota-window-fill" :class="quotaBarTone(item.remainingPercent)" :style="{ width: `${item.remainingPercent}%` }" />
+                        </div>
+                      </div>
+                    </div>
+                    <span v-else>-</span>
+                  </TableCell>
+                  <TableCell>
+                    <div v-if="quotaWindowItems(row).length" class="quota-usage-cell">
+                      <div v-for="item in quotaWindowItems(row)" :key="item.label" class="quota-usage-item" :class="quotaWindowUsageTone(item)" :title="quotaWindowUsageTitle(item)">
+                        <span v-for="tag in quotaWindowUsageTags(item)" :key="tag.label" class="quota-usage-chip" :class="tag.tone ? `is-${tag.tone}` : undefined">
+                          <span class="quota-usage-chip-label">{{ tag.label }}</span>
+                          <strong class="quota-usage-chip-value">{{ tag.value }}</strong>
+                        </span>
+                      </div>
+                    </div>
+                    <span v-else>-</span>
+                  </TableCell>
+                  <TableCell>
+                    <div v-if="quotaWindowItems(row).length" class="quota-usage-cell">
+                      <div v-for="item in quotaWindowItems(row)" :key="item.label" class="quota-usage-item is-projection" :title="quotaWindowPredictionTitle(item)">
+                        <span class="quota-usage-chip is-projection" :class="{ 'is-stale': !item.resetAt || item.usage?.stale === true }">
+                          <span class="quota-usage-chip-label">{{ t('额度', 'Quota') }}</span>
+                          <strong class="quota-usage-chip-value">
+                            {{ !item.resetAt || item.usage?.stale === true
+                              ? t('需刷新', 'Refresh needed')
+                              : quotaWindowProjectedCost(item) === null
+                                ? '-'
+                                : formatUsd(quotaWindowProjectedCost(item) ?? 0) }}
+                          </strong>
+                        </span>
+                      </div>
+                    </div>
+                    <span v-else>-</span>
+                  </TableCell>
+                  <TableCell>
+                    <span
+                      class="account-table-value-pill is-time"
+                      :class="{ 'is-empty': formatRelativeTime(row.last_checked_at, relativeTimeNow) === '-' }"
+                      :title="formatDateTime(row.last_checked_at)"
+                    >
+                      {{ formatRelativeTime(row.last_checked_at, relativeTimeNow) }}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <span class="account-table-value-pill is-action" :class="{ 'is-empty': latestActionText(row) === '-' }" :title="latestActionText(row) === '-' ? undefined : latestActionText(row)">
+                      {{ latestActionText(row) }}
+                    </span>
+                  </TableCell>
+                  <TableCell class="text-right">
+                    <DropdownMenu v-if="canManageAccounts">
+                      <DropdownMenuTrigger as-child>
+                        <Button variant="ghost" size="icon-sm" class="account-actions-trigger" :aria-label="t(`打开 ${row.email ?? row.name} 的操作菜单`, `Open actions for ${row.email ?? row.name}`)">
+                          <MoreHorizontal />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" :side-offset="4" class="w-40">
+                        <DropdownMenuGroup>
+                          <DropdownMenuItem @select="openDetail(row)"><Eye /><span>{{ t('详情', 'Details') }}</span></DropdownMenuItem>
+                        </DropdownMenuGroup>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuGroup>
+                          <DropdownMenuItem :disabled="isRowActing(row) || isBulkOperationRunning" @select="row.disabled ? confirmEnableAccount(row) : confirmDisableAccount(row)">
+                            <ShieldCheck v-if="row.disabled" /><PauseCircle v-else />
+                            <span>{{ row.disabled ? t('启用', 'Enable') : t('禁用', 'Disable') }}</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem :disabled="isRowActing(row) || isBulkOperationRunning" @select="refreshAccount(row)"><RefreshCw /><span>{{ t('刷新', 'Refresh') }}</span></DropdownMenuItem>
+                        </DropdownMenuGroup>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem variant="destructive" :disabled="isRowActing(row) || isBulkOperationRunning" @select="confirmDeleteAccount(row)"><Trash2 /><span>{{ t('删除', 'Delete') }}</span></DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                    <Button v-else size="sm" variant="ghost" @click="openDetail(row)">{{ t('详情', 'Details') }}</Button>
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </div>
+        </section>
+
+        <div class="account-table-footer">
+          <div class="account-range-copy">
+            <span>{{ t(`第 ${accountRangeStart} - ${accountRangeEnd} 条`, `${accountRangeStart} - ${accountRangeEnd}`) }}</span>
+            <span>{{ t(`共 ${formatInteger(sortedListAccounts.length)} 条`, `${formatInteger(sortedListAccounts.length)} total`) }}</span>
+            <span>{{ t('每页显示', 'Show') }}</span>
+            <Select :model-value="accountDisplaySize" @update:model-value="setAccountDisplaySize">
+              <SelectTrigger class="page-size-select" :aria-label="t('每页显示数量', 'Rows per page')"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectGroup><SelectItem v-for="size in [50, 100, 150, 200]" :key="size" :value="size">{{ size }}</SelectItem></SelectGroup>
+              </SelectContent>
+            </Select>
+            <span>{{ t('条', 'rows') }}</span>
+          </div>
+          <Pagination
+            :page="accountListPage"
+            :items-per-page="accountDisplaySize"
+            :total="sortedListAccounts.length"
+            :sibling-count="1"
+            @update:page="handleAccountPageChange"
+          >
+            <PaginationContent v-slot="{ items }">
+              <PaginationPrevious />
+              <template v-for="(item, index) in items" :key="index">
+                <PaginationItem v-if="item.type === 'page'" :value="item.value" :is-active="item.value === accountListPage">{{ item.value }}</PaginationItem>
+                <PaginationEllipsis v-else :index="index" />
+              </template>
+              <PaginationNext />
+            </PaginationContent>
+          </Pagination>
+        </div>
+      </CardContent>
+    </Card>
 
     <CodexKeeperLogsPanel
       v-if="canManageAccounts"
@@ -2747,422 +2731,434 @@ onBeforeUnmount(() => {
       @refresh="loadKeeperStatus"
     />
 
-    <AppDrawer v-model:show="detailOpen" placement="right" :width="420">
-      <AppDrawerContent>
-        <template #header>
+    <Sheet v-model:open="detailOpen">
+      <SheetContent
+        side="right"
+        :show-close-button="false"
+        class="overflow-hidden data-[side=right]:w-full data-[side=right]:sm:max-w-[420px]"
+      >
+        <SheetHeader>
           <div class="detail-drawer-header">
-            <AppButton quaternary size="small" class="detail-back-button" @click="detailOpen = false">
-              <template #icon>
-                <AppIcon :component="ArrowLeft" />
-              </template>
+            <Button variant="ghost" size="sm" class="detail-back-button" @click="detailOpen = false">
+              <ArrowLeft data-icon="inline-start" />
               {{ t('返回', 'Back') }}
-            </AppButton>
-            <span class="detail-drawer-title">{{ t('账号详情', 'Account Details') }}</span>
+            </Button>
+            <SheetTitle class="detail-drawer-title">{{ t('账号详情', 'Account Details') }}</SheetTitle>
           </div>
-        </template>
-        <AppDescriptions v-if="selectedAccount" label-placement="left" :column="1" size="small" bordered>
-          <AppDescriptionsItem :label="t('账号', 'Account')">{{ selectedAccount.name }}</AppDescriptionsItem>
-          <AppDescriptionsItem :label="t('邮箱', 'Email')">{{ selectedAccount.email ?? '-' }}</AppDescriptionsItem>
-          <AppDescriptionsItem v-if="canManageAccounts" :label="t('备注', 'Note')">
-            {{ isSelectedAccountNoteLoading ? t('加载中...', 'Loading...') : (selectedAccountNote ?? '-') }}
-          </AppDescriptionsItem>
-          <AppDescriptionsItem :label="t('账号类型', 'Account Type')">
-            {{ accountTypeLabel(selectedAccount.account_type) }}
-          </AppDescriptionsItem>
-          <AppDescriptionsItem :label="t('启用状态', 'Enabled Status')">
-            {{ selectedAccount.disabled ? t('已禁用', 'Disabled') : t('启用中', 'Enabled') }}
-          </AppDescriptionsItem>
-          <AppDescriptionsItem :label="t('当前优先级', 'Current Priority')">
-            {{ accountPriority(selectedAccount) }}
-          </AppDescriptionsItem>
-          <AppDescriptionsItem :label="t('类型默认优先级', 'Type Default Priority')">
-            {{ defaultPriority(selectedAccount) ?? '-' }}
-          </AppDescriptionsItem>
-          <AppDescriptionsItem v-if="shouldShowQuotaWindow(selectedAccount)" :label="t('额度窗口', 'Quota Window')">
-            {{ quotaText(selectedAccount) }}
-          </AppDescriptionsItem>
-          <AppDescriptionsItem :label="t('状态码', 'Status Code')">
-            {{ selectedAccount.last_status_code ?? '-' }}
-          </AppDescriptionsItem>
-          <AppDescriptionsItem :label="t('最近健康', 'Last Healthy')">
-            {{ formatDateTime(selectedAccount.last_healthy_at) }}
-          </AppDescriptionsItem>
-          <AppDescriptionsItem :label="t('最近巡检', 'Last Inspection')">
-            {{ formatDateTime(selectedAccount.last_checked_at) }}
-          </AppDescriptionsItem>
-          <AppDescriptionsItem :label="t('最近操作', 'Latest Action')">
-            {{ latestActionText(selectedAccount) }}
-          </AppDescriptionsItem>
-        </AppDescriptions>
-        <div v-if="selectedAccount && canManageAccounts" class="detail-action-row">
-          <AppStack :size="8" wrap>
-            <AppButton
-              size="small"
-              secondary
-              @click="openAuthFileEditor(selectedAccount)"
-            >
-              <template #icon>
-                <AppIcon :component="Pencil" />
-              </template>
+          <SheetDescription>{{ selectedAccount?.email ?? selectedAccount?.name ?? '-' }}</SheetDescription>
+        </SheetHeader>
+        <div class="detail-drawer-body">
+          <dl v-if="selectedAccount" class="detail-list">
+            <div class="detail-row"><dt>{{ t('账号', 'Account') }}</dt><dd>{{ selectedAccount.name }}</dd></div>
+            <div class="detail-row"><dt>{{ t('邮箱', 'Email') }}</dt><dd>{{ selectedAccount.email ?? '-' }}</dd></div>
+            <div v-if="canManageAccounts" class="detail-row"><dt>{{ t('备注', 'Note') }}</dt><dd>{{ isSelectedAccountNoteLoading ? t('加载中...', 'Loading...') : (selectedAccountNote ?? '-') }}</dd></div>
+            <div class="detail-row"><dt>{{ t('账号类型', 'Account Type') }}</dt><dd>{{ accountTypeLabel(selectedAccount.account_type) }}</dd></div>
+            <div class="detail-row"><dt>{{ t('启用状态', 'Enabled Status') }}</dt><dd>{{ selectedAccount.disabled ? t('已禁用', 'Disabled') : t('启用中', 'Enabled') }}</dd></div>
+            <div class="detail-row"><dt>{{ t('当前优先级', 'Current Priority') }}</dt><dd>{{ accountPriority(selectedAccount) }}</dd></div>
+            <div class="detail-row"><dt>{{ t('类型默认优先级', 'Type Default Priority') }}</dt><dd>{{ defaultPriority(selectedAccount) ?? '-' }}</dd></div>
+            <div v-if="shouldShowQuotaWindow(selectedAccount)" class="detail-row"><dt>{{ t('额度窗口', 'Quota Window') }}</dt><dd>{{ quotaText(selectedAccount) }}</dd></div>
+            <div class="detail-row"><dt>{{ t('状态码', 'Status Code') }}</dt><dd>{{ selectedAccount.last_status_code ?? '-' }}</dd></div>
+            <div class="detail-row"><dt>{{ t('最近健康', 'Last Healthy') }}</dt><dd>{{ formatDateTime(selectedAccount.last_healthy_at) }}</dd></div>
+            <div class="detail-row"><dt>{{ t('最近巡检', 'Last Inspection') }}</dt><dd>{{ formatDateTime(selectedAccount.last_checked_at) }}</dd></div>
+            <div class="detail-row"><dt>{{ t('最近操作', 'Latest Action') }}</dt><dd>{{ latestActionText(selectedAccount) }}</dd></div>
+          </dl>
+          <div v-if="selectedAccount && canManageAccounts" class="detail-action-row">
+            <Button size="sm" variant="outline" @click="openAuthFileEditor(selectedAccount)">
+              <Pencil data-icon="inline-start" />
               {{ t('认证文件详情 / 编辑', 'Auth File Details / Edit') }}
-            </AppButton>
-            <AppButton
-              size="small"
-              type="primary"
-              secondary
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
               :disabled="isRowActing(selectedAccount) || isBulkOperationRunning"
-              :loading="isActionLoading(selectedAccount, 'refresh')"
               @click="refreshAccount(selectedAccount, { closeDetail: true })"
             >
+              <Spinner v-if="isActionLoading(selectedAccount, 'refresh')" data-icon="inline-start" />
+              <RefreshCw v-else data-icon="inline-start" />
               {{ t('刷新', 'Refresh') }}
-            </AppButton>
-            <AppButton
+            </Button>
+            <Button
               v-if="selectedAccount.disabled"
-              size="small"
-              type="primary"
-              secondary
+              size="sm"
+              variant="outline"
               :disabled="isRowActing(selectedAccount) || isBulkOperationRunning"
-              :loading="isActionLoading(selectedAccount, 'toggle')"
               @click="confirmEnableAccount(selectedAccount)"
             >
+              <Spinner v-if="isActionLoading(selectedAccount, 'toggle')" data-icon="inline-start" />
               {{ t('启用', 'Enable') }}
-            </AppButton>
-            <AppButton
+            </Button>
+            <Button
               v-else
-              size="small"
-              type="warning"
-              secondary
+              size="sm"
+              variant="outline"
               :disabled="isRowActing(selectedAccount) || isBulkOperationRunning"
-              :loading="isActionLoading(selectedAccount, 'toggle')"
               @click="confirmDisableAccount(selectedAccount)"
             >
+              <Spinner v-if="isActionLoading(selectedAccount, 'toggle')" data-icon="inline-start" />
               {{ t('禁用', 'Disable') }}
-            </AppButton>
-            <AppButton
-              size="small"
-              secondary
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
               :disabled="isRowActing(selectedAccount) || isBulkOperationRunning"
-              :loading="isActionLoading(selectedAccount, 'priority')"
               @click="openPriorityDialog(selectedAccount)"
             >
+              <Spinner v-if="isActionLoading(selectedAccount, 'priority')" data-icon="inline-start" />
               {{ t('修改优先级', 'Change Priority') }}
-            </AppButton>
-            <AppButton
-              size="small"
-              type="error"
-              secondary
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
               :disabled="isRowActing(selectedAccount) || isBulkOperationRunning"
-              :loading="isActionLoading(selectedAccount, 'delete')"
               @click="confirmDeleteAccount(selectedAccount)"
             >
+              <Spinner v-if="isActionLoading(selectedAccount, 'delete')" data-icon="inline-start" />
               {{ t('删除', 'Delete') }}
-            </AppButton>
-          </AppStack>
+            </Button>
+          </div>
         </div>
-      </AppDrawerContent>
-    </AppDrawer>
+      </SheetContent>
+    </Sheet>
 
-    <AppModal
-      v-if="canManageAccounts"
-      :show="oauthDialogOpen"
-      preset="card"
-      :style="{ width: 'min(640px, calc(100vw - 32px))' }"
-      :title="t('Codex OAuth', 'Codex OAuth')"
-      :mask-closable="!isStartingOAuth && !isSubmittingOAuthCallback"
-      @update:show="(show) => { if (!show) closeCodexOAuthDialog() }"
-    >
-      <div class="oauth-dialog">
-        <p class="oauth-dialog-description">
-          {{ t('通过 Codex OAuth 登录，认证成功后生成的认证文件会自动加入账号管理。', 'Sign in with Codex OAuth. The generated auth file will be added to account management automatically.') }}
-        </p>
-        <div class="oauth-status-row">
-          <span>{{ t('认证状态', 'Authentication status') }}</span>
-          <AppBadge :type="oauthStatusType" size="small" :bordered="false">
-            {{ oauthStatusText }}
-          </AppBadge>
-        </div>
-        <p
-          v-if="oauthError"
-          class="oauth-dialog-message"
-          :class="oauthDialogStatus === 'error' ? 'is-error' : 'is-warning'"
-        >
-          {{ oauthError }}
-        </p>
-        <AppButton
-          v-if="oauthDialogStatus === 'idle'"
-          type="primary"
-          :loading="isStartingOAuth"
-          @click="startCodexOAuth"
-        >
-          {{ t('开始 Codex 登录', 'Start Codex Login') }}
-        </AppButton>
-        <div v-if="oauthAuthURL" class="oauth-dialog-section">
-          <label>{{ t('授权链接', 'Authorization link') }}</label>
-          <AppInput
-            type="textarea"
-            readonly
-            :value="oauthAuthURL"
-            :autosize="{ minRows: 2, maxRows: 4 }"
-          />
-          <AppStack>
-            <AppButton type="primary" secondary @click="openCodexOAuthURL">
-              <template #icon>
-                <AppIcon :component="ExternalLink" />
-              </template>
-              {{ t('打开链接', 'Open Link') }}
-            </AppButton>
-            <AppButton secondary @click="copyCodexOAuthURL">
-              <template #icon>
-                <AppIcon :component="Copy" />
-              </template>
-              {{ t('复制链接', 'Copy Link') }}
-            </AppButton>
-          </AppStack>
-        </div>
-        <div v-if="oauthDialogStatus === 'waiting'" class="oauth-dialog-section">
-          <label>{{ t('回调 URL', 'Callback URL') }}</label>
-          <p class="oauth-dialog-hint">
-            {{ t('如果当前浏览器无法访问 localhost 回调地址，请复制浏览器最终跳转后的完整 URL 并粘贴到这里。', 'If this browser cannot reach the localhost callback, paste the complete URL from the browser after its final redirect here.') }}
-          </p>
-          <AppInput
-            v-model:value="oauthCallbackURL"
-            type="textarea"
-            :autosize="{ minRows: 3, maxRows: 5 }"
-            :placeholder="t('粘贴完整回调 URL', 'Paste the complete callback URL')"
-          />
-          <AppButton
-            type="primary"
-            secondary
-            :disabled="!oauthCallbackURL.trim()"
-            :loading="isSubmittingOAuthCallback"
-            @click="submitCodexOAuthCallbackURL"
+    <Dialog v-if="canManageAccounts" :open="oauthDialogOpen" @update:open="handleCodexOAuthDialogOpen">
+      <DialogContent class="max-h-[calc(100svh-2rem)] overflow-y-auto sm:max-w-[640px]">
+        <DialogHeader>
+          <DialogTitle>Codex OAuth</DialogTitle>
+          <DialogDescription>
+            {{ t('通过 Codex OAuth 登录，认证成功后生成的认证文件会自动加入账号管理。', 'Sign in with Codex OAuth. The generated auth file will be added to account management automatically.') }}
+          </DialogDescription>
+        </DialogHeader>
+        <div class="oauth-dialog">
+          <div class="oauth-status-row">
+            <span>{{ t('认证状态', 'Authentication status') }}</span>
+            <Badge :variant="oauthStatusType">
+              {{ oauthStatusText }}
+            </Badge>
+          </div>
+          <Alert v-if="oauthError" :variant="oauthDialogStatus === 'error' ? 'destructive' : 'default'">
+            <AlertDescription>{{ oauthError }}</AlertDescription>
+          </Alert>
+          <Button
+            v-if="oauthDialogStatus === 'idle'"
+            :disabled="isStartingOAuth"
+            @click="startCodexOAuth"
           >
-            {{ t('提交回调 URL', 'Submit Callback URL') }}
-          </AppButton>
+            <Spinner v-if="isStartingOAuth" data-icon="inline-start" />
+            <LogIn v-else data-icon="inline-start" />
+            {{ t('开始 Codex 登录', 'Start Codex Login') }}
+          </Button>
+          <div v-if="oauthAuthURL" class="oauth-dialog-section">
+            <label>{{ t('授权链接', 'Authorization link') }}</label>
+            <Textarea
+              readonly
+              :model-value="oauthAuthURL"
+              rows="3"
+            />
+            <div class="flex flex-wrap gap-2">
+              <Button variant="outline" @click="openCodexOAuthURL">
+                <ExternalLink data-icon="inline-start" />
+                {{ t('打开链接', 'Open Link') }}
+              </Button>
+              <Button variant="outline" @click="copyCodexOAuthURL">
+                <Copy data-icon="inline-start" />
+                {{ t('复制链接', 'Copy Link') }}
+              </Button>
+            </div>
+          </div>
+          <div v-if="oauthDialogStatus === 'waiting'" class="oauth-dialog-section">
+            <label>{{ t('回调 URL', 'Callback URL') }}</label>
+            <p class="oauth-dialog-hint">
+              {{ t('如果当前浏览器无法访问 localhost 回调地址，请复制浏览器最终跳转后的完整 URL 并粘贴到这里。', 'If this browser cannot reach the localhost callback, paste the complete URL from the browser after its final redirect here.') }}
+            </p>
+            <Textarea
+              v-model="oauthCallbackURL"
+              rows="4"
+              :placeholder="t('粘贴完整回调 URL', 'Paste the complete callback URL')"
+            />
+            <Button
+              variant="outline"
+              :disabled="!oauthCallbackURL.trim() || isSubmittingOAuthCallback"
+              @click="submitCodexOAuthCallbackURL"
+            >
+              <Spinner v-if="isSubmittingOAuthCallback" data-icon="inline-start" />
+              {{ t('提交回调 URL', 'Submit Callback URL') }}
+            </Button>
+          </div>
+          <Button
+            v-if="oauthDialogStatus === 'success' || oauthDialogStatus === 'error'"
+            variant="outline"
+            :disabled="isStartingOAuth"
+            @click="startCodexOAuth"
+          >
+            <Spinner v-if="isStartingOAuth" data-icon="inline-start" />
+            {{ t('登录另一个账号', 'Sign in to another account') }}
+          </Button>
         </div>
-        <AppButton
-          v-if="oauthDialogStatus === 'success' || oauthDialogStatus === 'error'"
-          secondary
-          :loading="isStartingOAuth"
-          @click="startCodexOAuth"
-        >
-          {{ t('登录另一个账号', 'Sign in to another account') }}
-        </AppButton>
-      </div>
-      <template #footer>
-        <AppStack justify="end">
-          <AppButton
+        <DialogFooter>
+          <Button
+            variant="outline"
             :disabled="isStartingOAuth || isSubmittingOAuthCallback"
             @click="closeCodexOAuthDialog"
           >
             {{ t('关闭', 'Close') }}
-          </AppButton>
-        </AppStack>
-      </template>
-    </AppModal>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
-    <AppModal
+    <Dialog
       v-if="canManageAccounts"
-      :show="authFileEditor !== null"
-      preset="card"
-      :style="{ width: 'min(720px, calc(100vw - 32px))' }"
-      :title="authFileEditor ? t(`认证文件详情 / 编辑 - ${authFileEditor.fileName}`, `Auth File Details / Edit - ${authFileEditor.fileName}`) : t('认证文件详情 / 编辑', 'Auth File Details / Edit')"
-      :mask-closable="!authFileEditor?.saving"
-      @update:show="(show) => { if (!show) closeAuthFileEditor() }"
+      :open="authFileEditor !== null"
+      @update:open="handleAuthFileEditorOpen"
     >
-      <div v-if="authFileEditor" class="auth-file-editor">
-        <div v-if="authFileEditor.loading" class="auth-file-editor-loading">
-          {{ t('正在加载认证文件...', 'Loading auth file...') }}
+      <DialogContent
+        class="max-h-[calc(100vh-2rem)] overflow-hidden sm:max-w-[720px]"
+        :show-close-button="authFileEditor?.saving !== true"
+        @escape-key-down="authFileEditor?.saving && $event.preventDefault()"
+        @pointer-down-outside="authFileEditor?.saving && $event.preventDefault()"
+      >
+        <DialogHeader>
+          <DialogTitle>
+            {{ authFileEditor
+              ? t(`认证文件详情 / 编辑 - ${authFileEditor.fileName}`, `Auth File Details / Edit - ${authFileEditor.fileName}`)
+              : t('认证文件详情 / 编辑', 'Auth File Details / Edit') }}
+          </DialogTitle>
+          <DialogDescription>
+            {{ t('查看 CPA 返回的认证文件内容，并修改支持的配置字段。', 'Review the auth file returned by CPA and edit supported settings.') }}
+          </DialogDescription>
+        </DialogHeader>
+        <div v-if="authFileEditor" class="auth-file-editor">
+          <div v-if="authFileEditor.loading" class="auth-file-editor-loading">
+            <Spinner />
+            {{ t('正在加载认证文件...', 'Loading auth file...') }}
+          </div>
+          <template v-else>
+            <Alert v-if="authFileEditor.error" variant="destructive">
+              <AlertDescription>{{ authFileEditor.error }}</AlertDescription>
+            </Alert>
+            <FieldGroup>
+              <Field class="auth-file-editor-json-block">
+                <FieldLabel>{{ t('认证文件信息（info）', 'Auth file info (info)') }}</FieldLabel>
+                <Textarea
+                  readonly
+                  :model-value="authFileEditor.fileInfoText"
+                  rows="6"
+                />
+              </Field>
+              <Field class="auth-file-editor-json-block">
+                <FieldLabel>
+                  {{ authFileEditor.json
+                    ? t('认证文件 JSON（预览）', 'Auth file JSON (preview)')
+                    : t('下载内容（已截断）', 'Downloaded content (truncated)') }}
+                </FieldLabel>
+                <Textarea
+                  v-if="authFileEditor.json"
+                  readonly
+                  :model-value="authFileEditorUpdatedText"
+                  rows="8"
+                />
+                <pre v-else class="auth-file-editor-invalid-preview">{{ authFileEditor.invalidContentPreview }}</pre>
+              </Field>
+              <div v-if="authFileEditor.json" class="auth-file-editor-fields">
+                <Field>
+                  <FieldLabel>{{ t('前缀（prefix）', 'Prefix (prefix)') }}</FieldLabel>
+                  <Input v-model="authFileEditor.prefix" />
+                </Field>
+                <Field>
+                  <FieldLabel>{{ t('代理 URL（proxy_url）', 'Proxy URL (proxy_url)') }}</FieldLabel>
+                  <Input
+                    v-model="authFileEditor.proxyUrl"
+                    :placeholder="t('socks5://username:password@proxy_ip:port/', 'socks5://username:password@proxy_ip:port/')"
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel>{{ t('优先级（priority）', 'Priority (priority)') }}</FieldLabel>
+                  <Input
+                    v-model="authFileEditor.priority"
+                    inputmode="numeric"
+                    :placeholder="t('例如：10 或 -1', 'For example: 10 or -1')"
+                  />
+                  <FieldDescription>{{ t('仅支持整数；数值越大优先级越高。', 'Integers only; higher values have higher priority.') }}</FieldDescription>
+                </Field>
+                <Field orientation="horizontal" class="auth-file-editor-switch-field">
+                  <div>
+                    <FieldLabel>{{ t('WebSockets（websockets）', 'WebSockets (websockets)') }}</FieldLabel>
+                    <FieldDescription>{{ t('为此认证文件启用 WebSocket 支持。', 'Enable WebSocket support for this auth file.') }}</FieldDescription>
+                  </div>
+                  <Switch
+                    :model-value="authFileEditor.websockets"
+                    @update:model-value="setAuthFileWebsockets"
+                  />
+                </Field>
+                <Field class="auth-file-editor-wide-field">
+                  <FieldLabel>{{ t('自定义请求头（headers）', 'Custom headers (headers)') }}</FieldLabel>
+                  <Textarea
+                    :model-value="authFileEditor.headersText"
+                    :placeholder="'{ &quot;Header-Name&quot;: &quot;value&quot; }'"
+                    rows="4"
+                    @update:model-value="handleAuthFileHeadersChange(String($event))"
+                  />
+                  <FieldDescription v-if="!authFileEditor.headersError">
+                    {{ t('以 JSON 对象格式输入，每个值都必须是字符串。', 'Enter a JSON object; every value must be a string.') }}
+                  </FieldDescription>
+                  <p v-else class="auth-file-editor-error">{{ authFileEditor.headersError }}</p>
+                </Field>
+                <Field class="auth-file-editor-wide-field">
+                  <FieldLabel>{{ t('备注（note）', 'Note (note)') }}</FieldLabel>
+                  <Textarea
+                    v-model="authFileEditor.note"
+                    rows="3"
+                    :placeholder="t('输入备注信息，例如：张三的账号', 'Enter a note, for example: account owner')"
+                    @update:model-value="authFileEditor.noteTouched = true"
+                  />
+                </Field>
+              </div>
+            </FieldGroup>
+          </template>
         </div>
-        <template v-else>
-          <div v-if="authFileEditor.error" class="auth-file-editor-error">
-            {{ authFileEditor.error }}
-          </div>
-          <div class="auth-file-editor-json-block">
-            <label>{{ t('认证文件信息（info）', 'Auth file info (info)') }}</label>
-            <AppInput
-              type="textarea"
-              readonly
-              :value="authFileEditor.fileInfoText"
-              :autosize="{ minRows: 6, maxRows: 10 }"
-            />
-          </div>
-          <div class="auth-file-editor-json-block">
-            <label>
-              {{ authFileEditor.json
-                ? t('认证文件 JSON（预览）', 'Auth file JSON (preview)')
-                : t('下载内容（已截断）', 'Downloaded content (truncated)') }}
-            </label>
-            <AppInput
-              v-if="authFileEditor.json"
-              type="textarea"
-              readonly
-              :value="authFileEditorUpdatedText"
-              :autosize="{ minRows: 8, maxRows: 16 }"
-            />
-            <pre v-else class="auth-file-editor-invalid-preview">{{ authFileEditor.invalidContentPreview }}</pre>
-          </div>
-          <div v-if="authFileEditor.json" class="auth-file-editor-fields">
-            <div class="auth-file-editor-field">
-              <label>{{ t('前缀（prefix）', 'Prefix (prefix)') }}</label>
-              <AppInput v-model:value="authFileEditor.prefix" />
-            </div>
-            <div class="auth-file-editor-field">
-              <label>{{ t('代理 URL（proxy_url）', 'Proxy URL (proxy_url)') }}</label>
-              <AppInput v-model:value="authFileEditor.proxyUrl" :placeholder="t('socks5://username:password@proxy_ip:port/', 'socks5://username:password@proxy_ip:port/')" />
-            </div>
-            <div class="auth-file-editor-field">
-              <label>{{ t('优先级（priority）', 'Priority (priority)') }}</label>
-              <AppInput v-model:value="authFileEditor.priority" :placeholder="t('例如：10 或 -1', 'For example: 10 or -1')" />
-              <span class="auth-file-editor-hint">{{ t('仅支持整数；数值越大优先级越高。', 'Integers only; higher values have higher priority.') }}</span>
-            </div>
-            <div class="auth-file-editor-field auth-file-editor-switch-field">
-              <label>{{ t('WebSockets（websockets）', 'WebSockets (websockets)') }}</label>
-              <AppSwitch v-model:value="authFileEditor.websockets" @update:value="authFileEditor.websocketsTouched = true" />
-            </div>
-            <div class="auth-file-editor-field auth-file-editor-wide-field">
-              <label>{{ t('自定义请求头（headers）', 'Custom headers (headers)') }}</label>
-              <AppInput
-                type="textarea"
-                :value="authFileEditor.headersText"
-                :placeholder="'{\n  &quot;Header-Name&quot;: &quot;value&quot;\n}'"
-                :autosize="{ minRows: 4, maxRows: 8 }"
-                @update:value="handleAuthFileHeadersChange"
-              />
-              <span v-if="authFileEditor.headersError" class="auth-file-editor-error">{{ authFileEditor.headersError }}</span>
-              <span v-else class="auth-file-editor-hint">{{ t('以 JSON 对象格式输入，每个值都必须是字符串。', 'Enter a JSON object; every value must be a string.') }}</span>
-            </div>
-            <div class="auth-file-editor-field auth-file-editor-wide-field">
-              <label>{{ t('备注（note）', 'Note (note)') }}</label>
-              <AppInput
-                v-model:value="authFileEditor.note"
-                type="textarea"
-                :autosize="{ minRows: 2, maxRows: 4 }"
-                :placeholder="t('输入备注信息，例如：张三的账号', 'Enter a note, for example: account owner')"
-                @update:value="authFileEditor.noteTouched = true"
-              />
-            </div>
-          </div>
-        </template>
-      </div>
-      <template #footer>
-        <AppStack justify="end">
-          <AppButton :disabled="authFileEditor?.saving === true" @click="closeAuthFileEditor">
+        <DialogFooter>
+          <Button
+            variant="outline"
+            :disabled="authFileEditor?.saving === true"
+            @click="closeAuthFileEditor"
+          >
             {{ authFileEditorDirty ? t('取消', 'Cancel') : t('关闭', 'Close') }}
-          </AppButton>
-          <AppButton
-            secondary
+          </Button>
+          <Button
+            variant="secondary"
             :disabled="authFileEditor?.saving === true || !authFileEditorUpdatedText"
             @click="copyAuthFileEditorText"
           >
+            <Copy data-icon="inline-start" />
             {{ t('复制', 'Copy') }}
-          </AppButton>
-          <AppButton
-            type="primary"
-            :loading="authFileEditor?.saving === true"
-            :disabled="!authFileEditorDirty || !!authFileEditor?.headersError || authFileEditor?.loading === true"
+          </Button>
+          <Button
+            :disabled="!authFileEditorDirty || !!authFileEditor?.headersError || authFileEditor?.loading === true || authFileEditor?.saving === true"
             @click="saveAuthFileEditor"
           >
+            <Spinner v-if="authFileEditor?.saving === true" data-icon="inline-start" />
             {{ t('保存', 'Save') }}
-          </AppButton>
-        </AppStack>
-      </template>
-    </AppModal>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
-    <AppModal
-      v-if="canManageAccounts"
-      v-model:show="accountConfirmDialog.show"
-      preset="dialog"
-      :title="accountConfirmDialog.title"
-      :style="{ width: 'min(420px, calc(100vw - 32px))' }"
-    >
-      <p class="account-confirm-content">{{ accountConfirmDialog.content }}</p>
-      <template #action>
-        <AppStack justify="end">
-          <AppButton :disabled="isAccountConfirmSubmitting" @click="accountConfirmDialog.show = false">
+    <Dialog v-if="canManageAccounts" v-model:open="accountConfirmDialog.show">
+      <DialogContent class="sm:max-w-[420px]">
+        <DialogHeader>
+          <DialogTitle>{{ accountConfirmDialog.title }}</DialogTitle>
+          <DialogDescription>{{ accountConfirmDialog.content }}</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            :disabled="isAccountConfirmSubmitting"
+            @click="accountConfirmDialog.show = false"
+          >
             {{ t('取消', 'Cancel') }}
-          </AppButton>
-          <AppButton
-            :type="accountConfirmDialog.type"
-            :loading="isAccountConfirmSubmitting"
+          </Button>
+          <Button
+            :variant="accountConfirmButtonVariant()"
+            :disabled="isAccountConfirmSubmitting"
             @click="submitAccountConfirm"
           >
+            <Spinner v-if="isAccountConfirmSubmitting" data-icon="inline-start" />
             {{ accountConfirmDialog.positiveText }}
-          </AppButton>
-        </AppStack>
-      </template>
-    </AppModal>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
-    <AppModal
-      v-if="canManageAccounts"
-      v-model:show="bulkDeleteDialog.show"
-      preset="dialog"
-      :title="bulkDeleteDialogTitle"
-      :style="{ width: 'min(460px, calc(100vw - 32px))' }"
-    >
-      <div class="bulk-delete-dialog">
-        <p class="bulk-delete-warning">
-          {{ bulkDeleteWarningText }}
-        </p>
+    <Dialog v-if="canManageAccounts" v-model:open="bulkDeleteDialog.show">
+      <DialogContent class="sm:max-w-[460px]">
+        <DialogHeader>
+          <DialogTitle>{{ bulkDeleteDialogTitle }}</DialogTitle>
+          <DialogDescription>{{ bulkDeleteWarningText }}</DialogDescription>
+        </DialogHeader>
         <div v-if="bulkDeletePreviewNames.length > 0" class="bulk-delete-preview">
-          <span v-for="name in bulkDeletePreviewNames" :key="name">{{ name }}</span>
-          <span v-if="bulkDeletePreviewOverflow > 0">{{ t(`另 ${bulkDeletePreviewOverflow} 个...`, `${bulkDeletePreviewOverflow} more...`) }}</span>
+          <Badge v-for="name in bulkDeletePreviewNames" :key="name" variant="secondary">
+            {{ name }}
+          </Badge>
+          <Badge v-if="bulkDeletePreviewOverflow > 0" variant="outline">
+            {{ t(`另 ${bulkDeletePreviewOverflow} 个...`, `${bulkDeletePreviewOverflow} more...`) }}
+          </Badge>
         </div>
-      </div>
-      <template #action>
-        <AppStack justify="end">
-          <AppButton :disabled="isBulkDeleting" @click="bulkDeleteDialog.show = false">{{ t('取消', 'Cancel') }}</AppButton>
-          <AppButton
-            type="error"
-            :disabled="selectedAccountCount === 0"
-            :loading="isBulkDeleting"
+        <DialogFooter>
+          <Button
+            variant="outline"
+            :disabled="isBulkDeleting"
+            @click="bulkDeleteDialog.show = false"
+          >
+            {{ t('取消', 'Cancel') }}
+          </Button>
+          <Button
+            variant="destructive"
+            :disabled="selectedAccountCount === 0 || isBulkDeleting"
             @click="submitBulkDelete"
           >
+            <Spinner v-if="isBulkDeleting" data-icon="inline-start" />
             {{ t('确认删除', 'Confirm Delete') }}
-          </AppButton>
-        </AppStack>
-      </template>
-    </AppModal>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
-    <AppModal
-      v-if="canManageAccounts"
-      v-model:show="priorityDialog.show"
-      preset="dialog"
-      :title="priorityDialogTitle"
-      :style="{ width: 'min(460px, calc(100vw - 32px))' }"
-    >
-      <div class="priority-dialog">
-        <AppSelect
-          :value="priorityDialog.mode"
-          :options="priorityModeOptions"
-          @update:value="(value) => setPriorityDialogMode(value as PriorityMode)"
-        />
-        <AppNumberInput
-          v-if="priorityDialog.mode !== 'default'"
-          v-model:value="priorityDialog.value"
-          :precision="0"
-          v-bind="priorityDialogBounds"
-        />
-        <p class="priority-hint">{{ priorityDialogHint }}</p>
-      </div>
-      <template #action>
-        <AppStack justify="end">
-          <AppButton @click="priorityDialog.show = false">{{ t('取消', 'Cancel') }}</AppButton>
-          <AppButton
-            type="primary"
-            :disabled="!canSubmitPriority"
-            :loading="
-              priorityDialog.account
-                ? isActionLoading(priorityDialog.account, 'priority')
-                : false
-            "
+    <Dialog v-if="canManageAccounts" v-model:open="priorityDialog.show">
+      <DialogContent class="sm:max-w-[460px]">
+        <DialogHeader>
+          <DialogTitle>{{ priorityDialogTitle }}</DialogTitle>
+          <DialogDescription>{{ priorityDialogHint }}</DialogDescription>
+        </DialogHeader>
+        <FieldGroup>
+          <Field>
+            <FieldLabel>{{ t('优先级模式', 'Priority Mode') }}</FieldLabel>
+            <Select :model-value="priorityDialog.mode" @update:model-value="handlePriorityDialogMode">
+              <SelectTrigger class="w-full">
+                <SelectValue :placeholder="t('选择优先级模式', 'Select priority mode')" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem
+                    v-for="option in priorityModeOptions"
+                    :key="option.value"
+                    :value="option.value"
+                    :disabled="option.disabled"
+                  >
+                    {{ option.label }}
+                  </SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field v-if="priorityDialog.mode !== 'default'">
+            <FieldLabel>{{ t('优先级数值', 'Priority Value') }}</FieldLabel>
+            <Input
+              type="number"
+              step="1"
+              :min="priorityDialog.mode === 'high' ? 21 : undefined"
+              :max="priorityDialog.mode === 'low' ? -2 : undefined"
+              :model-value="priorityDialog.value ?? ''"
+              @update:model-value="setPriorityDialogValue"
+            />
+          </Field>
+        </FieldGroup>
+        <DialogFooter>
+          <Button variant="outline" @click="priorityDialog.show = false">
+            {{ t('取消', 'Cancel') }}
+          </Button>
+          <Button
+            :disabled="!canSubmitPriority || (priorityDialog.account ? isActionLoading(priorityDialog.account, 'priority') : false)"
             @click="submitPriorityDialog"
           >
+            <Spinner
+              v-if="priorityDialog.account && isActionLoading(priorityDialog.account, 'priority')"
+              data-icon="inline-start"
+            />
             {{ t('确认', 'Confirm') }}
-          </AppButton>
-        </AppStack>
-      </template>
-    </AppModal>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </section>
 </template>
 
@@ -3193,12 +3189,54 @@ onBeforeUnmount(() => {
 }
 
 .account-metrics {
+  display: grid;
   grid-template-columns: repeat(6, minmax(112px, 1fr));
+  gap: 12px;
 }
 
-.account-metrics .metric-card {
-  min-height: 104px;
-  padding: 14px 12px;
+.account-metric-card {
+  --metric-color: var(--primary);
+  min-height: 116px;
+  overflow: hidden;
+}
+
+.account-metric-card.is-green {
+  --metric-color: var(--cpa-success);
+}
+
+.account-metric-card.is-warning {
+  --metric-color: var(--cpa-warning);
+}
+
+.account-metric-card.is-danger {
+  --metric-color: var(--destructive);
+}
+
+.account-metric-card.is-purple {
+  --metric-color: var(--cpa-accent-purple);
+}
+
+.account-metric-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.account-metric-icon {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  place-items: center;
+  border-radius: calc(var(--radius) - 2px);
+  background: color-mix(in oklch, var(--metric-color) 12%, var(--muted));
+  color: var(--metric-color);
+}
+
+.account-metric-icon > svg {
+  width: 18px;
+  height: 18px;
 }
 
 .account-metrics .metric-action {
@@ -3211,25 +3249,18 @@ onBeforeUnmount(() => {
 }
 
 .account-metrics .metric-action:hover {
-  border-color: color-mix(in srgb, var(--metric-color, var(--cpa-primary)) 45%, var(--cpa-border));
+  border-color: color-mix(in oklch, var(--metric-color) 40%, var(--border));
   transform: translateY(-1px);
 }
 
 .account-metrics .metric-action:focus-visible {
-  outline: 2px solid var(--metric-color, var(--cpa-primary));
+  outline: 2px solid var(--ring);
   outline-offset: 3px;
 }
 
 .account-metrics .metric-action.is-active {
-  border-color: color-mix(in srgb, var(--metric-color, var(--cpa-primary)) 65%, var(--cpa-border));
-  box-shadow:
-    0 0 0 3px color-mix(in srgb, var(--metric-color, var(--cpa-primary)) 16%, transparent),
-    var(--cpa-shadow-card),
-    var(--cpa-shadow-hairline);
-}
-
-.account-metrics .metric-value {
-  font-size: 20px;
+  border-color: color-mix(in oklch, var(--metric-color) 58%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--metric-color) 14%, transparent);
 }
 
 .inspection-status-card {
@@ -3248,13 +3279,9 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 
-.inspection-status-value :deep(.n-tag) {
-  max-width: 100%;
-  min-width: 0;
-}
-
-.inspection-status-value :deep(.n-tag__content) {
+.inspection-status-tag {
   display: block;
+  max-width: 100%;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3264,10 +3291,8 @@ onBeforeUnmount(() => {
 .status-toolbar {
   display: grid;
   gap: 12px;
-  padding: 14px;
-  border-bottom: 1px solid var(--cpa-border);
-  background: var(--cpa-glass);
-  backdrop-filter: blur(14px);
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
 }
 
 .toolbar-heading {
@@ -3280,7 +3305,7 @@ onBeforeUnmount(() => {
 
 .toolbar-title {
   margin: 0;
-  color: var(--cpa-text);
+  color: var(--foreground);
   font-size: 15px;
   font-weight: 700;
   line-height: 1.25;
@@ -3288,7 +3313,7 @@ onBeforeUnmount(() => {
 
 .toolbar-subtitle {
   margin: 3px 0 0;
-  color: var(--cpa-text-muted);
+  color: var(--muted-foreground);
   font-size: 13px;
 }
 
@@ -3309,16 +3334,14 @@ onBeforeUnmount(() => {
 }
 
 .sort-control-label {
-  color: var(--cpa-text-muted);
+  color: var(--muted-foreground);
   font-size: 12px;
   font-weight: 700;
   white-space: nowrap;
 }
 
-.account-sections {
-  display: grid;
-  gap: 14px;
-  padding: 14px;
+.account-list-content {
+  padding: 0;
 }
 
 .account-table-footer {
@@ -3327,14 +3350,14 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: flex-end;
   gap: 10px;
-  padding: 12px 14px;
-  border-top: 1px solid var(--cpa-border);
-  background: var(--cpa-surface-raised);
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
 }
 
 .account-section {
   display: grid;
-  gap: 10px;
+  gap: 12px;
+  padding: 16px 16px 0;
 }
 
 .account-section-actions-row {
@@ -3346,6 +3369,12 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 
+.filter-combobox-trigger {
+  width: 100%;
+  justify-content: space-between;
+  font-weight: 400;
+}
+
 .account-section-actions {
   display: flex;
   flex-wrap: wrap;
@@ -3355,16 +3384,53 @@ onBeforeUnmount(() => {
   gap: 8px;
 }
 
-.account-table-footer :deep(.n-pagination) {
+.account-table-shell {
+  min-width: 0;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.account-table-shell table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.account-table-shell thead th {
+  white-space: nowrap;
+  background: var(--muted);
+}
+
+.account-table-shell tbody td {
+  vertical-align: middle;
+}
+
+.account-table-shell tbody tr:hover > td {
+  background: color-mix(in oklch, var(--muted) 70%, transparent);
+}
+
+.account-range-copy {
+  display: flex;
+  flex: 1 1 auto;
   flex-wrap: wrap;
-  justify-content: flex-end;
+  align-items: center;
+  gap: 6px 10px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+
+.page-size-select {
+  width: 76px;
 }
 
 
 .detail-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   margin-top: 12px;
   padding-top: 12px;
-  border-top: 1px solid var(--cpa-border);
+  border-top: 1px solid var(--border);
 }
 
 .detail-drawer-header {
@@ -3381,11 +3447,45 @@ onBeforeUnmount(() => {
 .detail-drawer-title {
   min-width: 0;
   overflow: hidden;
-  color: var(--cpa-text-strong);
+  color: var(--foreground);
   font-size: 16px;
   font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.detail-drawer-body {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 16px 16px;
+}
+
+.detail-list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+}
+
+.detail-row {
+  display: grid;
+  grid-template-columns: minmax(104px, 0.35fr) minmax(0, 1fr);
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.detail-row dt {
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+
+.detail-row dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--foreground);
+  font-size: 13px;
+  text-align: right;
 }
 
 .oauth-dialog {
@@ -3404,11 +3504,11 @@ onBeforeUnmount(() => {
 
 .oauth-dialog-description,
 .oauth-dialog-hint {
-  color: var(--cpa-text-muted);
+  color: var(--muted-foreground);
 }
 
 .oauth-dialog-message.is-error {
-  color: var(--cpa-danger);
+  color: var(--destructive);
 }
 
 .oauth-dialog-message.is-warning {
@@ -3421,11 +3521,11 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   gap: 12px;
   padding: 10px 12px;
-  color: var(--cpa-text);
+  color: var(--foreground);
   font-size: 13px;
-  background: var(--cpa-surface-muted);
-  border: 1px solid var(--cpa-border);
-  border-radius: var(--cpa-radius-sm);
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
 }
 
 .oauth-dialog-section {
@@ -3435,11 +3535,11 @@ onBeforeUnmount(() => {
 }
 
 .oauth-dialog-section > label {
-  color: var(--cpa-text-muted);
+  color: var(--muted-foreground);
   font-size: 12px;
 }
 
-.oauth-dialog-section :deep(.n-input__textarea) {
+.oauth-dialog-section textarea {
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
   font-size: 12px;
 }
@@ -3454,32 +3554,22 @@ onBeforeUnmount(() => {
 }
 
 .auth-file-editor-loading {
-  padding: 24px 0;
-  color: var(--cpa-text-muted);
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 32px 0;
+  color: var(--muted-foreground);
 }
 
 .auth-file-editor-error {
-  color: var(--cpa-danger);
+  color: var(--destructive);
   font-size: 12px;
   line-height: 1.45;
 }
 
-.auth-file-editor-json-block,
-.auth-file-editor-field {
-  display: grid;
-  gap: 6px;
-  min-width: 0;
-}
-
-.auth-file-editor-json-block > label,
-.auth-file-editor-field > label {
-  color: var(--cpa-text-muted);
-  font-size: 12px;
-}
-
-.auth-file-editor-json-block :deep(.n-input__textarea),
-.auth-file-editor-field :deep(.n-input__textarea) {
+.auth-file-editor-json-block textarea,
+.auth-file-editor-wide-field textarea {
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
   font-size: 12px;
 }
@@ -3490,10 +3580,10 @@ onBeforeUnmount(() => {
   margin: 0;
   overflow: auto;
   padding: 10px 12px;
-  border: 1px solid var(--cpa-border);
-  border-radius: 6px;
-  background: var(--cpa-surface-muted);
-  color: var(--cpa-text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--muted);
+  color: var(--foreground);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
   font-size: 12px;
   line-height: 1.5;
@@ -3513,33 +3603,7 @@ onBeforeUnmount(() => {
 }
 
 .auth-file-editor-switch-field {
-  align-content: start;
-}
-
-.auth-file-editor-hint {
-  color: var(--cpa-text-muted);
-  font-size: 11px;
-  line-height: 1.4;
-}
-
-.account-table :deep(.n-data-table-th) {
-  white-space: nowrap;
-}
-
-.account-table :deep(.n-data-table-td) {
-  vertical-align: middle;
-}
-
-.account-table :deep(.n-data-table-tr.is-refresh-selectable) {
-  cursor: pointer;
-}
-
-.account-table :deep(.n-data-table-tr.is-refresh-selected .n-data-table-td) {
-  background: color-mix(in srgb, var(--cpa-primary) 12%, var(--cpa-surface-raised));
-}
-
-.account-table :deep(.n-data-table-tr.is-refresh-selected:hover .n-data-table-td) {
-  background: color-mix(in srgb, var(--cpa-primary) 16%, var(--cpa-surface-raised));
+  justify-content: space-between;
 }
 
 :global(.quota-window-cell) {
@@ -3870,27 +3934,6 @@ onBeforeUnmount(() => {
   text-align: center;
 }
 
-.bulk-delete-dialog,
-.priority-dialog {
-  display: grid;
-  gap: 8px;
-}
-
-.account-confirm-content {
-  margin: 0;
-  overflow-wrap: anywhere;
-  color: var(--cpa-text);
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-.bulk-delete-warning,
-.priority-hint {
-  margin: 0;
-  color: var(--cpa-text-muted);
-  font-size: 13px;
-}
-
 .bulk-delete-preview {
   display: flex;
   flex-wrap: wrap;
@@ -3898,11 +3941,11 @@ onBeforeUnmount(() => {
   max-height: 116px;
   padding: 8px;
   overflow: auto;
-  color: var(--cpa-text);
+  color: var(--foreground);
   font-size: 12px;
-  background: var(--cpa-surface-muted);
-  border: 1px solid var(--cpa-border);
-  border-radius: var(--cpa-radius-sm);
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
 }
 
 .bulk-delete-preview span {
@@ -3933,6 +3976,16 @@ onBeforeUnmount(() => {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .header-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .header-actions > button {
+    width: 100%;
+  }
+
   .auth-file-editor-fields {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -3961,7 +4014,7 @@ onBeforeUnmount(() => {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .filter-grid .n-input {
+  .filter-grid > :first-child {
     grid-column: 1 / -1;
   }
 

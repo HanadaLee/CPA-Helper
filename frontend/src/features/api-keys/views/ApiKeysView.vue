@@ -1,32 +1,92 @@
 <script setup lang="ts">
 import type { Component } from 'vue'
-import { computed, h, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 import {
-  AppAlert,
-  AppButton,
-  AppDataTable,
-  AppEllipsis,
-  AppForm,
-  AppFormItem,
-  AppIcon,
-  AppInput,
-  AppModal,
-  AppSelect,
-  AppStack,
-  type DataTableColumns,
-} from '@/shared/ui/app-kit'
-import { useConfirmDialog } from '@/shared/ui/confirm-dialog'
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
+import {
+  Combobox,
+  ComboboxAnchor,
+  ComboboxEmpty,
+  ComboboxGroup,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxItemIndicator,
+  ComboboxList,
+  ComboboxTrigger,
+} from '@/components/ui/combobox'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from '@/components/ui/field'
+import { Input } from '@/components/ui/input'
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/components/ui/pagination'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Spinner } from '@/components/ui/spinner'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableEmpty,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Textarea } from '@/components/ui/textarea'
+import { useConfirmDialog } from '@/shared/ui/confirm-dialog'
 import {
   Activity,
+  Check,
+  ChevronsUpDown,
   CircleDollarSign,
   Copy,
   Eye,
   EyeOff,
   KeyRound,
   Layers3,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  RefreshCw,
   Send,
+  Trash2,
 } from '@lucide/vue'
 
 import {
@@ -85,6 +145,8 @@ const apiKeyDescription = ref('VSCode')
 const generatedApiKey = ref<string | null>(null)
 const generatedApiKeyHash = ref<string | null>(null)
 const visibleApiKeyHashes = ref<Set<string>>(new Set())
+const page = ref(1)
+const pageSize = 12
 
 const requestLoadingText = computed(() => t('加载中', 'Loading'))
 
@@ -251,6 +313,12 @@ function updatePublicRequestURLType(value: unknown) {
   }
 }
 
+function updateRequestEndpoint(value: unknown) {
+  if (requestEndpointOptions.value.some((option) => option.value === value)) {
+    requestEndpoint.value = value as ModelRequestEndpoint
+  }
+}
+
 const requestEndpointMeta = computed(
   () =>
     requestEndpointOptions.value.find((option) => option.value === requestEndpoint.value) ??
@@ -297,6 +365,13 @@ const requestTestModelOptions = computed(() => {
     label: modelOptionLabel(model),
     value: model.id,
   }))
+})
+const selectedRequestTestModelOption = computed(
+  () => requestTestModelOptions.value.find((option) => option.value === requestTestModel.value) ?? null,
+)
+const pagedApiKeys = computed(() => {
+  const start = (page.value - 1) * pageSize
+  return apiKeys.value.slice(start, start + pageSize)
 })
 const requestTestReplyText = computed(() => {
   const reply = requestTestResult.value?.reply?.trim()
@@ -458,11 +533,13 @@ function maskDisplayedApiKey(apiKey: string | null | undefined): string {
   return `${apiKey.slice(0, visiblePrefix)}${'*'.repeat(maskedLength)}${apiKey.slice(-visibleSuffix)}`
 }
 
-function renderMaskedKeyTitle() {
-  return h('span', { class: 'api-key-title' }, [
-    h(AppIcon, { class: 'api-key-mask-icon', component: EyeOff }),
-    h('span', t('密钥（点击复制）', 'Key (click to copy)')),
-  ])
+function updateRequestTestModel(value: unknown) {
+  const option = value as { value?: unknown } | null
+  requestTestModel.value = typeof option?.value === 'string' ? option.value : null
+}
+
+function handlePageChange(value: number) {
+  page.value = value
 }
 
 function isApiKeyVisible(row: UserApiKeySummary): boolean {
@@ -624,6 +701,7 @@ async function refresh() {
       getModelRequestGuide(),
     ])
     apiKeys.value = nextApiKeys
+    page.value = Math.min(page.value, Math.max(1, Math.ceil(nextApiKeys.length / pageSize)))
     usageSummary.value = overview.summary
     quotaStatus.value = quota
     modelRequestGuide.value = guide
@@ -700,154 +778,217 @@ function confirmDelete(row: UserApiKeySummary) {
   })
 }
 
-const columns = computed<DataTableColumns<UserApiKeySummary>>(() => [
-  {
-    title: renderMaskedKeyTitle,
-    key: 'api_key',
-    width: 540,
-    render: (row) =>
-      h(
-        'div',
-        { class: 'api-key-cell' },
-        [
-          h(
-            'button',
-            {
-              class: 'api-key-visibility-button',
-              disabled: !row.api_key,
-              title: isApiKeyVisible(row) ? t('隐藏完整密钥', 'Hide full key') : t('显示完整密钥', 'Show full key'),
-              type: 'button',
-              onClick: () => toggleApiKeyVisibility(row),
-            },
-            [
-              h(AppIcon, {
-                class: 'api-key-mask-icon',
-                component: isApiKeyVisible(row) ? Eye : EyeOff,
-              }),
-            ],
-          ),
-          h(
-            'button',
-            {
-              class: 'api-key-copy-button',
-              type: 'button',
-              title: row.api_key ? t('点击复制完整密钥', 'Click to copy full key') : t('无完整密钥可复制', 'No full key available to copy'),
-              onClick: () => copyApiKey(row),
-            },
-            h('span', { class: 'api-key-mask-text' }, displayedApiKey(row)),
-          ),
-        ],
-      ),
-  },
-  {
-    title: t('描述', 'Description'),
-    key: 'description',
-    width: 160,
-    render: (row) =>
-      row.description
-        ? h(AppEllipsis, { tooltip: true, style: { maxWidth: '100%' } }, { default: () => row.description })
-        : '-',
-  },
-  {
-    title: t('创建时间', 'Created at'),
-    key: 'created_at',
-    width: 150,
-    render: (row) => formatDateTime(row.created_at),
-  },
-  {
-    title: '',
-    key: 'actions',
-    width: 230,
-    fixed: 'right',
-    render: (row) =>
-      h(AppStack, { size: 4 }, {
-        default: () => [
-          h(
-            AppButton,
-            { size: 'small', quaternary: true, onClick: () => openRequestTest(row) },
-            {
-              icon: () => h(AppIcon, { component: Send }),
-              default: () => t('请求测试', 'Request test'),
-            },
-          ),
-          h(
-            AppButton,
-            { size: 'small', quaternary: true, onClick: () => editApiKey(row) },
-            { default: () => t('编辑', 'Edit') },
-          ),
-          h(
-            AppButton,
-            { size: 'small', quaternary: true, type: 'error', onClick: () => confirmDelete(row) },
-            { default: () => t('删除', 'Delete') },
-          ),
-        ],
-      }),
-  },
-])
-
 onMounted(refresh)
 </script>
 
 <template>
-  <section class="page">
+  <section class="page api-keys-page">
     <div class="page-toolbar">
       <h1 data-page-title class="page-title">{{ t('API 密钥', 'API keys') }}</h1>
-      <AppStack>
-        <AppButton secondary :loading="isLoading" @click="refresh">{{ t('刷新', 'Refresh') }}</AppButton>
-        <AppButton type="primary" :disabled="!canCreateApiKey" @click="openCreateDialog">
+      <div class="flex items-center gap-2">
+        <Button variant="outline" :disabled="isLoading" @click="refresh">
+          <Spinner v-if="isLoading" data-icon="inline-start" />
+          <RefreshCw v-else data-icon="inline-start" />
+          {{ t('刷新', 'Refresh') }}
+        </Button>
+        <Button :disabled="!canCreateApiKey" @click="openCreateDialog">
+          <Plus data-icon="inline-start" />
           {{ t('新建 API 密钥', 'New API key') }}
-        </AppButton>
-      </AppStack>
-    </div>
-
-    <div class="metric-grid api-key-metrics">
-      <div v-for="metric in apiKeyMetrics" :key="metric.key" class="metric-card" :class="`is-${metric.tone}`">
-        <div class="metric-icon" aria-hidden="true">
-          <component :is="metric.icon" :size="20" :stroke-width="2.2" />
-        </div>
-        <div class="metric-label">{{ metric.label }}</div>
-        <div class="metric-value">{{ metric.value }}</div>
-        <div class="metric-footnote">{{ metric.footnote }}</div>
+        </Button>
       </div>
     </div>
 
-    <div class="grid-two api-key-content-grid">
-      <section class="panel api-key-panel-shell">
-        <div class="panel-inner api-key-panel">
-          <AppAlert v-if="quotaStatus?.paused" type="error" :bordered="false" :title="t('额度已用尽', 'Quota exhausted')">
-            {{ t('当前账号 API KEY 已从 CPA 暂停。补充额度或进入新的日、周、月周期后，系统会自动恢复可用 Key。', 'API keys for this account are paused in CPA. Available keys are restored automatically after quota is added or a new daily, weekly, or monthly period begins.') }}
-          </AppAlert>
-          <AppAlert v-else-if="quotaStatus?.unpriced_records" type="warning" :bordered="false">
-            {{ t(`当前账号存在 ${formatInteger(quotaStatus.unpriced_records)} 条未定价用量，未计入额度扣减。`, `This account has ${formatInteger(quotaStatus.unpriced_records)} unpriced usage records that are not deducted from quota.`) }}
-          </AppAlert>
+    <div class="api-key-metrics">
+      <Card
+        v-for="metric in apiKeyMetrics"
+        :key="metric.key"
+        size="sm"
+        class="api-key-metric"
+        :class="`is-${metric.tone}`"
+      >
+        <CardHeader class="flex flex-row items-start justify-between gap-3">
+          <div class="flex min-w-0 flex-col gap-1">
+            <CardDescription>{{ metric.label }}</CardDescription>
+            <CardTitle class="text-2xl tabular-nums">{{ metric.value }}</CardTitle>
+          </div>
+          <div class="api-key-metric__icon" aria-hidden="true">
+            <component :is="metric.icon" class="size-5" />
+          </div>
+        </CardHeader>
+        <CardContent class="truncate text-xs text-muted-foreground" :title="metric.footnote">
+          {{ metric.footnote }}
+        </CardContent>
+      </Card>
+    </div>
+
+    <div class="api-key-content-grid">
+      <Card class="api-key-panel-shell">
+        <CardHeader>
+          <CardTitle>{{ t('密钥列表', 'Key list') }}</CardTitle>
+          <CardDescription>
+            {{ t('管理当前账号可用于 API 请求的密钥。', 'Manage API keys available to the current account.') }}
+          </CardDescription>
+        </CardHeader>
+        <CardContent class="api-key-panel">
+          <Alert v-if="quotaStatus?.paused" variant="destructive">
+            <AlertTitle>{{ t('额度已用尽', 'Quota exhausted') }}</AlertTitle>
+            <AlertDescription>
+              {{ t('当前账号 API KEY 已从 CPA 暂停。补充额度或进入新的日、周、月周期后，系统会自动恢复可用 Key。', 'API keys for this account are paused in CPA. Available keys are restored automatically after quota is added or a new daily, weekly, or monthly period begins.') }}
+            </AlertDescription>
+          </Alert>
+          <Alert v-else-if="quotaStatus?.unpriced_records">
+            <AlertTitle>{{ t('存在未定价用量', 'Unpriced usage found') }}</AlertTitle>
+            <AlertDescription>
+              {{ t(`当前账号存在 ${formatInteger(quotaStatus.unpriced_records)} 条未定价用量，未计入额度扣减。`, `This account has ${formatInteger(quotaStatus.unpriced_records)} unpriced usage records that are not deducted from quota.`) }}
+            </AlertDescription>
+          </Alert>
 
           <div v-if="generatedApiKey" class="generated-key-box">
             <div class="generated-key-main">
               <div class="generated-key-title">{{ t('新创建的密钥', 'Newly created key') }}</div>
-              <div class="generated-key-value">{{ generatedApiKey }}</div>
+              <code class="generated-key-value">{{ generatedApiKey }}</code>
             </div>
-            <AppStack>
-              <AppButton secondary @click="copyGeneratedApiKey">{{ t('复制', 'Copy') }}</AppButton>
-              <AppButton tertiary @click="closeGeneratedApiKey">{{ t('关闭', 'Close') }}</AppButton>
-            </AppStack>
+            <div class="flex shrink-0 items-center gap-2">
+              <Button size="sm" variant="outline" @click="copyGeneratedApiKey">
+                <Copy data-icon="inline-start" />
+                {{ t('复制', 'Copy') }}
+              </Button>
+              <Button size="sm" variant="ghost" @click="closeGeneratedApiKey">{{ t('关闭', 'Close') }}</Button>
+            </div>
           </div>
 
-          <AppDataTable
-            class="api-key-table"
-            size="small"
-            :loading="isLoading"
-            :columns="columns"
-            :data="apiKeys"
-            :pagination="{ pageSize: 12 }"
-            table-layout="fixed"
-            :scroll-x="1080"
-          />
-        </div>
-      </section>
+          <div class="api-key-table-shell">
+            <Table class="api-key-table min-w-[680px] table-fixed">
+              <TableHeader>
+                <TableRow>
+                  <TableHead class="w-[47%]">
+                    <span class="api-key-title">
+                      <EyeOff class="api-key-mask-icon size-4" />
+                      {{ t('密钥（点击复制）', 'Key (click to copy)') }}
+                    </span>
+                  </TableHead>
+                  <TableHead class="w-[22%]">{{ t('描述', 'Description') }}</TableHead>
+                  <TableHead class="w-[23%]">{{ t('创建时间', 'Created at') }}</TableHead>
+                  <TableHead class="w-[8%]">
+                    <span class="sr-only">{{ t('操作', 'Actions') }}</span>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <template v-if="isLoading && apiKeys.length === 0">
+                  <TableRow v-for="rowIndex in 5" :key="`api-key-skeleton-${rowIndex}`">
+                    <TableCell v-for="columnIndex in 4" :key="columnIndex">
+                      <Skeleton class="h-4 w-full" />
+                    </TableCell>
+                  </TableRow>
+                </template>
 
-      <section class="panel api-endpoint-panel-shell">
-        <div class="panel-inner api-endpoint-panel">
-          <h2 class="section-title">API Endpoint</h2>
+                <TableEmpty v-else-if="apiKeys.length === 0" :colspan="4">
+                  {{ t('暂无 API 密钥', 'No API keys') }}
+                </TableEmpty>
+
+                <TableRow v-for="row in pagedApiKeys" v-else :key="row.api_key_hash">
+                  <TableCell>
+                    <div class="api-key-cell">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        :disabled="!row.api_key"
+                        :title="isApiKeyVisible(row) ? t('隐藏完整密钥', 'Hide full key') : t('显示完整密钥', 'Show full key')"
+                        :aria-label="isApiKeyVisible(row) ? t('隐藏完整密钥', 'Hide full key') : t('显示完整密钥', 'Show full key')"
+                        @click="toggleApiKeyVisibility(row)"
+                      >
+                        <Eye v-if="isApiKeyVisible(row)" />
+                        <EyeOff v-else />
+                      </Button>
+                      <button
+                        class="api-key-copy-button"
+                        type="button"
+                        :title="row.api_key ? t('点击复制完整密钥', 'Click to copy full key') : t('无完整密钥可复制', 'No full key available to copy')"
+                        @click="copyApiKey(row)"
+                      >
+                        <code class="api-key-mask-text">{{ displayedApiKey(row) }}</code>
+                      </button>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <span class="description-cell" :title="row.description || '-'">{{ row.description || '-' }}</span>
+                  </TableCell>
+                  <TableCell class="whitespace-nowrap text-muted-foreground">
+                    {{ formatDateTime(row.created_at) }}
+                  </TableCell>
+                  <TableCell class="text-right">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger as-child>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          :aria-label="t(`打开 ${row.description || 'API KEY'} 的操作菜单`, `Open actions for ${row.description || 'API key'}`)"
+                        >
+                          <MoreHorizontal />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" class="w-40">
+                        <DropdownMenuGroup>
+                          <DropdownMenuItem @select="openRequestTest(row)">
+                            <Send />
+                            <span>{{ t('请求测试', 'Request test') }}</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem @select="editApiKey(row)">
+                            <Pencil />
+                            <span>{{ t('编辑', 'Edit') }}</span>
+                          </DropdownMenuItem>
+                        </DropdownMenuGroup>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem variant="destructive" @select="confirmDelete(row)">
+                          <Trash2 />
+                          <span>{{ t('删除', 'Delete') }}</span>
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </div>
+
+          <div v-if="apiKeys.length > pageSize" class="api-key-pagination">
+            <span>{{ t(`共 ${formatInteger(apiKeys.length)} 个密钥`, `${formatInteger(apiKeys.length)} keys total`) }}</span>
+            <Pagination
+              :page="page"
+              :items-per-page="pageSize"
+              :total="apiKeys.length"
+              :sibling-count="1"
+              @update:page="handlePageChange"
+            >
+              <PaginationContent v-slot="{ items }">
+                <PaginationPrevious />
+                <template v-for="(item, index) in items" :key="index">
+                  <PaginationItem
+                    v-if="item.type === 'page'"
+                    :value="item.value"
+                    :is-active="item.value === page"
+                  >
+                    {{ item.value }}
+                  </PaginationItem>
+                  <PaginationEllipsis v-else :index="index" />
+                </template>
+                <PaginationNext />
+              </PaginationContent>
+            </Pagination>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card class="api-endpoint-panel-shell">
+        <CardHeader>
+          <CardTitle>API Endpoint</CardTitle>
+          <CardDescription>
+            {{ t('选择 URL 类型，然后复制对应接入地址。', 'Choose a URL type, then copy the matching endpoint.') }}
+          </CardDescription>
+        </CardHeader>
+        <CardContent class="api-endpoint-panel">
           <div class="api-endpoint-type-picker">
             <span id="api-endpoint-url-type-label" class="request-endpoint-label">{{ t('URL 类型', 'URL type') }}</span>
             <Tabs
@@ -863,7 +1004,7 @@ onMounted(refresh)
                   v-for="option in publicRequestURLTypeOptions"
                   :key="option.value"
                   :value="option.value"
-                  class="min-w-0 px-2"
+                  class="min-w-0 justify-center px-2 text-center"
                   :aria-label="option.ariaLabel"
                   :title="option.ariaLabel"
                 >
@@ -874,249 +1015,329 @@ onMounted(refresh)
           </div>
           <div class="request-guide-list">
             <div v-for="endpoint in publicRequestEndpointRows" :key="endpoint.key" class="request-guide-row">
-              <div>
+              <div class="min-w-0">
                 <div class="request-guide-label">{{ endpoint.label }}</div>
                 <code class="request-guide-value">{{ endpoint.url }}</code>
               </div>
-              <AppButton size="small" secondary @click="copyRequestValue(endpoint.label, endpoint.url)">
-                <template #icon>
-                  <AppIcon :component="Copy" />
-                </template>
+              <Button size="sm" variant="outline" @click="copyRequestValue(endpoint.label, endpoint.url)">
+                <Copy data-icon="inline-start" />
                 {{ t('复制', 'Copy') }}
-              </AppButton>
+              </Button>
             </div>
           </div>
-        </div>
-      </section>
+        </CardContent>
+      </Card>
     </div>
 
-    <AppModal
-      v-model:show="editorVisible"
-      preset="card"
-      :mask-closable="false"
-      :closable="false"
-      :title="editingApiKeyHash ? t('编辑 API 密钥', 'Edit API key') : t('新建 API 密钥', 'New API key')"
-      :style="{ width: 'min(520px, calc(100vw - 32px))' }"
-    >
-      <AppForm label-placement="top">
-        <AppFormItem :label="t('API KEY 描述', 'API key description')">
-          <AppInput
-            v-model:value="apiKeyDescription"
-            :disabled="isSaving"
-            :placeholder="t('例如：VSCode', 'Example: VSCode')"
-            @keyup.enter="saveApiKey"
-          />
-        </AppFormItem>
-        <div class="modal-actions api-key-editor-actions">
-          <AppButton secondary :disabled="isSaving" @click="editorVisible = false">{{ t('取消', 'Cancel') }}</AppButton>
-          <AppButton
-            type="primary"
-            :loading="isSaving"
-            :disabled="isSaving || (!editingApiKeyHash && !canCreateApiKey)"
-            @click="saveApiKey"
-          >
-            {{ editingApiKeyHash ? t('保存', 'Save') : t('创建', 'Create') }}
-          </AppButton>
-        </div>
-      </AppForm>
-    </AppModal>
-
-    <AppModal
-      v-model:show="requestTestVisible"
-      preset="card"
-      :title="t('请求测试', 'Request test')"
-      :style="{ width: 'min(760px, calc(100vw - 32px))' }"
-    >
-      <div class="request-test">
-        <AppAlert type="info" :bordered="false">
-          {{ t('这里提供当前 API KEY 的请求说明，也可以直接选择模型发起一次真实测试。', 'This shows request instructions for the current API key. You can also choose a model to run a real test request.') }}
-        </AppAlert>
-
-        <div class="request-endpoint-switch">
-          <span class="request-endpoint-label">{{ t('请求格式', 'Request format') }}</span>
-          <AppRadioGroup v-model:value="requestEndpoint" size="small">
-            <AppRadioButton
-              v-for="option in requestEndpointOptions"
-              :key="option.value"
-              :value="option.value"
+    <Dialog v-model:open="editorVisible">
+      <DialogContent
+        :show-close-button="false"
+        class="sm:max-w-[520px]"
+        @interact-outside.prevent
+      >
+        <form class="flex flex-col gap-5" @submit.prevent="saveApiKey">
+          <DialogHeader>
+            <DialogTitle>
+              {{ editingApiKeyHash ? t('编辑 API 密钥', 'Edit API key') : t('新建 API 密钥', 'New API key') }}
+            </DialogTitle>
+            <DialogDescription>
+              {{ t('描述用于区分不同客户端或使用场景。', 'Use the description to identify clients or usage scenarios.') }}
+            </DialogDescription>
+          </DialogHeader>
+          <FieldGroup>
+            <Field>
+              <FieldLabel for="api-key-description">{{ t('API KEY 描述', 'API key description') }}</FieldLabel>
+              <Input
+                id="api-key-description"
+                v-model="apiKeyDescription"
+                :disabled="isSaving"
+                :placeholder="t('例如：VSCode', 'Example: VSCode')"
+                autofocus
+              />
+              <FieldDescription>{{ t('建议填写客户端名称，方便日后识别。', 'Use a client name so the key is easy to identify later.') }}</FieldDescription>
+            </Field>
+          </FieldGroup>
+          <DialogFooter>
+            <Button type="button" variant="outline" :disabled="isSaving" @click="editorVisible = false">
+              {{ t('取消', 'Cancel') }}
+            </Button>
+            <Button
+              type="submit"
+              :disabled="isSaving || (!editingApiKeyHash && !canCreateApiKey)"
             >
-              {{ option.label }}
-            </AppRadioButton>
-          </AppRadioGroup>
-        </div>
+              <Spinner v-if="isSaving" data-icon="inline-start" />
+              {{ editingApiKeyHash ? t('保存', 'Save') : t('创建', 'Create') }}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
 
-        <div class="request-guide-list">
-          <div class="request-guide-row">
-            <div>
-              <div class="request-guide-label">{{ t('基础 URL', 'Base URL') }}</div>
-              <code class="request-guide-value">{{ requestBaseURL }}</code>
+    <Dialog v-model:open="requestTestVisible">
+      <DialogContent class="max-h-[calc(100svh-2rem)] overflow-hidden sm:max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>{{ t('请求测试', 'Request test') }}</DialogTitle>
+          <DialogDescription>
+            {{ t('查看当前 API KEY 的请求说明，或选择模型发起真实测试。', 'Review request instructions for this API key or run a real model test.') }}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div class="request-test-scroll">
+          <Alert>
+            <AlertDescription>
+              {{ t('请求测试使用默认 Endpoint；额外 Endpoint 仅在页面卡片中展示。', 'Request tests use the default endpoint; extra endpoints are shown only on the page card.') }}
+            </AlertDescription>
+          </Alert>
+
+          <div class="request-endpoint-switch">
+            <span id="request-format-label" class="request-endpoint-label">{{ t('请求格式', 'Request format') }}</span>
+            <Tabs
+              :model-value="requestEndpoint"
+              class="request-format-tabs"
+              @update:model-value="updateRequestEndpoint"
+            >
+              <TabsList aria-labelledby="request-format-label">
+                <TabsTrigger
+                  v-for="option in requestEndpointOptions"
+                  :key="option.value"
+                  :value="option.value"
+                >
+                  {{ option.label }}
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
+
+          <div class="request-guide-list">
+            <div class="request-guide-row">
+              <div class="min-w-0">
+                <div class="request-guide-label">{{ t('基础 URL', 'Base URL') }}</div>
+                <code class="request-guide-value">{{ requestBaseURL }}</code>
+              </div>
+              <Button size="sm" variant="outline" @click="copyRequestValue(t('基础 URL', 'Base URL'), requestBaseURL)">
+                <Copy data-icon="inline-start" />
+                {{ t('复制', 'Copy') }}
+              </Button>
             </div>
-            <AppButton size="small" secondary @click="copyRequestValue(t('基础 URL', 'Base URL'), requestBaseURL)">
-              <template #icon>
-                <AppIcon :component="Copy" />
-              </template>
-              {{ t('复制', 'Copy') }}
-            </AppButton>
-          </div>
-          <div class="request-guide-row">
-            <div>
-              <div class="request-guide-label">{{ requestEndpointURLLabel }}</div>
-              <code class="request-guide-value">{{ requestEndpointURL }}</code>
+            <div class="request-guide-row">
+              <div class="min-w-0">
+                <div class="request-guide-label">{{ requestEndpointURLLabel }}</div>
+                <code class="request-guide-value">{{ requestEndpointURL }}</code>
+              </div>
+              <Button size="sm" variant="outline" @click="copyRequestValue(t('请求 URL', 'Request URL'), requestEndpointURL)">
+                <Copy data-icon="inline-start" />
+                {{ t('复制', 'Copy') }}
+              </Button>
             </div>
-            <AppButton size="small" secondary @click="copyRequestValue(t('请求 URL', 'Request URL'), requestEndpointURL)">
-              <template #icon>
-                <AppIcon :component="Copy" />
-              </template>
-              {{ t('复制', 'Copy') }}
-            </AppButton>
-          </div>
-          <div class="request-guide-row">
-            <div>
-              <div class="request-guide-label">{{ t('请求 Header', 'Request headers') }}</div>
-              <code class="request-guide-value request-guide-value-multiline">{{ requestHeadersText }}</code>
+            <div class="request-guide-row">
+              <div class="min-w-0">
+                <div class="request-guide-label">{{ t('请求 Header', 'Request headers') }}</div>
+                <code class="request-guide-value request-guide-value-multiline">{{ requestHeadersText }}</code>
+              </div>
+              <Button size="sm" variant="outline" @click="copyRequestValue(t('请求 Header', 'Request headers'), requestHeadersText)">
+                <Copy data-icon="inline-start" />
+                {{ t('复制', 'Copy') }}
+              </Button>
             </div>
-            <AppButton size="small" secondary @click="copyRequestValue(t('请求 Header', 'Request headers'), requestHeadersText)">
-              <template #icon>
-                <AppIcon :component="Copy" />
-              </template>
-              {{ t('复制', 'Copy') }}
-            </AppButton>
+          </div>
+
+          <div class="request-example">
+            <div class="request-example-head">
+              <span>{{ t('curl 示例', 'curl example') }}</span>
+              <Button size="sm" variant="outline" @click="copyRequestValue(t('curl 示例', 'curl example'), sampleRequest)">
+                <Copy data-icon="inline-start" />
+                {{ t('复制示例', 'Copy example') }}
+              </Button>
+            </div>
+            <pre>{{ sampleRequest }}</pre>
+          </div>
+
+          <div class="request-test-section-title">{{ t('请求测试', 'Request test') }}</div>
+
+          <FieldGroup class="request-test-form">
+            <Field>
+              <FieldLabel>{{ t('测试模型', 'Test model') }}</FieldLabel>
+              <Combobox
+                :model-value="selectedRequestTestModelOption"
+                by="value"
+                @update:model-value="updateRequestTestModel"
+              >
+                <ComboboxAnchor as-child>
+                  <ComboboxTrigger as-child>
+                    <Button variant="outline" class="model-combobox-trigger">
+                      <Spinner v-if="isAvailableModelsLoading" data-icon="inline-start" />
+                      <span class="min-w-0 flex-1 truncate text-left">
+                        {{ selectedRequestTestModelOption?.label ?? t('选择当前 Key 可用的模型', 'Select a model available to this key') }}
+                      </span>
+                      <ChevronsUpDown data-icon="inline-end" class="text-muted-foreground" />
+                    </Button>
+                  </ComboboxTrigger>
+                </ComboboxAnchor>
+                <ComboboxList align="start" class="model-combobox-list">
+                  <ComboboxInput :placeholder="t('搜索模型', 'Search models')" />
+                  <ComboboxEmpty>{{ t('没有匹配模型', 'No matching models') }}</ComboboxEmpty>
+                  <ComboboxGroup>
+                    <ComboboxItem
+                      v-for="option in requestTestModelOptions"
+                      :key="option.value"
+                      :value="option"
+                    >
+                      <span class="truncate">{{ option.label }}</span>
+                      <ComboboxItemIndicator>
+                        <Check />
+                      </ComboboxItemIndicator>
+                    </ComboboxItem>
+                  </ComboboxGroup>
+                </ComboboxList>
+              </Combobox>
+            </Field>
+            <Field>
+              <FieldLabel for="request-test-message">{{ t('测试消息', 'Test message') }}</FieldLabel>
+              <Textarea
+                id="request-test-message"
+                v-model="requestTestMessage"
+                rows="4"
+                :placeholder="t('输入要发送给模型的测试消息', 'Enter the test message to send to the model')"
+              />
+            </Field>
+          </FieldGroup>
+
+          <Alert v-if="!isAvailableModelsLoading && requestTestModelOptions.length === 0">
+            <AlertDescription>
+              {{ t('当前 Key 暂未查询到可选模型，可以先刷新模型列表，或到「可用模型」页面检查 Key 是否可用。', 'No selectable models were found for this key. Refresh the model list, or check whether the key is available on the Available models page.') }}
+            </AlertDescription>
+          </Alert>
+
+          <div class="request-test-actions">
+            <Button variant="outline" :disabled="isAvailableModelsLoading" @click="loadAvailableModelsForTest">
+              <Spinner v-if="isAvailableModelsLoading" data-icon="inline-start" />
+              <RefreshCw v-else data-icon="inline-start" />
+              {{ t('刷新模型', 'Refresh models') }}
+            </Button>
+            <Button
+              :disabled="!requestTestModel || isAvailableModelsLoading || isRequestTesting"
+              @click="runRequestTest"
+            >
+              <Spinner v-if="isRequestTesting" data-icon="inline-start" />
+              <Send v-else data-icon="inline-start" />
+              {{ t('发送测试', 'Send test') }}
+            </Button>
+          </div>
+
+          <Alert v-if="requestTestError" variant="destructive">
+            <AlertDescription>{{ requestTestError }}</AlertDescription>
+          </Alert>
+
+          <div v-if="requestTestResult" class="request-test-result">
+            <div class="request-test-result-head">
+              <span>{{ t('模型回复', 'Model reply') }}</span>
+              <span>
+                HTTP {{ requestTestResult.status_code }} · {{ requestTestResult.duration_ms }}ms
+                <template v-if="requestTestUsageText"> · {{ requestTestUsageText }}</template>
+              </span>
+            </div>
+            <pre>{{ requestTestReplyText }}</pre>
           </div>
         </div>
-
-        <div class="request-example">
-          <div class="request-example-head">
-            <span>{{ t('curl 示例', 'curl example') }}</span>
-            <AppButton size="small" secondary @click="copyRequestValue(t('curl 示例', 'curl example'), sampleRequest)">
-              <template #icon>
-                <AppIcon :component="Copy" />
-              </template>
-              {{ t('复制示例', 'Copy example') }}
-            </AppButton>
-          </div>
-          <pre>{{ sampleRequest }}</pre>
-        </div>
-
-        <div class="request-test-section-title">{{ t('请求测试', 'Request test') }}</div>
-
-        <AppForm label-placement="top" class="request-test-form">
-          <AppFormItem :label="t('测试模型', 'Test model')">
-            <AppSelect
-              v-model:value="requestTestModel"
-              filterable
-              clearable
-              :loading="isAvailableModelsLoading"
-              :options="requestTestModelOptions"
-              :placeholder="t('选择当前 Key 可用的模型', 'Select a model available to this key')"
-            />
-          </AppFormItem>
-          <AppFormItem :label="t('测试消息', 'Test message')">
-            <AppInput
-              v-model:value="requestTestMessage"
-              type="textarea"
-              :autosize="{ minRows: 3, maxRows: 5 }"
-              :placeholder="t('输入要发送给模型的测试消息', 'Enter the test message to send to the model')"
-            />
-          </AppFormItem>
-        </AppForm>
-
-        <AppAlert
-          v-if="!isAvailableModelsLoading && requestTestModelOptions.length === 0"
-          type="warning"
-          :bordered="false"
-        >
-          {{ t('当前 Key 暂未查询到可选模型，可以先刷新模型列表，或到「可用模型」页面检查 Key 是否可用。', 'No selectable models were found for this key. Refresh the model list, or check whether the key is available on the Available models page.') }}
-        </AppAlert>
-
-        <div class="modal-actions request-test-actions">
-          <AppButton secondary :loading="isAvailableModelsLoading" @click="loadAvailableModelsForTest">
-            {{ t('刷新模型', 'Refresh models') }}
-          </AppButton>
-          <AppButton
-            type="primary"
-            :loading="isRequestTesting"
-            :disabled="!requestTestModel || isAvailableModelsLoading"
-            @click="runRequestTest"
-          >
-            <template #icon>
-              <AppIcon :component="Send" />
-            </template>
-            {{ t('发送测试', 'Send test') }}
-          </AppButton>
-        </div>
-
-        <AppAlert v-if="requestTestError" type="error" :bordered="false">
-          {{ requestTestError }}
-        </AppAlert>
-
-        <div v-if="requestTestResult" class="request-test-result">
-          <div class="request-test-result-head">
-            <span>{{ t('模型回复', 'Model reply') }}</span>
-            <span>
-              HTTP {{ requestTestResult.status_code }} · {{ requestTestResult.duration_ms }}ms
-              <template v-if="requestTestUsageText"> · {{ requestTestUsageText }}</template>
-            </span>
-          </div>
-          <pre>{{ requestTestReplyText }}</pre>
-        </div>
-      </div>
-    </AppModal>
+      </DialogContent>
+    </Dialog>
   </section>
 </template>
 
 <style scoped>
-.api-key-panel {
-  display: grid;
-  gap: 14px;
-  min-width: 0;
-}
-
-.api-key-content-grid {
-  align-items: start;
-}
-
-.api-endpoint-panel {
-  display: grid;
-  gap: 12px;
-  min-width: 0;
-}
-
-.api-endpoint-panel .section-title {
-  margin-bottom: 0;
-}
-
-.api-endpoint-type-picker {
-  display: grid;
-  justify-items: start;
-  gap: 8px;
+.api-keys-page {
   min-width: 0;
 }
 
 .api-key-metrics {
+  display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.api-key-metric {
+  min-width: 0;
+}
+
+.api-key-metric__icon {
+  display: flex;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  color: var(--primary);
+}
+
+.api-key-metric.is-blue .api-key-metric__icon {
+  background: color-mix(in srgb, var(--chart-2) 12%, transparent);
+  color: var(--chart-2);
+}
+
+.api-key-metric.is-purple .api-key-metric__icon {
+  background: color-mix(in srgb, var(--chart-4) 12%, transparent);
+  color: var(--chart-4);
+}
+
+.api-key-metric.is-green .api-key-metric__icon {
+  background: color-mix(in srgb, var(--cpa-success) 12%, transparent);
+  color: var(--cpa-success);
+}
+
+.api-key-content-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(21rem, 2fr);
+  align-items: start;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.api-key-panel {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
 }
 
 .api-key-panel-shell,
-.api-endpoint-panel-shell,
-.api-key-table {
+.api-endpoint-panel-shell {
   min-width: 0;
-  min-height: 0;
 }
 
-.api-key-table :deep(.n-data-table-wrapper) {
-  overflow: hidden;
+.api-endpoint-panel {
+  display: grid;
+  gap: .75rem;
+  min-width: 0;
+}
+
+.api-endpoint-type-picker {
+  display: grid;
+  gap: .5rem;
+  min-width: 0;
+}
+
+.api-key-table-shell {
+  min-width: 0;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.api-key-table {
+  width: 100%;
 }
 
 .generated-key-box {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 1rem;
   min-width: 0;
-  padding: 16px;
-  border: 1px solid var(--cpa-border);
-  border-radius: var(--cpa-radius);
-  background: var(--cpa-primary-wash);
-  box-shadow: var(--cpa-shadow-hairline);
+  padding: 1rem;
+  border: 1px solid color-mix(in srgb, var(--primary) 24%, var(--border));
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--primary) 7%, transparent);
 }
 
 .generated-key-main {
@@ -1124,29 +1345,31 @@ onMounted(refresh)
 }
 
 .generated-key-title {
-  margin-bottom: 4px;
-  font-weight: 700;
+  margin-bottom: .25rem;
+  font-weight: 600;
 }
 
 .generated-key-value {
+  display: block;
   overflow-wrap: anywhere;
-  font-family: Consolas, 'SFMono-Regular', 'Microsoft YaHei UI', monospace;
-  font-size: 13px;
+  font-size: .8125rem;
 }
 
-.modal-actions {
+.api-key-pagination {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 1rem;
+  color: var(--muted-foreground);
+  font-size: .75rem;
 }
 
-.api-key-editor-actions {
-  margin-top: 12px;
-}
-
-.request-test {
+.request-test-scroll {
   display: grid;
-  gap: 14px;
+  min-height: 0;
+  gap: 1rem;
+  overflow-y: auto;
+  padding: 0 .25rem .25rem 0;
 }
 
 .request-endpoint-switch {
@@ -1154,36 +1377,36 @@ onMounted(refresh)
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 10px 12px;
+  gap: .625rem .75rem;
   min-width: 0;
-  padding: 10px 12px;
-  border: 1px solid var(--cpa-border);
-  border-radius: var(--cpa-radius);
-  background: var(--cpa-surface-muted);
+  padding: .75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--muted) 24%, transparent);
 }
 
 .request-endpoint-label {
-  color: var(--cpa-text-muted);
-  font-size: 12px;
-  font-weight: 700;
+  color: var(--muted-foreground);
+  font-size: .75rem;
+  font-weight: 600;
 }
 
 .request-guide-list {
   display: grid;
   overflow: hidden;
-  border: 1px solid var(--cpa-border);
-  border-radius: var(--cpa-radius);
-  background: var(--cpa-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card);
 }
 
 .request-guide-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 12px;
+  gap: .75rem;
   min-width: 0;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--cpa-border);
+  padding: .75rem .875rem;
+  border-bottom: 1px solid var(--border);
 }
 
 .request-guide-row:last-child {
@@ -1191,19 +1414,18 @@ onMounted(refresh)
 }
 
 .request-guide-label {
-  margin-bottom: 4px;
-  color: var(--cpa-text-muted);
-  font-size: 12px;
-  font-weight: 700;
+  margin-bottom: .25rem;
+  color: var(--muted-foreground);
+  font-size: .75rem;
+  font-weight: 600;
 }
 
 .request-guide-value {
   display: block;
   min-width: 0;
   overflow-wrap: anywhere;
-  color: var(--cpa-text);
-  font-family: Consolas, 'SFMono-Regular', 'Microsoft YaHei UI', monospace;
-  font-size: 13px;
+  color: var(--foreground);
+  font-size: .8125rem;
   line-height: 1.45;
 }
 
@@ -1211,173 +1433,176 @@ onMounted(refresh)
   white-space: pre-wrap;
 }
 
-.request-example,
-.request-test-form {
-  display: grid;
-}
-
 .request-example {
   overflow: hidden;
-  border: 1px solid var(--cpa-border);
-  border-radius: var(--cpa-radius);
-  background: var(--cpa-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card);
 }
 
 .request-example-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--cpa-border);
-  font-weight: 700;
+  gap: .75rem;
+  padding: .625rem .875rem;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
 }
 
 .request-example pre {
   overflow: auto;
   margin: 0;
-  padding: 14px;
-  background: var(--cpa-surface-muted);
-  color: var(--cpa-text);
-  font-family: Consolas, 'SFMono-Regular', 'Microsoft YaHei UI', monospace;
-  font-size: 13px;
+  padding: .875rem;
+  background: color-mix(in srgb, var(--muted) 52%, transparent);
+  color: var(--foreground);
+  font-size: .8125rem;
   line-height: 1.6;
   white-space: pre-wrap;
 }
 
 .request-test-section-title {
-  color: var(--cpa-text);
-  font-size: 14px;
-  font-weight: 700;
+  color: var(--foreground);
+  font-size: .875rem;
+  font-weight: 600;
 }
 
 .request-test-form {
-  gap: 2px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
 }
 
 .request-test-actions {
+  display: flex;
   align-items: center;
+  justify-content: flex-end;
+  gap: .5rem;
+}
+
+.model-combobox-trigger {
+  width: 100%;
+  min-width: 0;
+  justify-content: space-between;
+}
+
+.model-combobox-list {
+  width: var(--reka-combobox-trigger-width);
+  max-width: calc(100vw - 2rem);
 }
 
 .request-test-result {
   overflow: hidden;
-  border: 1px solid var(--cpa-border);
-  border-radius: var(--cpa-radius);
-  background: var(--cpa-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card);
 }
 
 .request-test-result-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--cpa-border);
-  font-weight: 700;
+  gap: .75rem;
+  padding: .625rem .875rem;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
 }
 
 .request-test-result-head span:last-child {
-  color: var(--cpa-text-muted);
-  font-size: 12px;
+  color: var(--muted-foreground);
+  font-size: .75rem;
   font-weight: 500;
 }
 
 .request-test-result pre {
   overflow: auto;
   margin: 0;
-  padding: 14px;
-  background: var(--cpa-surface-muted);
-  color: var(--cpa-text);
-  font-family: Consolas, 'SFMono-Regular', 'Microsoft YaHei UI', monospace;
-  font-size: 13px;
+  padding: .875rem;
+  background: color-mix(in srgb, var(--muted) 52%, transparent);
+  color: var(--foreground);
+  font-size: .8125rem;
   line-height: 1.6;
   white-space: pre-wrap;
 }
 
-:global(.api-key-cell) {
-  display: inline-flex;
+.api-key-cell {
+  display: flex;
   align-items: center;
-  gap: 12px;
+  gap: .5rem;
   width: 100%;
   min-width: 0;
 }
 
-:global(.api-key-visibility-button),
-:global(.api-key-copy-button) {
-  border: 0;
-  background: transparent;
-  color: var(--cpa-text);
-  font: inherit;
-  cursor: pointer;
-}
-
-:global(.api-key-visibility-button) {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border-radius: 6px;
-}
-
-:global(.api-key-copy-button) {
+.api-key-copy-button {
   min-width: 0;
   flex: 1 1 auto;
   overflow: hidden;
   padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
   line-height: 1.35;
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-:global(.api-key-title) {
+.api-key-title {
   display: inline-flex;
   align-items: center;
-  gap: 12px;
+  gap: .5rem;
 }
 
-:global(.api-key-mask-icon) {
+.api-key-mask-icon {
   flex: 0 0 auto;
-  color: var(--cpa-text-muted);
+  color: var(--muted-foreground);
 }
 
-:global(.api-key-mask-text) {
+.api-key-mask-text {
   display: block;
   min-width: 0;
   overflow: hidden;
-  font-family: Consolas, 'SFMono-Regular', 'Microsoft YaHei UI', monospace;
+  color: inherit;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-:global(.api-key-visibility-button:hover),
-:global(.api-key-visibility-button:focus-visible),
-:global(.api-key-copy-button:hover),
-:global(.api-key-copy-button:focus-visible) {
-  color: var(--cpa-primary);
+.description-cell {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-:global(.api-key-visibility-button:disabled) {
-  color: var(--cpa-text-muted);
-  cursor: not-allowed;
-  opacity: 0.56;
+.api-key-copy-button:hover,
+.api-key-copy-button:focus-visible {
+  color: var(--primary);
 }
 
-:global(.api-key-visibility-button:focus-visible),
-:global(.api-key-copy-button:focus-visible) {
-  outline: 2px solid color-mix(in srgb, var(--cpa-primary) 32%, transparent);
-  outline-offset: 2px;
+.api-key-copy-button:focus-visible {
+  border-radius: .25rem;
+  outline: 2px solid color-mix(in srgb, var(--ring) 42%, transparent);
+  outline-offset: .125rem;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1180px) {
+  .api-key-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .api-key-content-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
   .api-key-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .generated-key-box {
+    align-items: stretch;
     flex-direction: column;
   }
 
@@ -1390,16 +1615,25 @@ onMounted(refresh)
     align-items: flex-start;
     flex-direction: column;
   }
-}
 
-@media (max-width: 720px) {
-  .api-key-metrics {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .request-test-form {
+    grid-template-columns: 1fr;
   }
 }
 
-@media (max-width: 430px) {
+@media (max-width: 480px) {
   .api-key-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .request-format-tabs,
+  .request-format-tabs :deep([data-slot='tabs-list']) {
+    width: 100%;
+  }
+
+  .request-format-tabs :deep([data-slot='tabs-list']) {
+    display: grid;
+    height: auto;
     grid-template-columns: 1fr;
   }
 }
