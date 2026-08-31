@@ -97,11 +97,14 @@ const navigationWidths = ['68%', '76%', '61%', '72%', '64%', '78%', '58%', '70%'
                 </div>
                 <Skeleton class="startup-chart h-56 rounded-lg" />
               </div>
-              <div class="startup-panel">
+              <div class="startup-panel is-token">
                 <div class="startup-panel-heading">
                   <Skeleton class="h-4 w-24" />
                 </div>
                 <Skeleton class="startup-chart h-56 rounded-lg" />
+                <div class="startup-token-legend">
+                  <Skeleton v-for="index in 4" :key="index" class="h-3 w-full" />
+                </div>
               </div>
             </div>
           </div>
@@ -277,7 +280,7 @@ const navigationWidths = ['68%', '76%', '61%', '72%', '64%', '78%', '58%', '70%'
 
 .startup-panels {
   display: grid;
-  grid-template-columns: minmax(0, 7fr) minmax(300px, 5fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
 }
 
@@ -286,18 +289,35 @@ const navigationWidths = ['68%', '76%', '61%', '72%', '64%', '78%', '58%', '70%'
   padding: 16px;
 }
 
+.startup-panel.is-wide {
+  grid-column: span 2;
+}
+
 .startup-chart {
   width: 100%;
   margin-top: 16px;
+}
+
+.startup-token-legend {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 14px;
 }
 
 @media (max-width: 1180px) {
   .startup-metrics {
     grid-template-columns: repeat(3, minmax(128px, 1fr));
   }
+}
 
+@media (max-width: 980px) {
   .startup-panels {
     grid-template-columns: 1fr;
+  }
+
+  .startup-panel.is-wide {
+    grid-column: auto;
   }
 }
 

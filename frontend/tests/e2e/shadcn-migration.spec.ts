@@ -96,6 +96,15 @@ test('initial navigation uses shell and dashboard skeletons instead of a blank s
   const appSkeleton = page.locator('[data-app-loading="true"]')
   await expect(appSkeleton).toBeVisible()
   await expect.poll(() => appSkeleton.locator('[data-slot="skeleton"]').count()).toBeGreaterThan(12)
+  const startupPanels = appSkeleton.locator('.startup-panels > .startup-panel')
+  const startupTrendBox = await startupPanels.nth(0).boundingBox()
+  const startupTokenBox = await startupPanels.nth(1).boundingBox()
+  expect(startupTrendBox).not.toBeNull()
+  expect(startupTokenBox).not.toBeNull()
+  expect(
+    Math.abs((startupTrendBox?.width ?? 0) - ((startupTokenBox?.width ?? 0) * 2 + 16)),
+  ).toBeLessThanOrEqual(1)
+  await expect(appSkeleton.locator('.startup-token-legend [data-slot="skeleton"]')).toHaveCount(4)
 
   releaseAuthRequest()
   await expect(appSkeleton).toBeHidden()
