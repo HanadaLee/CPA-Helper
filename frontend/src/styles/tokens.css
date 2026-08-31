@@ -44,12 +44,12 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
-  --font-sans: "Geist Variable", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+  --font-sans: "Geist Variable", sans-serif;
 }
 
 :root {
   color-scheme: light;
-  font-family: "Geist Variable", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+  font-family: "Geist Variable", sans-serif;
   font-size: 16px;
   line-height: 1.45;
   color: var(--foreground);
@@ -207,7 +207,6 @@ body {
   margin: 0;
   min-width: 320px;
   background: var(--cpa-bg) !important;
-  font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
 }

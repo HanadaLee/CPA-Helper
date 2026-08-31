@@ -48,14 +48,6 @@ import {
 import { Input } from '@/components/ui/input'
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group'
 import {
-  Pagination,
-  PaginationContent,
-  PaginationEllipsis,
-  PaginationItem,
-  PaginationNext,
-  PaginationPrevious,
-} from '@/components/ui/pagination'
-import {
   Select,
   SelectContent,
   SelectGroup,
@@ -133,6 +125,7 @@ import type {
   CodexKeeperStatus,
 } from '@/shared/types/api'
 import { useI18n } from '@/shared/i18n'
+import TablePaginationFooter from '@/shared/ui/TablePaginationFooter.vue'
 import { copyToClipboard } from '@/shared/utils/clipboard'
 import {
   BEIJING_TIME_ZONE,
@@ -415,14 +408,6 @@ const activeFilterCount = computed(
 const accountListPageCount = computed(() => accountPageCount(sortedListAccounts.value.length))
 const visibleListAccounts = computed(() =>
   pagedAccounts(sortedListAccounts.value, accountListPage.value),
-)
-const accountRangeStart = computed(() =>
-  sortedListAccounts.value.length === 0
-    ? 0
-    : (accountListPage.value - 1) * accountDisplaySize.value + 1,
-)
-const accountRangeEnd = computed(() =>
-  Math.min(accountListPage.value * accountDisplaySize.value, sortedListAccounts.value.length),
 )
 const selectableVisibleAccounts = computed(() =>
   visibleListAccounts.value.filter((account) => !isRowActing(account) && !isBulkOperationRunning.value),
@@ -2691,37 +2676,15 @@ onBeforeUnmount(() => {
             </Table>
           </div>
         </section>
-
-        <div class="account-table-footer">
-          <div class="account-range-copy">
-            <span>{{ t(`第 ${accountRangeStart} - ${accountRangeEnd} 条`, `${accountRangeStart} - ${accountRangeEnd}`) }}</span>
-            <span>{{ t(`共 ${formatInteger(sortedListAccounts.length)} 条`, `${formatInteger(sortedListAccounts.length)} total`) }}</span>
-            <span>{{ t('每页显示', 'Show') }}</span>
-            <Select :model-value="accountDisplaySize" @update:model-value="setAccountDisplaySize">
-              <SelectTrigger class="page-size-select" :aria-label="t('每页显示数量', 'Rows per page')"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectGroup><SelectItem v-for="size in [50, 100, 150, 200]" :key="size" :value="size">{{ size }}</SelectItem></SelectGroup>
-              </SelectContent>
-            </Select>
-            <span>{{ t('条', 'rows') }}</span>
-          </div>
-          <Pagination
-            :page="accountListPage"
-            :items-per-page="accountDisplaySize"
-            :total="sortedListAccounts.length"
-            :sibling-count="1"
-            @update:page="handleAccountPageChange"
-          >
-            <PaginationContent v-slot="{ items }">
-              <PaginationPrevious />
-              <template v-for="(item, index) in items" :key="index">
-                <PaginationItem v-if="item.type === 'page'" :value="item.value" :is-active="item.value === accountListPage">{{ item.value }}</PaginationItem>
-                <PaginationEllipsis v-else :index="index" />
-              </template>
-              <PaginationNext />
-            </PaginationContent>
-          </Pagination>
-        </div>
+        <TablePaginationFooter
+          class="account-table-pagination"
+          :page="accountListPage"
+          :page-size="accountDisplaySize"
+          :page-size-options="[50, 100, 150, 200]"
+          :total="sortedListAccounts.length"
+          @update:page="handleAccountPageChange"
+          @update:page-size="setAccountDisplaySize"
+        />
       </CardContent>
     </Card>
 
@@ -3344,16 +3307,6 @@ onBeforeUnmount(() => {
   padding: 0;
 }
 
-.account-table-footer {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
-  padding: 12px 16px;
-  border-top: 1px solid var(--border);
-}
-
 .account-section {
   display: grid;
   gap: 12px;
@@ -3384,11 +3337,15 @@ onBeforeUnmount(() => {
   gap: 8px;
 }
 
+.account-table-pagination {
+  margin-inline: 16px;
+}
+
 .account-table-shell {
   min-width: 0;
   overflow-x: auto;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius) var(--radius) 0 0;
 }
 
 .account-table-shell table {
@@ -3407,20 +3364,6 @@ onBeforeUnmount(() => {
 
 .account-table-shell tbody tr:hover > td {
   background: color-mix(in oklch, var(--muted) 70%, transparent);
-}
-
-.account-range-copy {
-  display: flex;
-  flex: 1 1 auto;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 10px;
-  color: var(--muted-foreground);
-  font-size: 13px;
-}
-
-.page-size-select {
-  width: 76px;
 }
 
 
@@ -3999,11 +3942,6 @@ onBeforeUnmount(() => {
   .account-section-actions {
     width: 100%;
     justify-content: flex-start;
-  }
-
-  .account-table-footer {
-    justify-content: flex-start;
-    overflow-x: auto;
   }
 
   .sort-control-row {

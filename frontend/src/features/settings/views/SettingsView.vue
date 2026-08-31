@@ -316,13 +316,32 @@ onMounted(refresh)
                       {{ t('暂无额外 Endpoint', 'No additional endpoints') }}
                     </div>
                     <FieldGroup v-else class="extra-endpoints-list">
-                      <Field v-for="(endpoint, index) in settingsForm.model_request_extra_endpoints" :key="index" orientation="horizontal" class="extra-endpoint-row">
-                        <Input v-model="endpoint.url" :aria-label="t(`Endpoint ${index + 1} 基础 URL`, `Endpoint ${index + 1} base URL`)" :placeholder="t('基础 URL，例如：https://api.example.com/v1', 'Base URL, for example: https://api.example.com/v1')" />
-                        <Input v-model="endpoint.description" :aria-label="t(`Endpoint ${index + 1} 说明`, `Endpoint ${index + 1} description`)" :placeholder="t('说明，例如：备用线路', 'Description, for example: Backup route')" :maxlength="200" />
-                        <Button size="icon" variant="destructive" :aria-label="t('移除', 'Remove')" @click="removeModelRequestExtraEndpoint(index)">
-                          <Trash2Icon data-icon="inline-start" />
-                        </Button>
-                      </Field>
+                      <div v-for="(endpoint, index) in settingsForm.model_request_extra_endpoints" :key="index" class="extra-endpoint-row">
+                        <InputGroup>
+                          <InputGroupInput
+                            v-model="endpoint.url"
+                            :aria-label="t(`Endpoint ${index + 1} 基础 URL`, `Endpoint ${index + 1} base URL`)"
+                            :placeholder="t('基础 URL，例如：https://api.example.com/v1', 'Base URL, for example: https://api.example.com/v1')"
+                          />
+                        </InputGroup>
+                        <InputGroup>
+                          <InputGroupInput
+                            v-model="endpoint.description"
+                            :aria-label="t(`Endpoint ${index + 1} 说明`, `Endpoint ${index + 1} description`)"
+                            :placeholder="t('说明，例如：备用线路', 'Description, for example: Backup route')"
+                            :maxlength="200"
+                          />
+                          <InputGroupAddon align="inline-end">
+                            <InputGroupButton
+                              size="icon-xs"
+                              :aria-label="t('移除', 'Remove')"
+                              @click="removeModelRequestExtraEndpoint(index)"
+                            >
+                              <Trash2Icon data-icon="inline-start" />
+                            </InputGroupButton>
+                          </InputGroupAddon>
+                        </InputGroup>
+                      </div>
                     </FieldGroup>
                   </Field>
                   <Field>
@@ -507,9 +526,9 @@ onMounted(refresh)
 
 .extra-endpoint-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: start;
-  gap: 8px;
+  gap: 16px;
 }
 
 .extra-endpoints-empty {
@@ -582,9 +601,6 @@ onMounted(refresh)
     grid-template-columns: 1fr;
   }
 
-  .extra-endpoint-row [data-slot="button"] {
-    justify-self: start;
-  }
 }
 
 @media (max-width: 560px) {

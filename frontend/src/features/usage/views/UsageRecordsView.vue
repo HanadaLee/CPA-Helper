@@ -4,11 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import {
   Check,
-  ChevronLeft,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
-  ChevronsUpDown,
+  ChevronDown,
   CircleCheck,
   Cpu,
   Database,
@@ -30,16 +26,6 @@ import {
 } from '@/components/ui/combobox'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import {
-  Pagination,
-  PaginationContent,
-  PaginationEllipsis,
-  PaginationFirst,
-  PaginationItem,
-  PaginationLast,
-  PaginationNext,
-  PaginationPrevious,
-} from '@/components/ui/pagination'
 import {
   Select,
   SelectContent,
@@ -69,6 +55,7 @@ import {
 } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 import DateTimeRangePicker from '@/shared/ui/DateTimeRangePicker.vue'
+import TablePaginationFooter from '@/shared/ui/TablePaginationFooter.vue'
 
 import { getUsageOptions, getUsageRecord, getUsageRecords } from '@/features/usage/api/usageApi'
 import type {
@@ -909,7 +896,7 @@ onBeforeUnmount(() => {
                   <span class="min-w-0 flex-1 truncate text-left">
                     {{ filter.selected?.label ?? filter.placeholder }}
                   </span>
-                  <ChevronsUpDown data-icon="inline-end" class="text-muted-foreground" />
+                  <ChevronDown data-icon="inline-end" class="text-muted-foreground" />
                 </Button>
               </ComboboxTrigger>
             </ComboboxAnchor>
@@ -1048,59 +1035,13 @@ onBeforeUnmount(() => {
           <Spinner />
         </div>
       </div>
-      <div class="pagination-row">
-        <div class="pagination-summary">
-          <span>{{ t(`共 ${formatInteger(total)} 条`, `${formatInteger(total)} total`) }}</span>
-          <span>{{ t('每页', 'Per page') }}</span>
-          <Select :model-value="String(pageSize)" @update:model-value="handlePageSizeChange">
-            <SelectTrigger size="sm" class="w-20">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent align="end">
-              <SelectGroup>
-                <SelectItem v-for="size in [20, 50, 100, 200]" :key="size" :value="String(size)">
-                  {{ size }}
-                </SelectItem>
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <Pagination
-          :page="page"
-          :items-per-page="pageSize"
-          :total="total"
-          :sibling-count="1"
-          show-edges
-          class="mx-0 w-auto"
-          @update:page="handlePageChange"
-        >
-          <PaginationContent v-slot="{ items }">
-            <PaginationFirst size="icon-sm" :aria-label="t('第一页', 'First page')">
-              <ChevronsLeft />
-            </PaginationFirst>
-            <PaginationPrevious size="icon-sm" :aria-label="t('上一页', 'Previous page')">
-              <ChevronLeft />
-            </PaginationPrevious>
-            <template v-for="(item, index) in items" :key="index">
-              <PaginationItem
-                v-if="item.type === 'page'"
-                :value="item.value"
-                :is-active="item.value === page"
-              >
-                {{ item.value }}
-              </PaginationItem>
-              <PaginationEllipsis v-else :index="index" />
-            </template>
-            <PaginationNext size="icon-sm" :aria-label="t('下一页', 'Next page')">
-              <ChevronRight />
-            </PaginationNext>
-            <PaginationLast size="icon-sm" :aria-label="t('最后一页', 'Last page')">
-              <ChevronsRight />
-            </PaginationLast>
-          </PaginationContent>
-        </Pagination>
-      </div>
+      <TablePaginationFooter
+        :page="page"
+        :page-size="pageSize"
+        :total="total"
+        @update:page="handlePageChange"
+        @update:page-size="handlePageSizeChange"
+      />
     </section>
 
     <Sheet v-model:open="drawerOpen">
@@ -1180,18 +1121,23 @@ onBeforeUnmount(() => {
 
 .time-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+  grid-template-columns: minmax(0, 1fr) minmax(380px, 440px);
   gap: 12px;
   align-items: center;
   min-width: 0;
 }
 
 .field-row {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr)) minmax(184px, 1.2fr);
   gap: 10px;
-  align-items: end;
+  align-items: stretch;
+  width: 100%;
   min-width: 0;
+}
+
+.field-row.is-account-scope {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(184px, 1.2fr);
 }
 
 .range-picker {
@@ -1205,45 +1151,27 @@ onBeforeUnmount(() => {
 }
 
 .filter-combobox {
-  min-width: min(180px, 100%);
-  flex: 1 1 180px;
+  min-width: 0;
+  width: 100%;
 }
 
 .filter-combobox-trigger {
   width: 100%;
   justify-content: flex-start;
+  border-color: var(--input);
+  font-weight: 400;
+  box-shadow: var(--cpa-shadow-card);
 }
 
 .status-actions {
-  display: flex;
-  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   min-width: 0;
 }
 
 .status-actions :deep([data-slot="button"]) {
   min-width: 82px;
-}
-
-.pagination-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 16px;
-  border: 1px solid var(--border);
-  border-top: 0;
-  border-radius: 0 0 var(--radius) var(--radius);
-  background: var(--card);
-}
-
-.pagination-summary {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--muted-foreground);
-  font-size: 12px;
 }
 
 .header-actions {
@@ -1333,19 +1261,14 @@ onBeforeUnmount(() => {
   }
 }
 
-@media (max-width: 1180px) {
+@media (max-width: 1320px) {
   .field-row,
   .field-row.is-account-scope {
-    display: flex;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   }
 }
 
 @media (max-width: 720px) {
-  .field-row,
-  .field-row.is-account-scope {
-    display: flex;
-  }
-
   .filter-toolbar {
     gap: 8px;
     padding-block: 10px;
@@ -1357,29 +1280,13 @@ onBeforeUnmount(() => {
     gap: 8px;
   }
 
-  .field-row,
-  .field-row.is-account-scope {
-    gap: 8px;
-  }
-
   .status-actions {
-    flex: 1 1 100%;
-  }
-
-  .status-actions {
-    display: grid;
     grid-column: 1 / -1;
-    grid-template-columns: minmax(0, 1fr) auto;
     align-items: stretch;
   }
 
   .status-actions :deep([data-slot="select-trigger"]) {
     min-width: 0;
-  }
-
-  .pagination-row {
-    justify-content: flex-start;
-    overflow-x: auto;
   }
 
   .header-actions {

@@ -43,14 +43,6 @@ import {
   InputGroupInput,
 } from '@/components/ui/input-group'
 import {
-  Pagination,
-  PaginationContent,
-  PaginationEllipsis,
-  PaginationItem,
-  PaginationNext,
-  PaginationPrevious,
-} from '@/components/ui/pagination'
-import {
   Select,
   SelectContent,
   SelectGroup,
@@ -104,6 +96,7 @@ import type {
 } from '@/shared/types/api'
 import { formatDateTime, formatInteger } from '@/shared/utils/format'
 import { useI18n } from '@/shared/i18n'
+import TablePaginationFooter from '@/shared/ui/TablePaginationFooter.vue'
 
 type PriceRowStatus = 'missing' | 'litellm' | 'manual'
 type PriceStatusFilter = 'cpa' | 'missing' | 'litellm' | 'manual' | 'library'
@@ -147,7 +140,7 @@ const selectedProvider = ref<string | null>(null)
 const selectedStatus = ref<PriceStatusFilter | null>(null)
 const searchQuery = ref('')
 const page = ref(1)
-const pageSize = 20
+const pageSize = ref(20)
 const form = reactive<ModelPricePayload>({
   provider: '',
   model: '',
@@ -241,8 +234,8 @@ const filteredPrices = computed(() => {
 })
 
 const pagedPrices = computed(() => {
-  const start = (page.value - 1) * pageSize
-  return filteredPrices.value.slice(start, start + pageSize)
+  const start = (page.value - 1) * pageSize.value
+  return filteredPrices.value.slice(start, start + pageSize.value)
 })
 
 const selectedStatusLabel = computed(() =>
@@ -255,6 +248,11 @@ watch([selectedProvider, selectedStatus, searchQuery], () => {
 
 function updatePricePage(value: number) {
   page.value = value
+}
+
+function updatePricePageSize(value: number) {
+  pageSize.value = value
+  page.value = 1
 }
 
 function handleProviderFilterChange(value: unknown) {
@@ -443,7 +441,7 @@ async function refresh() {
     const [nextPrices, nextCatalog] = await Promise.all([listModelPrices(), listModelPriceCatalog()])
     prices.value = nextPrices
     catalog.value = nextCatalog
-    const lastPage = Math.max(1, Math.ceil(filteredPrices.value.length / pageSize))
+    const lastPage = Math.max(1, Math.ceil(filteredPrices.value.length / pageSize.value))
     page.value = Math.min(page.value, lastPage)
   } catch (error) {
     message.error(errorText(error, '加载模型价格失败', 'Failed to load model prices'))
@@ -917,34 +915,13 @@ onMounted(() => {
         </div>
       </div>
 
-      <div class="price-pagination">
-        <span>
-          {{ t(`共 ${filteredPriceCount} 条`, `${filteredPriceCount} items total`) }}
-        </span>
-        <Pagination
-          v-if="filteredPriceCount > pageSize"
-          :page="page"
-          :items-per-page="pageSize"
-          :total="filteredPriceCount"
-          :sibling-count="1"
-          @update:page="updatePricePage"
-        >
-          <PaginationContent v-slot="{ items }">
-            <PaginationPrevious />
-            <template v-for="(item, index) in items" :key="index">
-              <PaginationItem
-                v-if="item.type === 'page'"
-                :value="item.value"
-                :is-active="item.value === page"
-              >
-                {{ item.value }}
-              </PaginationItem>
-              <PaginationEllipsis v-else :index="index" />
-            </template>
-            <PaginationNext />
-          </PaginationContent>
-        </Pagination>
-      </div>
+      <TablePaginationFooter
+        :page="page"
+        :page-size="pageSize"
+        :total="filteredPriceCount"
+        @update:page="updatePricePage"
+        @update:page-size="updatePricePageSize"
+      />
     </section>
 
     <Dialog v-model:open="modalOpen">
@@ -1172,8 +1149,7 @@ onMounted(() => {
 }
 
 .filter-label,
-.result-count,
-.price-pagination {
+.result-count {
   color: var(--muted-foreground);
   font-size: 12px;
   white-space: nowrap;
@@ -1211,19 +1187,6 @@ onMounted(() => {
   display: grid;
   place-items: center;
   background: color-mix(in oklch, var(--background) 62%, transparent);
-}
-
-.price-pagination {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 16px;
-  border: 1px solid var(--border);
-  border-top: 0;
-  border-radius: 0 0 var(--radius) var(--radius);
-  background: var(--card);
 }
 
 .price-actions-trigger {
@@ -1364,9 +1327,5 @@ onMounted(() => {
     grid-column: 1 / -1;
   }
 
-  .price-pagination {
-    justify-content: flex-start;
-    overflow-x: auto;
-  }
 }
 </style>

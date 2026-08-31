@@ -141,6 +141,33 @@ test('all migrated routes render and core controls remain interactive', async ({
   const analyticsQuickRangeTabs = page.locator('.quick-ranges[data-slot="tabs"]')
   await expect(analyticsQuickRangeTabs.getByRole('tablist')).toHaveAccessibleName(/快捷时间范围|Quick time ranges/)
   await expect(analyticsQuickRangeTabs.getByRole('tab')).toHaveCount(5)
+  await expect(page.locator('body')).toHaveCSS('font-family', '"Geist Variable", sans-serif')
+  expect(await page.locator('body').evaluate((element) => getComputedStyle(element).fontSynthesis)).toContain('weight')
+  const analyticsRangeTrigger = page.locator('[data-slot="date-time-range-trigger"]')
+  const analyticsRangeBox = await analyticsRangeTrigger.boundingBox()
+  expect(analyticsRangeBox?.width ?? 0).toBeGreaterThanOrEqual(420)
+  expect(await analyticsRangeTrigger.locator('[data-slot="date-time-range-start"], [data-slot="date-time-range-end"]').evaluateAll(
+    (elements) => elements.every((element) => element.scrollWidth <= element.clientWidth),
+  )).toBe(true)
+  const analyticsFilterRow = page.locator('.field-row')
+  const analyticsFilterLayout = await analyticsFilterRow.evaluate((row) => {
+    const children = Array.from(row.children) as HTMLElement[]
+    const rowBox = row.getBoundingClientRect()
+    const boxes = children.map((child) => child.getBoundingClientRect())
+    return {
+      yDifference: Math.max(...boxes.map((box) => box.y)) - Math.min(...boxes.map((box) => box.y)),
+      leftInset: boxes[0]!.left - rowBox.left,
+      rightInset: rowBox.right - boxes.at(-1)!.right,
+    }
+  })
+  expect(analyticsFilterLayout.yDifference).toBeLessThanOrEqual(1)
+  expect(Math.abs(analyticsFilterLayout.leftInset)).toBeLessThanOrEqual(1)
+  expect(Math.abs(analyticsFilterLayout.rightInset)).toBeLessThanOrEqual(1)
+  const analyticsSearchableFilter = analyticsFilterRow.locator('.filter-combobox-trigger').first()
+  await expect(analyticsSearchableFilter).toHaveCSS('font-weight', '400')
+  await analyticsSearchableFilter.click()
+  await expect(page.getByPlaceholder(/搜索用户|Search users/)).toBeVisible()
+  await page.keyboard.press('Escape')
 
   await page.goto('/account/settings')
   await expect(page).toHaveURL(/\/account\/settings$/)
@@ -194,8 +221,17 @@ test('all migrated routes render and core controls remain interactive', async ({
   await expect(accountTypeSearch).toBeVisible()
   await accountTypeSearch.fill('missing-account-type')
   await accountTypeSearch.press('Escape')
-  await expect(page.locator('.account-table-footer [data-slot="pagination"]')).toBeVisible()
-  await expect(page.locator('.account-table-footer').getByRole('combobox')).toBeVisible()
+  const accountPagination = page.locator('[data-slot="table-pagination-footer"]')
+  await expect(accountPagination.locator('[data-slot="pagination"]')).toBeVisible()
+  await expect(accountPagination.getByRole('combobox', { name: /每页数量|Rows per page/ })).toBeVisible()
+  await expect(accountPagination.locator('[data-slot="pagination-first"]')).toBeVisible()
+  await expect(accountPagination.locator('[data-slot="pagination-last"]')).toBeVisible()
+  const accountTableBox = await page.locator('.account-table-shell').boundingBox()
+  const accountPaginationBox = await accountPagination.boundingBox()
+  expect(accountTableBox).not.toBeNull()
+  expect(accountPaginationBox).not.toBeNull()
+  expect(Math.abs((accountTableBox?.x ?? 0) - (accountPaginationBox?.x ?? 0))).toBeLessThanOrEqual(1)
+  expect(Math.abs((accountTableBox?.width ?? 0) - (accountPaginationBox?.width ?? 0))).toBeLessThanOrEqual(1)
   const latestActionHeaderBox = await page.getByRole('columnheader', { name: /最近操作|Latest Action/ }).boundingBox()
   expect(latestActionHeaderBox).not.toBeNull()
   expect(latestActionHeaderBox?.width).toBeLessThanOrEqual(170)
@@ -240,6 +276,10 @@ test('all migrated routes render and core controls remain interactive', async ({
   await expect(statusFilter).toContainText(firstStatusLabel)
   await page.getByRole('button', { name: 'Clear selection' }).click()
   await expectTableInsidePanel(page, '.price-table', '.price-table-panel')
+  const pricePagination = page.locator('[data-slot="table-pagination-footer"]')
+  await expect(pricePagination.getByRole('combobox', { name: /每页数量|Rows per page/ })).toBeVisible()
+  await expect(pricePagination.locator('[data-slot="pagination-first"]')).toBeVisible()
+  await expect(pricePagination.locator('[data-slot="pagination-last"]')).toBeVisible()
   await page.getByRole('button', { name: /新增价格|Add price/ }).click()
   const priceDialog = page.getByRole('dialog', { name: /新增价格|Add price/ })
   const priceCancelButton = priceDialog.getByRole('button', { name: /取消|Cancel/ })
@@ -347,6 +387,24 @@ test('all migrated routes render and core controls remain interactive', async ({
   await expect(page.locator('input[type="datetime-local"]')).toHaveCount(0)
   await expect(page.locator('[data-slot="date-time-range-start"]')).toBeVisible()
   await expect(page.locator('[data-slot="date-time-range-end"]')).toBeVisible()
+  const recordsRangeTrigger = page.locator('[data-slot="date-time-range-trigger"]')
+  const recordsRangeBox = await recordsRangeTrigger.boundingBox()
+  expect(recordsRangeBox?.width ?? 0).toBeGreaterThanOrEqual(420)
+  expect(await recordsRangeTrigger.locator('[data-slot="date-time-range-start"], [data-slot="date-time-range-end"]').evaluateAll(
+    (elements) => elements.every((element) => element.scrollWidth <= element.clientWidth),
+  )).toBe(true)
+  const recordsFilterLayout = await page.locator('.field-row').evaluate((row) => {
+    const boxes = Array.from(row.children, (child) => (child as HTMLElement).getBoundingClientRect())
+    const rowBox = row.getBoundingClientRect()
+    return {
+      yDifference: Math.max(...boxes.map((box) => box.y)) - Math.min(...boxes.map((box) => box.y)),
+      leftInset: boxes[0]!.left - rowBox.left,
+      rightInset: rowBox.right - boxes.at(-1)!.right,
+    }
+  })
+  expect(recordsFilterLayout.yDifference).toBeLessThanOrEqual(1)
+  expect(Math.abs(recordsFilterLayout.leftInset)).toBeLessThanOrEqual(1)
+  expect(Math.abs(recordsFilterLayout.rightInset)).toBeLessThanOrEqual(1)
   await page.locator('[data-slot="date-time-range-trigger"]').click()
   await expect(page.locator('[data-slot="range-calendar"]')).toBeVisible()
   await page.keyboard.press('Escape')
@@ -357,6 +415,10 @@ test('all migrated routes render and core controls remain interactive', async ({
   await expect(page.getByRole('columnheader', { name: /^(费用|Cost)$/ })).toHaveCount(0)
   await expect(page.locator('.records-table')).toHaveCSS('border-top-left-radius', /[1-9]/)
   await expectTableInsidePanel(page, '.records-table', '.records-table-panel')
+  const recordsPagination = page.locator('[data-slot="table-pagination-footer"]')
+  await expect(recordsPagination.getByRole('combobox', { name: /每页数量|Rows per page/ })).toBeVisible()
+  await expect(recordsPagination.locator('[data-slot="pagination-first"]')).toBeVisible()
+  await expect(recordsPagination.locator('[data-slot="pagination-last"]')).toBeVisible()
   await page.getByRole('button', { name: /详情|Details/ }).first().click()
   const requestDetailSheet = page.getByRole('dialog', { name: /请求事件详情|Request event details/ })
   const requestDetailSheetBox = await requestDetailSheet.boundingBox()
@@ -385,12 +447,23 @@ test('all migrated routes render and core controls remain interactive', async ({
   await page.getByRole('button', { name: /保存设置|Save settings/ }).click()
   await expect(page.locator('.brand-copy strong')).toHaveText('CPA-Helper')
   await page.getByRole('button', { name: /追加 Endpoint|Add endpoint/ }).click()
-  const extraEndpointInputs = page.locator('.extra-endpoint-row input')
-  const extraEndpointURLBox = await extraEndpointInputs.nth(0).boundingBox()
-  const extraEndpointDescriptionBox = await extraEndpointInputs.nth(1).boundingBox()
+  const extraEndpointGroups = page.locator('.extra-endpoint-row [data-slot="input-group"]')
+  const extraEndpointURLBox = await extraEndpointGroups.nth(0).boundingBox()
+  const extraEndpointDescriptionBox = await extraEndpointGroups.nth(1).boundingBox()
+  const cliProxyBox = await page.locator('#cliaproxy-url').boundingBox()
+  const modelRequestBox = await page.locator('#model-request-url').boundingBox()
   expect(extraEndpointURLBox).not.toBeNull()
   expect(extraEndpointDescriptionBox).not.toBeNull()
+  expect(cliProxyBox).not.toBeNull()
+  expect(modelRequestBox).not.toBeNull()
   expect(Math.abs((extraEndpointURLBox?.width ?? 0) - (extraEndpointDescriptionBox?.width ?? 0))).toBeLessThanOrEqual(1)
+  expect(Math.abs((extraEndpointURLBox?.x ?? 0) - (cliProxyBox?.x ?? 0))).toBeLessThanOrEqual(1)
+  expect(Math.abs((extraEndpointDescriptionBox?.x ?? 0) - (modelRequestBox?.x ?? 0))).toBeLessThanOrEqual(1)
+  const managementKeyGroup = page.locator('#management-key').locator('..')
+  await expect(extraEndpointGroups.nth(0)).toHaveCSS(
+    'background-color',
+    await managementKeyGroup.evaluate((element) => getComputedStyle(element).backgroundColor),
+  )
   const switches = page.locator('button[role="switch"]')
   await expect(switches.first()).toBeVisible()
   await page.locator('.content-scroll').evaluate((element) => element.scrollTo({ top: element.scrollHeight }))
@@ -530,6 +603,16 @@ test('theme and mobile navigation survive the migration', async ({ page }) => {
       (sidebarBox.left + sidebarBox.width / 2) - (markBox.left + markBox.width / 2),
     )
   })).toBeLessThanOrEqual(1)
+  const collapsedBrandHeader = page.locator('[data-slot="sidebar-container"] [data-sidebar="header"]')
+  await expect(collapsedBrandHeader).toHaveCSS('overflow', 'visible')
+  await expect(collapsedBrandHeader.locator('.sidebar-brand-button')).toHaveCSS('overflow', 'visible')
+  expect(await page.locator('[data-slot="sidebar-container"]').evaluate((sidebar) => {
+    const mark = sidebar.querySelector<HTMLElement>('.brand-mark')
+    if (!mark) return false
+    const sidebarBox = sidebar.getBoundingClientRect()
+    const markBox = mark.getBoundingClientRect()
+    return markBox.left > sidebarBox.left && markBox.right < sidebarBox.right
+  })).toBe(true)
   await page.getByRole('button', { name: /打开导航|Open navigation/ }).click()
   await page.getByRole('button', { name: /切换主题|Switch theme/ }).first().click()
   await page.getByRole('button', { name: /切换主题|Switch theme/ }).first().click()

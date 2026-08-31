@@ -685,6 +685,7 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
 
 :global([data-collapsible="icon"] [data-sidebar="header"].sidebar-brand-header) {
   padding: 8px;
+  overflow: visible;
 }
 
 .sidebar-brand-button {
@@ -700,7 +701,11 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
 :global([data-collapsible="icon"] .sidebar-brand-button) {
   justify-content: center;
   padding-inline: 0;
-  transform: translateX(5px);
+  overflow: visible;
+}
+
+:global([data-collapsible="icon"] .sidebar-brand-button .brand-copy) {
+  display: none;
 }
 
 .sidebar-user-footer {

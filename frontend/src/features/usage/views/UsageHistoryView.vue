@@ -26,7 +26,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Check,
-  ChevronsUpDown,
+  ChevronDown,
   CircleCheck,
   CircleDollarSign,
   ClipboardList,
@@ -1434,7 +1434,7 @@ onBeforeUnmount(() => {
                   <span class="min-w-0 flex-1 truncate text-left">
                     {{ filter.selected?.label ?? filter.placeholder }}
                   </span>
-                  <ChevronsUpDown data-icon="inline-end" class="text-muted-foreground" />
+                  <ChevronDown data-icon="inline-end" class="text-muted-foreground" />
                 </Button>
               </ComboboxTrigger>
             </ComboboxAnchor>
@@ -1876,18 +1876,23 @@ onBeforeUnmount(() => {
 
 .time-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+  grid-template-columns: minmax(0, 1fr) minmax(380px, 440px);
   gap: 10px;
   align-items: center;
   min-width: 0;
 }
 
 .field-row {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr)) minmax(184px, 1.2fr);
   gap: 8px;
-  align-items: end;
+  align-items: stretch;
+  width: 100%;
   min-width: 0;
+}
+
+.field-row.is-account-scope {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(184px, 1.2fr);
 }
 
 .range-picker {
@@ -1901,18 +1906,21 @@ onBeforeUnmount(() => {
 }
 
 .filter-combobox {
-  min-width: min(180px, 100%);
-  flex: 1 1 180px;
+  min-width: 0;
+  width: 100%;
 }
 
 .filter-combobox-trigger {
   width: 100%;
   justify-content: flex-start;
+  border-color: var(--input);
+  font-weight: 400;
+  box-shadow: var(--cpa-shadow-card);
 }
 
 .status-actions {
-  display: flex;
-  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   min-width: 0;
 }
@@ -2736,8 +2744,9 @@ onBeforeUnmount(() => {
 
   .field-row,
   .field-row.is-account-scope {
-    display: flex;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   }
+
 }
 
 @media (max-width: 980px) {
@@ -2848,19 +2857,8 @@ onBeforeUnmount(() => {
     padding: 12px;
   }
 
-  .field-row,
-  .field-row.is-account-scope {
-    gap: 8px;
-  }
-
   .status-actions {
-    flex: 1 1 100%;
-  }
-
-  .status-actions {
-    display: grid;
     grid-column: 1 / -1;
-    grid-template-columns: minmax(0, 1fr) auto;
     align-items: stretch;
   }
 
