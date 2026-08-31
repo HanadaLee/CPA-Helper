@@ -120,8 +120,7 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	user.CanViewAccountStatus = user.IsAdmin || cfg.AllowUserAccountStatus
-	user.CanViewUsageHistory = user.IsAdmin || cfg.AllowUserUsageHistory
+	applyAuthUserConfig(&user, cfg, hash != nil && salt != nil)
 	if err := setSessionCookie(w, user.ID, cfg.SessionSecret); err != nil {
 		return err
 	}
@@ -139,8 +138,9 @@ func (a *App) handleSetupState(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{
-		"setup_required": count == 0,
-		"cas_enabled":    cfg.CAS.Enabled,
+		"setup_required":    count == 0,
+		"cas_enabled":       cfg.CAS.Enabled,
+		"cas_default_login": cfg.CAS.DefaultLogin,
 	})
 	return nil
 }
@@ -188,7 +188,10 @@ func (a *App) handleSetupFirstAdmin(w http.ResponseWriter, r *http.Request) erro
 	writeJSON(w, http.StatusOK, AuthUser{
 		ID:                   int(id),
 		Username:             username,
+		Nickname:             nickname,
+		CreatedAt:            now,
 		IsAdmin:              true,
+		CanChangePassword:    true,
 		CanViewAccountStatus: true,
 		CanViewUsageHistory:  true,
 	})
@@ -199,6 +202,16 @@ func (a *App) handleChangeCredentials(w http.ResponseWriter, r *http.Request) er
 	current, err := a.currentUser(r.Context(), r)
 	if err != nil {
 		return err
+	}
+	cfg, err := a.loadConfig(r.Context())
+	if err != nil {
+		return err
+	}
+	if cfg.CAS.Enabled && cfg.CAS.DefaultLogin {
+		return forbiddenError("系统已启用默认 CAS 登录，请前往统一账号中心修改密码")
+	}
+	if !current.CanChangePassword {
+		return forbiddenError("当前账号未配置本地登录凭据")
 	}
 	var payload changeCredentialsRequest
 	if err := decodeJSON(r, &payload); err != nil {
@@ -226,10 +239,6 @@ func (a *App) handleChangeCredentials(w http.ResponseWriter, r *http.Request) er
 		return err
 	}
 	_, err = a.db.ExecContext(r.Context(), `UPDATE users SET password_hash = ?, password_salt = ?, updated_at = ? WHERE id = ?`, hashPassword(payload.Password, salt), salt, dbTime(time.Now()), current.ID)
-	if err != nil {
-		return err
-	}
-	cfg, err := a.loadConfig(r.Context())
 	if err != nil {
 		return err
 	}
@@ -272,7 +281,23 @@ func (a *App) ensureUsersInitialized(ctx context.Context) error {
 func (a *App) userCredentialsByUsername(ctx context.Context, username string) (AuthUser, *string, *string, bool, error) {
 	var user AuthUser
 	var passwordHash, passwordSalt, disabledAt sql.NullString
-	err := a.db.QueryRowContext(ctx, `SELECT id, username, is_admin, password_hash, password_salt, disabled_at FROM users WHERE username = ?`, username).Scan(&user.ID, &user.Username, &user.IsAdmin, &passwordHash, &passwordSalt, &disabledAt)
+	err := a.db.QueryRowContext(ctx, `
+		SELECT id, username, nickname, is_admin, cas_bound, cas_email, cas_avatar,
+			CAST(created_at AS TEXT), password_hash, password_salt, disabled_at
+		FROM users WHERE username = ?
+	`, username).Scan(
+		&user.ID,
+		&user.Username,
+		&user.Nickname,
+		&user.IsAdmin,
+		&user.CASBound,
+		&user.Email,
+		&user.Avatar,
+		&user.CreatedAt,
+		&passwordHash,
+		&passwordSalt,
+		&disabledAt,
+	)
 	if err != nil {
 		return AuthUser{}, nil, nil, false, err
 	}
@@ -298,6 +323,7 @@ type settingsUpdateRequest struct {
 	AllowUserUsageHistory      *bool                        `json:"allow_user_usage_history"`
 	UsageDetailRetentionDays   *int                         `json:"usage_detail_retention_days"`
 	CASEnabled                 *bool                        `json:"cas_enabled"`
+	CASDefaultLogin            *bool                        `json:"cas_default_login"`
 	CASBaseURL                 *string                      `json:"cas_base_url"`
 	CASValidationURL           *string                      `json:"cas_validation_url"`
 	CASValidationHost          *string                      `json:"cas_validation_host"`
@@ -510,6 +536,9 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) error {
 		if payload.CASEnabled != nil {
 			cfg.CAS.Enabled = *payload.CASEnabled
 		}
+		if payload.CASDefaultLogin != nil {
+			cfg.CAS.DefaultLogin = *payload.CASDefaultLogin
+		}
 		if payload.CASBaseURL != nil {
 			cfg.CAS.BaseURL = *payload.CASBaseURL
 		}
@@ -561,6 +590,7 @@ func settingsResponse(cfg AppConfig) map[string]any {
 		"allow_user_usage_history":      cfg.AllowUserUsageHistory,
 		"usage_detail_retention_days":   cfg.UsageDetailRetentionDays,
 		"cas_enabled":                   cfg.CAS.Enabled,
+		"cas_default_login":             cfg.CAS.DefaultLogin,
 		"cas_base_url":                  cfg.CAS.BaseURL,
 		"cas_validation_url":            cfg.CAS.ValidationURL,
 		"cas_validation_host":           cfg.CAS.ValidationHost,

@@ -3,7 +3,13 @@ export type ThemePreference = 'system' | 'light' | 'dark'
 export interface AuthUser {
   id: number
   username: string
+  nickname: string
+  email: string
+  avatar: string
+  created_at: string
   is_admin: boolean
+  cas_bound: boolean
+  can_change_password: boolean
   must_change_password: boolean
   can_view_account_status: boolean
   can_view_usage_history: boolean
@@ -22,6 +28,7 @@ export interface ChangeCredentialsPayload {
 export interface SetupState {
   setup_required: boolean
   cas_enabled: boolean
+  cas_default_login: boolean
 }
 
 export interface FirstAdminSetupPayload {
@@ -58,6 +65,7 @@ export interface SettingsResponse extends BrandingResponse {
   allow_user_usage_history: boolean
   usage_detail_retention_days: number
   cas_enabled: boolean
+  cas_default_login: boolean
   cas_base_url: string
   cas_validation_url: string
   cas_validation_host: string
@@ -84,6 +92,7 @@ export interface SettingsUpdatePayload {
   allow_user_usage_history?: boolean
   usage_detail_retention_days?: number
   cas_enabled?: boolean
+  cas_default_login?: boolean
   cas_base_url?: string
   cas_validation_url?: string
   cas_validation_host?: string

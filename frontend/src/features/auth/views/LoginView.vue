@@ -47,6 +47,15 @@ onMounted(async () => {
     const state = await getSetupState()
     setupRequired.value = state.setup_required
     casEnabled.value = state.cas_enabled
+    if (
+      state.cas_enabled
+      && state.cas_default_login
+      && !state.setup_required
+      && route.query.skipsso !== 'true'
+    ) {
+      window.location.replace(casLoginHref.value)
+      return
+    }
   } catch (error) {
     errorMessage.value = errorText(error, '初始化状态加载失败', 'Failed to load setup state')
   } finally {

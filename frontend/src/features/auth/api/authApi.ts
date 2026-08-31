@@ -16,7 +16,13 @@ export function isAuthUser(value: unknown): value is AuthUser {
   return (
     typeof record.id === 'number' &&
     typeof record.username === 'string' &&
+    typeof record.nickname === 'string' &&
+    typeof record.email === 'string' &&
+    typeof record.avatar === 'string' &&
+    typeof record.created_at === 'string' &&
     typeof record.is_admin === 'boolean' &&
+    typeof record.cas_bound === 'boolean' &&
+    typeof record.can_change_password === 'boolean' &&
     typeof record.must_change_password === 'boolean' &&
     typeof record.can_view_account_status === 'boolean' &&
     typeof record.can_view_usage_history === 'boolean'

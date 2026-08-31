@@ -70,6 +70,7 @@ const settingsForm = reactive({
   allow_user_usage_history: false,
   usage_detail_retention_days: 90,
   cas_enabled: false,
+  cas_default_login: false,
   cas_base_url: '',
   cas_validation_url: '',
   cas_validation_host: '',
@@ -142,6 +143,7 @@ async function refresh() {
     settingsForm.allow_user_usage_history = settings.allow_user_usage_history
     settingsForm.usage_detail_retention_days = settings.usage_detail_retention_days
     settingsForm.cas_enabled = settings.cas_enabled
+    settingsForm.cas_default_login = settings.cas_default_login
     settingsForm.cas_base_url = settings.cas_base_url
     settingsForm.cas_validation_url = settings.cas_validation_url
     settingsForm.cas_validation_host = settings.cas_validation_host
@@ -182,6 +184,7 @@ async function saveSettings() {
       allow_user_usage_history: settingsForm.allow_user_usage_history,
       usage_detail_retention_days: settingsForm.usage_detail_retention_days,
       cas_enabled: settingsForm.cas_enabled,
+      cas_default_login: settingsForm.cas_default_login,
       cas_base_url: settingsForm.cas_base_url,
       cas_validation_url: settingsForm.cas_validation_url,
       cas_validation_host: settingsForm.cas_validation_host,
@@ -504,6 +507,18 @@ onMounted(refresh)
               <FieldDescription>{{ t('启用后登录页会提供 CAS 入口，退出登录时也会同步退出 CAS。', 'Adds CAS to the sign-in page and signs out from CAS when the local session ends.') }}</FieldDescription>
             </FieldContent>
             <Switch v-model="settingsForm.cas_enabled" />
+          </Field>
+
+          <Field
+            orientation="horizontal"
+            class="settings-switch"
+            :data-disabled="!settingsForm.cas_enabled || undefined"
+          >
+            <FieldContent>
+              <FieldTitle>{{ t('默认使用 CAS 登录', 'Use CAS login by default') }}</FieldTitle>
+              <FieldDescription>{{ t('启用后访问登录页会自动进入 CAS；使用 /login?skipsso=true 可进入本地登录。', 'Automatically redirects the sign-in page to CAS. Use /login?skipsso=true to access local sign-in.') }}</FieldDescription>
+            </FieldContent>
+            <Switch v-model="settingsForm.cas_default_login" :disabled="!settingsForm.cas_enabled" />
           </Field>
 
           <FieldGroup class="form-grid">

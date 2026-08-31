@@ -1,0 +1,9 @@
+-- +goose Up
+ALTER TABLE users ADD COLUMN cas_bound BOOLEAN NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN cas_email VARCHAR(320) NOT NULL DEFAULT '';
+ALTER TABLE users ADD COLUMN cas_avatar VARCHAR(2048) NOT NULL DEFAULT '';
+
+-- +goose Down
+ALTER TABLE users DROP COLUMN cas_avatar;
+ALTER TABLE users DROP COLUMN cas_email;
+ALTER TABLE users DROP COLUMN cas_bound;

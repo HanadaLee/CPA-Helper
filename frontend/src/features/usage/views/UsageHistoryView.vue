@@ -956,10 +956,10 @@ function formatTrendBucket(value: string): string {
   return formatted === '-' ? value : formatted
 }
 
-const trendLegendItems = computed<Array<{ key: TrendSeriesKey; label: string }>>(() => [
-  { key: 'requests', label: t('请求数', 'Requests') },
-  { key: 'tokens', label: 'Token' },
-  { key: 'failed', label: t('失败请求', 'Failed requests') },
+const trendLegendItems = computed<Array<{ key: TrendSeriesKey; label: string; color: string }>>(() => [
+  { key: 'requests', label: t('请求数', 'Requests'), color: 'var(--chart-2)' },
+  { key: 'tokens', label: 'Token', color: 'var(--chart-4)' },
+  { key: 'failed', label: t('失败请求', 'Failed requests'), color: 'var(--cpa-danger)' },
 ])
 const trendChartKey = computed(() => [
   trendSeriesVisibility.requests ? 'requests' : '',
@@ -1367,6 +1367,7 @@ onBeforeUnmount(() => {
                   :key="item.key"
                   class="trend-legend-button"
                   :class="[`is-${item.key}`, { 'is-hidden': !trendSeriesVisibility[item.key] }]"
+                  :style="{ '--trend-color': item.color }"
                   size="sm"
                   :model-value="trendSeriesVisibility[item.key]"
                   @update:model-value="toggleTrendSeries(item.key)"
@@ -2481,18 +2482,6 @@ onBeforeUnmount(() => {
   border-radius: 3px;
   outline: 2px solid color-mix(in srgb, var(--trend-color) 52%, transparent);
   outline-offset: 2px;
-}
-
-.trend-legend-button.is-requests {
-  --trend-color: var(--chart-2);
-}
-
-.trend-legend-button.is-tokens {
-  --trend-color: var(--chart-4);
-}
-
-.trend-legend-button.is-failed {
-  --trend-color: var(--cpa-danger);
 }
 
 .trend-legend-marker {

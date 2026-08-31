@@ -5,12 +5,15 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { isNavigationFailure, NavigationFailureType, useRoute, useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import { Button } from '@/components/ui/button'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Separator } from '@/components/ui/separator'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
@@ -185,7 +188,12 @@ const isAdmin = computed(() => {
   return false
 })
 const roleText = computed(() => (isAdmin.value ? t('管理员', 'Admin') : t('普通用户', 'User')))
-const accountText = computed(() => currentUser.value?.username || t('当前账号', 'Current account'))
+const accountText = computed(() => currentUser.value?.nickname?.trim() || currentUser.value?.username || t('当前账号', 'Current account'))
+const accountSecondaryText = computed(() => currentUser.value?.email?.trim() || currentUser.value?.username || roleText.value)
+const avatarInitials = computed(() => {
+  const characters = Array.from(accountText.value.trim())
+  return characters.slice(0, 2).join('').toUpperCase() || 'U'
+})
 const brandName = computed(() => language.value === 'zh' ? branding.value.brand_name_zh : branding.value.brand_name_en)
 const brandSubtitle = computed(() => language.value === 'zh' ? branding.value.brand_subtitle_zh : branding.value.brand_subtitle_en)
 
@@ -197,10 +205,12 @@ const leafMenuOptions = computed(() =>
 
 const selectedKey = computed(() => {
   const matched = leafMenuOptions.value.find((item) => route.path.startsWith(String(item.key)))
-  return matched ? String(matched.key) : isAdmin.value ? '/admin/usage' : '/account/usage'
+  return matched ? String(matched.key) : route.path
 })
 const currentNavigationLabel = computed(
-  () => leafMenuOptions.value.find((item) => item.key === selectedKey.value)?.label ?? brandName.value,
+  () => route.name === 'account-profile'
+    ? t('个人资料', 'Profile')
+    : leafMenuOptions.value.find((item) => item.key === selectedKey.value)?.label ?? brandName.value,
 )
 const isMenuNavigationPending = computed(() => navigationTarget.value !== null)
 const isAwaitingRouteCommit = computed(
@@ -359,10 +369,13 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
             <DropdownMenu>
               <DropdownMenuTrigger as-child>
                 <SidebarMenuButton size="lg" class="user-menu-button">
-                  <span class="user-avatar"><UserRound /></span>
+                  <Avatar class="user-avatar">
+                    <AvatarImage v-if="currentUser?.avatar" :src="currentUser.avatar" alt="" />
+                    <AvatarFallback>{{ avatarInitials }}</AvatarFallback>
+                  </Avatar>
                   <span class="user-copy group-data-[collapsible=icon]:hidden">
                     <strong>{{ accountText }}</strong>
-                    <span>{{ roleText }}</span>
+                    <span>{{ accountSecondaryText }}</span>
                   </span>
                   <EllipsisVertical class="user-menu-chevron group-data-[collapsible=icon]:hidden" />
                 </SidebarMenuButton>
@@ -373,6 +386,14 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
                 :side-offset="8"
                 class="user-dropdown"
               >
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>{{ accountText }}</DropdownMenuLabel>
+                  <DropdownMenuItem @select="handleMenuUpdate('/account/profile')">
+                    <UserRound />
+                    <span>{{ t('个人资料', 'Profile') }}</span>
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
+                <DropdownMenuSeparator />
                 <DropdownMenuGroup>
                   <DropdownMenuItem variant="destructive" @select="handleLogout">
                     <LogOut />
@@ -682,14 +703,10 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
 }
 
 .user-avatar {
-  display: grid;
   width: 32px;
   height: 32px;
   flex: 0 0 32px;
-  place-items: center;
-  border-radius: var(--radius);
-  color: var(--sidebar-accent-foreground);
-  background: var(--sidebar-accent);
+  border-radius: 9999px;
 }
 
 .user-copy {

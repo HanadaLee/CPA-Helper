@@ -513,6 +513,7 @@ type ModelRequestExtraEndpoint struct {
 
 type CASConfig struct {
 	Enabled         bool   `json:"enabled"`
+	DefaultLogin    bool   `json:"default_login"`
 	BaseURL         string `json:"base_url"`
 	ValidationURL   string `json:"validation_url"`
 	ValidationHost  string `json:"validation_host"`
@@ -582,6 +583,7 @@ func defaultConfig() (AppConfig, error) {
 		UsageDetailRetentionDays:   defaultUsageRetentionDays,
 		CAS: CASConfig{
 			Enabled:         false,
+			DefaultLogin:    false,
 			AutoCreateUsers: true,
 		},
 		SessionSecret: secret,
@@ -606,17 +608,17 @@ func (a *App) loadConfig(ctx context.Context) (AppConfig, error) {
 		       model_request_url, model_request_extra_endpoints, cpamc_url,
 		       brand_name_zh, brand_name_en, brand_subtitle_zh, brand_subtitle_en, allow_user_account_status,
 		       allow_user_usage_history, usage_detail_retention_days,
-		       cas_enabled, cas_base_url, cas_validation_url, cas_validation_host, cas_public_url,
-		       cas_auto_create_users, session_secret
+		       cas_enabled, cas_default_login, cas_base_url, cas_validation_url, cas_validation_host,
+		       cas_public_url, cas_auto_create_users, session_secret
 		FROM app_settings WHERE id = 1
 	`)
 	var collectorEnabled, litellmProxyEnabled, allowUserAccountStatus, allowUserUsageHistory bool
-	var casEnabled, casAutoCreateUsers bool
+	var casEnabled, casDefaultLogin, casAutoCreateUsers bool
 	var cliaproxyURL, managementKey, queueName, keeperJSON, rulesJSON, litellmProxyURL, modelRequestURL, modelRequestExtraEndpointsJSON, cpamcURL, brandNameZH, brandNameEN, brandSubtitleZH, brandSubtitleEN, sessionSecret string
 	var casBaseURL, casValidationURL, casValidationHost, casPublicURL string
 	var batchSize, usageDetailRetentionDays int
 	var pollInterval, retryInterval float64
-	if err := row.Scan(&collectorEnabled, &cliaproxyURL, &managementKey, &queueName, &batchSize, &pollInterval, &retryInterval, &keeperJSON, &rulesJSON, &litellmProxyEnabled, &litellmProxyURL, &modelRequestURL, &modelRequestExtraEndpointsJSON, &cpamcURL, &brandNameZH, &brandNameEN, &brandSubtitleZH, &brandSubtitleEN, &allowUserAccountStatus, &allowUserUsageHistory, &usageDetailRetentionDays, &casEnabled, &casBaseURL, &casValidationURL, &casValidationHost, &casPublicURL, &casAutoCreateUsers, &sessionSecret); err != nil {
+	if err := row.Scan(&collectorEnabled, &cliaproxyURL, &managementKey, &queueName, &batchSize, &pollInterval, &retryInterval, &keeperJSON, &rulesJSON, &litellmProxyEnabled, &litellmProxyURL, &modelRequestURL, &modelRequestExtraEndpointsJSON, &cpamcURL, &brandNameZH, &brandNameEN, &brandSubtitleZH, &brandSubtitleEN, &allowUserAccountStatus, &allowUserUsageHistory, &usageDetailRetentionDays, &casEnabled, &casDefaultLogin, &casBaseURL, &casValidationURL, &casValidationHost, &casPublicURL, &casAutoCreateUsers, &sessionSecret); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return AppConfig{}, fmt.Errorf("%w: app_settings id=1 is missing; run `cpa-helper migrate`", ErrAppSettingsMissing)
 		}
@@ -671,6 +673,7 @@ func (a *App) loadConfig(ctx context.Context) (AppConfig, error) {
 	cfg.UsageDetailRetentionDays = maxInt(usageDetailRetentionDays, minimumUsageRetentionDays, defaultUsageRetentionDays)
 	cfg.CAS = CASConfig{
 		Enabled:         casEnabled,
+		DefaultLogin:    casDefaultLogin,
 		BaseURL:         strings.TrimSpace(casBaseURL),
 		ValidationURL:   strings.TrimSpace(casValidationURL),
 		ValidationHost:  strings.TrimSpace(casValidationHost),
@@ -742,10 +745,10 @@ func (a *App) saveConfig(ctx context.Context, cfg AppConfig) error {
 		    model_request_url = ?, model_request_extra_endpoints = ?, cpamc_url = ?,
 		    brand_name_zh = ?, brand_name_en = ?, brand_subtitle_zh = ?, brand_subtitle_en = ?, allow_user_account_status = ?,
 		    allow_user_usage_history = ?, usage_detail_retention_days = ?,
-		    cas_enabled = ?, cas_base_url = ?, cas_validation_url = ?, cas_validation_host = ?,
+		    cas_enabled = ?, cas_default_login = ?, cas_base_url = ?, cas_validation_url = ?, cas_validation_host = ?,
 		    cas_public_url = ?, cas_auto_create_users = ?, session_secret = ?, updated_at = ?
 		WHERE id = 1
-	`, cfg.Collector.Enabled, strings.TrimRight(strings.TrimSpace(cfg.Collector.CLIProxyURL), "/"), strings.TrimSpace(cfg.Collector.ManagementKey), strings.TrimSpace(cfg.Collector.QueueName), cfg.Collector.BatchSize, cfg.Collector.PollIntervalSeconds, cfg.Collector.RetryIntervalSeconds, string(keeperBytes), string(rulesBytes), cfg.LiteLLMProxy.Enabled, strings.TrimSpace(cfg.LiteLLMProxy.ProxyURL), strings.TrimRight(strings.TrimSpace(cfg.ModelRequestURL), "/"), string(extraEndpointBytes), strings.TrimSpace(cfg.CPAMCURL), nonBlank(strings.TrimSpace(cfg.BrandNameZH), defaultBrandNameZH), nonBlank(strings.TrimSpace(cfg.BrandNameEN), defaultBrandNameEN), nonBlank(strings.TrimSpace(cfg.BrandSubtitleZH), defaultBrandSubtitleZH), nonBlank(strings.TrimSpace(cfg.BrandSubtitleEN), defaultBrandSubtitleEN), cfg.AllowUserAccountStatus, cfg.AllowUserUsageHistory, cfg.UsageDetailRetentionDays, cfg.CAS.Enabled, strings.TrimSpace(cfg.CAS.BaseURL), strings.TrimSpace(cfg.CAS.ValidationURL), strings.TrimSpace(cfg.CAS.ValidationHost), strings.TrimSpace(cfg.CAS.PublicURL), cfg.CAS.AutoCreateUsers, cfg.SessionSecret, dbTime(time.Now()))
+	`, cfg.Collector.Enabled, strings.TrimRight(strings.TrimSpace(cfg.Collector.CLIProxyURL), "/"), strings.TrimSpace(cfg.Collector.ManagementKey), strings.TrimSpace(cfg.Collector.QueueName), cfg.Collector.BatchSize, cfg.Collector.PollIntervalSeconds, cfg.Collector.RetryIntervalSeconds, string(keeperBytes), string(rulesBytes), cfg.LiteLLMProxy.Enabled, strings.TrimSpace(cfg.LiteLLMProxy.ProxyURL), strings.TrimRight(strings.TrimSpace(cfg.ModelRequestURL), "/"), string(extraEndpointBytes), strings.TrimSpace(cfg.CPAMCURL), nonBlank(strings.TrimSpace(cfg.BrandNameZH), defaultBrandNameZH), nonBlank(strings.TrimSpace(cfg.BrandNameEN), defaultBrandNameEN), nonBlank(strings.TrimSpace(cfg.BrandSubtitleZH), defaultBrandSubtitleZH), nonBlank(strings.TrimSpace(cfg.BrandSubtitleEN), defaultBrandSubtitleEN), cfg.AllowUserAccountStatus, cfg.AllowUserUsageHistory, cfg.UsageDetailRetentionDays, cfg.CAS.Enabled, cfg.CAS.DefaultLogin, strings.TrimSpace(cfg.CAS.BaseURL), strings.TrimSpace(cfg.CAS.ValidationURL), strings.TrimSpace(cfg.CAS.ValidationHost), strings.TrimSpace(cfg.CAS.PublicURL), cfg.CAS.AutoCreateUsers, cfg.SessionSecret, dbTime(time.Now()))
 	return err
 }
 
@@ -1033,10 +1036,22 @@ func readSessionToken(token, secret string) (*security.Identity, bool) {
 type AuthUser struct {
 	ID                   int    `json:"id"`
 	Username             string `json:"username"`
+	Nickname             string `json:"nickname"`
+	Email                string `json:"email"`
+	Avatar               string `json:"avatar"`
+	CreatedAt            string `json:"created_at"`
 	IsAdmin              bool   `json:"is_admin"`
+	CASBound             bool   `json:"cas_bound"`
+	CanChangePassword    bool   `json:"can_change_password"`
 	MustChangePassword   bool   `json:"must_change_password"`
 	CanViewAccountStatus bool   `json:"can_view_account_status"`
 	CanViewUsageHistory  bool   `json:"can_view_usage_history"`
+}
+
+func applyAuthUserConfig(user *AuthUser, cfg AppConfig, hasLocalPassword bool) {
+	user.CanChangePassword = hasLocalPassword && !(cfg.CAS.Enabled && cfg.CAS.DefaultLogin)
+	user.CanViewAccountStatus = user.IsAdmin || cfg.AllowUserAccountStatus
+	user.CanViewUsageHistory = user.IsAdmin || cfg.AllowUserUsageHistory
 }
 
 func (a *App) currentUser(ctx context.Context, r *http.Request) (*AuthUser, error) {
@@ -1052,23 +1067,37 @@ func (a *App) currentUser(ctx context.Context, r *http.Request) (*AuthUser, erro
 	if !ok {
 		return nil, authenticationError("登录会话已失效")
 	}
+	const selectUser = `SELECT id, username, nickname, is_admin, cas_bound, cas_email, cas_avatar,
+		CAST(created_at AS TEXT), password_hash, password_salt
+		FROM users WHERE `
 	var row *sql.Row
 	if identity.UserID != nil {
-		row = a.db.QueryRowContext(ctx, `SELECT id, username, is_admin FROM users WHERE id = ? AND disabled_at IS NULL`, *identity.UserID)
+		row = a.db.QueryRowContext(ctx, selectUser+`id = ? AND disabled_at IS NULL`, *identity.UserID)
 	} else if identity.Username != nil {
-		row = a.db.QueryRowContext(ctx, `SELECT id, username, is_admin FROM users WHERE username = ? AND disabled_at IS NULL`, *identity.Username)
+		row = a.db.QueryRowContext(ctx, selectUser+`username = ? AND disabled_at IS NULL`, *identity.Username)
 	} else {
 		return nil, authenticationError("登录会话已失效")
 	}
 	user := AuthUser{}
-	if err := row.Scan(&user.ID, &user.Username, &user.IsAdmin); err != nil {
+	var passwordHash, passwordSalt sql.NullString
+	if err := row.Scan(
+		&user.ID,
+		&user.Username,
+		&user.Nickname,
+		&user.IsAdmin,
+		&user.CASBound,
+		&user.Email,
+		&user.Avatar,
+		&user.CreatedAt,
+		&passwordHash,
+		&passwordSalt,
+	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, authenticationError("登录会话已失效")
 		}
 		return nil, err
 	}
-	user.CanViewAccountStatus = user.IsAdmin || cfg.AllowUserAccountStatus
-	user.CanViewUsageHistory = user.IsAdmin || cfg.AllowUserUsageHistory
+	applyAuthUserConfig(&user, cfg, passwordHash.Valid && passwordSalt.Valid)
 	return &user, nil
 }
 

@@ -38,6 +38,7 @@ func TestCASLoginCallbackAutoCreatesUserAndLogsOut(t *testing.T) {
     <cas:attributes>
       <cas:email>cas-member@example.test</cas:email>
       <cas:displayName>CAS Member</cas:displayName>
+      <cas:avatar>https://cdn.example.test/cas-member.png</cas:avatar>
     </cas:attributes>
   </cas:authenticationSuccess>
 </cas:serviceResponse>`)
@@ -64,23 +65,33 @@ func TestCASLoginCallbackAutoCreatesUserAndLogsOut(t *testing.T) {
 
 	var settings struct {
 		CASEnabled         bool `json:"cas_enabled"`
+		CASDefaultLogin    bool `json:"cas_default_login"`
 		CASAutoCreateUsers bool `json:"cas_auto_create_users"`
 	}
 	requestJSON(t, handler, http.MethodGet, "/api/settings", nil, adminCookies, &settings)
-	if settings.CASEnabled || !settings.CASAutoCreateUsers {
+	if settings.CASEnabled || settings.CASDefaultLogin || !settings.CASAutoCreateUsers {
 		t.Fatalf("unexpected CAS defaults: %+v", settings)
 	}
 
 	requestJSON(t, handler, http.MethodPut, "/api/settings", map[string]any{
 		"cas_enabled":           true,
+		"cas_default_login":     true,
 		"cas_base_url":          casServer.URL + "/cas/app/",
 		"cas_validation_url":    casServer.URL + "/cas/app/",
 		"cas_validation_host":   "cas.internal.test",
 		"cas_public_url":        "https://helper.example.test/",
 		"cas_auto_create_users": true,
 	}, adminCookies, &settings)
-	if !settings.CASEnabled {
-		t.Fatal("CAS should be enabled after saving settings")
+	if !settings.CASEnabled || !settings.CASDefaultLogin {
+		t.Fatal("CAS and default CAS login should be enabled after saving settings")
+	}
+	var setupState struct {
+		CASEnabled      bool `json:"cas_enabled"`
+		CASDefaultLogin bool `json:"cas_default_login"`
+	}
+	requestJSON(t, handler, http.MethodGet, "/api/auth/setup", nil, nil, &setupState)
+	if !setupState.CASEnabled || !setupState.CASDefaultLogin {
+		t.Fatalf("unexpected public CAS setup state: %+v", setupState)
 	}
 
 	loginRequest := httptest.NewRequest(http.MethodGet, "/cas/login?returnTo=%2Faccount%2Fusage", nil)
@@ -126,13 +137,25 @@ func TestCASLoginCallbackAutoCreatesUserAndLogsOut(t *testing.T) {
 	}
 
 	var me struct {
-		Username string `json:"username"`
-		IsAdmin  bool   `json:"is_admin"`
+		Username          string `json:"username"`
+		Nickname          string `json:"nickname"`
+		Email             string `json:"email"`
+		Avatar            string `json:"avatar"`
+		IsAdmin           bool   `json:"is_admin"`
+		CASBound          bool   `json:"cas_bound"`
+		CanChangePassword bool   `json:"can_change_password"`
 	}
 	requestJSON(t, handler, http.MethodGet, "/api/auth/me", nil, casCookies, &me)
-	if me.Username != "cas-member" || me.IsAdmin {
+	if me.Username != "cas-member" || me.Nickname != "CAS Member" || me.IsAdmin {
 		t.Fatalf("CAS user = %+v", me)
 	}
+	if me.Email != "cas-member@example.test" || me.Avatar != "https://cdn.example.test/cas-member.png" || !me.CASBound || me.CanChangePassword {
+		t.Fatalf("CAS profile was not synchronized: %+v", me)
+	}
+	requestJSONExpectStatus(t, handler, http.MethodPost, "/api/auth/change-credentials", map[string]any{
+		"current_password": "test-password",
+		"password":         "updated-password",
+	}, casCookies, http.StatusForbidden)
 	adminCallbackRequest := httptest.NewRequest(http.MethodGet, "/cas/callback?ticket=ST-admin&returnTo=%2F", nil)
 	adminCallbackRecorder := httptest.NewRecorder()
 	handler.ServeHTTP(adminCallbackRecorder, adminCallbackRequest)

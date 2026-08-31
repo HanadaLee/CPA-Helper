@@ -122,6 +122,11 @@ export const router = createRouter({
           component: () => import('@/features/codex-keeper/views/CodexKeeperStatusView.vue'),
           meta: { requiresAccountStatus: true },
         },
+        {
+          path: 'account/profile',
+          name: 'account-profile',
+          component: () => import('@/features/profile/views/ProfileView.vue'),
+        },
       ],
     },
     {

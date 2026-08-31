@@ -200,7 +200,11 @@ func requireSchemaShape(ctx context.Context, db *sql.DB) error {
 	}{
 		{"app_settings", "session_secret"},
 		{"app_settings", "cas_enabled"},
+		{"app_settings", "cas_default_login"},
 		{"users", "username"},
+		{"users", "cas_bound"},
+		{"users", "cas_email"},
+		{"users", "cas_avatar"},
 		{"usage_records", "dedupe_key"},
 		{"usage_records", "ttft_ms"},
 		{"usage_records", "source_key"},

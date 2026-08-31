@@ -117,9 +117,14 @@ func TestRunMigrationsCreatesGooseVersionAndFinalSchema(t *testing.T) {
 			t.Fatalf("app_settings.%s was not created", column)
 		}
 	}
-	for _, column := range []string{"cas_enabled", "cas_base_url", "cas_validation_url", "cas_validation_host", "cas_public_url", "cas_auto_create_users"} {
+	for _, column := range []string{"cas_enabled", "cas_default_login", "cas_base_url", "cas_validation_url", "cas_validation_host", "cas_public_url", "cas_auto_create_users"} {
 		if !testColumnExists(t, app.db, "app_settings", column) {
 			t.Fatalf("app_settings.%s was not created", column)
+		}
+	}
+	for _, column := range []string{"cas_bound", "cas_email", "cas_avatar"} {
+		if !testColumnExists(t, app.db, "users", column) {
+			t.Fatalf("users.%s was not created", column)
 		}
 	}
 	var cpamcURL string

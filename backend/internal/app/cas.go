@@ -317,14 +317,41 @@ func firstNonBlank(values ...string) string {
 	return ""
 }
 
+func normalizeCASProfileValue(value string, maxLength int) string {
+	value = strings.TrimSpace(value)
+	if len(value) > maxLength {
+		return ""
+	}
+	return value
+}
+
+func (a *App) syncCASProfile(ctx context.Context, userID int, profile casProfile) error {
+	_, err := a.db.ExecContext(ctx, `
+		UPDATE users
+		SET cas_bound = 1, cas_email = ?, cas_avatar = ?, updated_at = ?
+		WHERE id = ?
+	`,
+		normalizeCASProfileValue(profile.Email, 320),
+		normalizeCASProfileValue(profile.Avatar, 2048),
+		dbTime(time.Now()),
+		userID,
+	)
+	return err
+}
+
 func (a *App) resolveCASUser(ctx context.Context, cfg AppConfig, profile casProfile) (AuthUser, error) {
-	user, _, _, disabled, err := a.userCredentialsByUsername(ctx, profile.Username)
+	user, hash, salt, disabled, err := a.userCredentialsByUsername(ctx, profile.Username)
 	if err == nil {
 		if disabled {
 			return AuthUser{}, authenticationError("账号已禁用")
 		}
-		user.CanViewAccountStatus = user.IsAdmin || cfg.AllowUserAccountStatus
-		user.CanViewUsageHistory = user.IsAdmin || cfg.AllowUserUsageHistory
+		if err := a.syncCASProfile(ctx, user.ID, profile); err != nil {
+			return AuthUser{}, err
+		}
+		user.Email = normalizeCASProfileValue(profile.Email, 320)
+		user.Avatar = normalizeCASProfileValue(profile.Avatar, 2048)
+		user.CASBound = true
+		applyAuthUserConfig(&user, cfg, hash != nil && salt != nil)
 		return user, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
@@ -334,26 +361,41 @@ func (a *App) resolveCASUser(ctx context.Context, cfg AppConfig, profile casProf
 		return AuthUser{}, forbiddenError("CAS 用户尚未在 CPA-Helper 中创建")
 	}
 
-	nickname := firstNonBlank(profile.DisplayName, profile.Email, profile.Username)
+	nickname := normalizeCASProfileValue(firstNonBlank(profile.DisplayName, profile.Email, profile.Username), 240)
+	email := normalizeCASProfileValue(profile.Email, 320)
+	avatar := normalizeCASProfileValue(profile.Avatar, 2048)
 	now := dbTime(time.Now())
 	result, insertErr := a.db.ExecContext(ctx, `
-		INSERT INTO users (username, is_admin, nickname, created_at, updated_at)
-		VALUES (?, 0, ?, ?, ?)
-	`, profile.Username, nickname, now, now)
+		INSERT INTO users (username, is_admin, nickname, cas_bound, cas_email, cas_avatar, created_at, updated_at)
+		VALUES (?, 0, ?, 1, ?, ?, ?, ?)
+	`, profile.Username, nickname, email, avatar, now, now)
 	if insertErr != nil {
-		user, _, _, disabled, err = a.userCredentialsByUsername(ctx, profile.Username)
+		user, hash, salt, disabled, err = a.userCredentialsByUsername(ctx, profile.Username)
 		if err != nil {
 			return AuthUser{}, insertErr
 		}
 		if disabled {
 			return AuthUser{}, authenticationError("账号已禁用")
 		}
+		if err := a.syncCASProfile(ctx, user.ID, profile); err != nil {
+			return AuthUser{}, err
+		}
+		user.Email = email
+		user.Avatar = avatar
+		user.CASBound = true
 	} else {
 		id, _ := result.LastInsertId()
-		user = AuthUser{ID: int(id), Username: profile.Username}
+		user = AuthUser{
+			ID:        int(id),
+			Username:  profile.Username,
+			Nickname:  nickname,
+			Email:     email,
+			Avatar:    avatar,
+			CreatedAt: now,
+			CASBound:  true,
+		}
 		a.invalidateUsageUsers()
 	}
-	user.CanViewAccountStatus = cfg.AllowUserAccountStatus
-	user.CanViewUsageHistory = cfg.AllowUserUsageHistory
+	applyAuthUserConfig(&user, cfg, hash != nil && salt != nil)
 	return user, nil
 }
