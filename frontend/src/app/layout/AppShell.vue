@@ -489,7 +489,6 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
             <Transition
               name="route-fade"
               mode="out-in"
-              appear
               @before-enter="beginRouteTransition"
               @after-enter="finishRouteTransition"
               @enter-cancelled="finishRouteTransition"

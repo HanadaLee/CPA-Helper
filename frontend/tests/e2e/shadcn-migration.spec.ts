@@ -58,6 +58,55 @@ async function expectPlainDialogFooter(dialog: Locator) {
   await expect(footer).toHaveCSS('box-shadow', 'none')
 }
 
+test('initial navigation uses shell and dashboard skeletons instead of a blank screen', async ({ page }) => {
+  await setupOrLogin(page)
+
+  let releaseAuthRequest!: () => void
+  let releaseUsageRequest!: () => void
+  const authRequestGate = new Promise<void>((resolve) => {
+    releaseAuthRequest = resolve
+  })
+  const usageRequestGate = new Promise<void>((resolve) => {
+    releaseUsageRequest = resolve
+  })
+  let holdAuthRequest = true
+  let holdUsageRequest = true
+
+  await page.route('**/api/auth/me', async (route) => {
+    if (holdAuthRequest) {
+      holdAuthRequest = false
+      await authRequestGate
+    }
+    await route.continue()
+  })
+  await page.route('**/api/usage/overview**', async (route) => {
+    if (holdUsageRequest) {
+      holdUsageRequest = false
+      await usageRequestGate
+    }
+    await route.continue()
+  })
+
+  await page.goto('/admin/usage', { waitUntil: 'domcontentloaded' })
+
+  const appSkeleton = page.locator('[data-app-loading="true"]')
+  await expect(appSkeleton).toBeVisible()
+  await expect.poll(() => appSkeleton.locator('[data-slot="skeleton"]').count()).toBeGreaterThan(12)
+
+  releaseAuthRequest()
+  await expect(appSkeleton).toBeHidden()
+  await expect(page.locator('[data-page-title]')).toBeVisible()
+  await expect(page.locator('.filter-panel')).toBeVisible()
+
+  const dashboardSkeleton = page.locator('[data-usage-loading="true"]')
+  await expect(dashboardSkeleton).toBeVisible()
+  await expect.poll(() => dashboardSkeleton.locator('[data-slot="skeleton"]').count()).toBeGreaterThan(20)
+
+  releaseUsageRequest()
+  await expect(dashboardSkeleton).toBeHidden()
+  await expect(page.locator('.dashboard-metric-grid')).toBeVisible()
+})
+
 test('all migrated routes render and core controls remain interactive', async ({ page }) => {
   const consoleErrors: string[] = []
   page.on('console', (message) => {
@@ -283,12 +332,13 @@ test('all migrated routes render and core controls remain interactive', async ({
   expect(editorSaveBox).not.toBeNull()
   expect((editorSaveBox?.y ?? 0) - ((editorInputBox?.y ?? 0) + (editorInputBox?.height ?? 0))).toBeGreaterThanOrEqual(8)
   await page.getByRole('button', { name: /取消|Cancel/ }).click()
-  const endpointTypeGroup = page.locator('.api-endpoint-type-options[data-slot="toggle-group"]')
-  const endpointTypeButtons = endpointTypeGroup.locator('[data-slot="toggle-group-item"]')
+  const endpointTypeTabs = page.locator('.api-endpoint-type-tabs[data-slot="tabs"]')
+  const endpointTypeGroup = endpointTypeTabs.locator('[data-slot="tabs-list"]')
+  const endpointTypeButtons = endpointTypeGroup.locator('[data-slot="tabs-trigger"]')
   await expect(endpointTypeGroup).toHaveAttribute('aria-labelledby', 'api-endpoint-url-type-label')
   await expect(endpointTypeButtons).toHaveCount(4)
   await expect(endpointTypeButtons.first()).toHaveCSS('cursor', 'pointer')
-  await expect(endpointTypeButtons.first()).toHaveAttribute('data-state', 'on')
+  await expect(endpointTypeButtons.first()).toHaveAttribute('data-state', 'active')
   const endpointTypeLayout = await endpointTypeButtons.evaluateAll((elements) => {
     const boxes = elements.map((element) => element.getBoundingClientRect())
     const yPositions = boxes.map((box) => box.y)
@@ -298,18 +348,23 @@ test('all migrated routes render and core controls remain interactive', async ({
   })
   expect(endpointTypeLayout.yDifference).toBeLessThanOrEqual(1)
   const endpointGroupBox = await endpointTypeGroup.boundingBox()
+  const endpointFirstButtonBox = await endpointTypeButtons.first().boundingBox()
   const endpointLastButtonBox = await endpointTypeButtons.last().boundingBox()
   expect(endpointGroupBox).not.toBeNull()
+  expect(endpointFirstButtonBox).not.toBeNull()
   expect(endpointLastButtonBox).not.toBeNull()
+  const endpointLeftInset = (endpointFirstButtonBox?.x ?? 0) - (endpointGroupBox?.x ?? 0)
+  const endpointRightInset =
+    ((endpointGroupBox?.x ?? 0) + (endpointGroupBox?.width ?? 0)) -
+    ((endpointLastButtonBox?.x ?? 0) + (endpointLastButtonBox?.width ?? 0))
+  expect(endpointLeftInset).toBeGreaterThanOrEqual(2)
+  expect(endpointRightInset).toBeGreaterThanOrEqual(2)
   expect(
-    Math.abs(
-      ((endpointGroupBox?.x ?? 0) + (endpointGroupBox?.width ?? 0)) -
-      ((endpointLastButtonBox?.x ?? 0) + (endpointLastButtonBox?.width ?? 0)),
-    ),
+    Math.abs(endpointLeftInset - endpointRightInset),
   ).toBeLessThanOrEqual(1)
   await endpointTypeButtons.nth(1).click()
-  await expect(endpointTypeButtons.nth(1)).toHaveAttribute('data-state', 'on')
-  await expect(endpointTypeButtons.first()).toHaveAttribute('data-state', 'off')
+  await expect(endpointTypeButtons.nth(1)).toHaveAttribute('data-state', 'active')
+  await expect(endpointTypeButtons.first()).toHaveAttribute('data-state', 'inactive')
 
   expect(consoleErrors).toEqual([])
 })

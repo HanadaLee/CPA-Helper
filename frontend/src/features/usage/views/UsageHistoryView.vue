@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, type Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { AppButton, AppDateTimeRange, AppSelect, AppSpinner, useMessage } from '@/shared/ui/app-kit'
+import { AppButton, AppDateTimeRange, AppSelect, useMessage } from '@/shared/ui/app-kit'
 import {
   CircleCheck,
   CircleDollarSign,
@@ -19,6 +19,7 @@ import {
 import { getUsageOptions, getUsageOverview } from '@/features/usage/api/usageApi'
 import { getCurrentUserQuota } from '@/features/users/api/usersApi'
 import ChartPanel, { type ChartOption } from '@/features/usage/components/ChartPanel.vue'
+import UsageDashboardSkeleton from '@/features/usage/components/UsageDashboardSkeleton.vue'
 import type {
   DistributionItem,
   RankingItem,
@@ -110,6 +111,7 @@ const message = useMessage()
 const props = defineProps<Props>()
 const { currentLanguage, errorText, t } = useI18n()
 const isLoading = ref(false)
+const hasLoadedDashboard = ref(false)
 const isAutoRefreshing = ref(false)
 const autoRefreshError = ref<string | null>(null)
 const auxiliaryError = ref<string | null>(null)
@@ -582,6 +584,7 @@ async function refresh({ silent = false }: RefreshOptions = {}) {
     if (silent) {
       isAutoRefreshing.value = false
     } else {
+      hasLoadedDashboard.value = true
       isLoading.value = false
     }
     const nextRefresh = queuedRefresh
@@ -1228,7 +1231,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="page usage-dashboard-page" :aria-busy="isLoading">
+  <section class="page usage-dashboard-page" :aria-busy="!hasLoadedDashboard || isLoading">
     <div class="page-toolbar">
       <h1 data-page-title class="page-title">{{ pageTitle }}</h1>
       <div class="header-actions">
@@ -1350,7 +1353,8 @@ onBeforeUnmount(() => {
       </div>
     </section>
 
-    <AppSpinner :show="isLoading">
+    <UsageDashboardSkeleton v-if="!hasLoadedDashboard" />
+    <template v-else>
       <div class="metric-grid dashboard-metric-grid">
         <div
           v-for="metric in metricCards"
@@ -1666,7 +1670,7 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </div>
-    </AppSpinner>
+    </template>
   </section>
 </template>
 

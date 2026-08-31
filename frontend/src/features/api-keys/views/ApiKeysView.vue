@@ -17,19 +17,15 @@ import {
   useMessage,
   type DataTableColumns,
 } from '@/shared/ui/app-kit'
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Activity,
-  Bot,
-  Braces,
   CircleDollarSign,
   Copy,
   Eye,
   EyeOff,
   KeyRound,
   Layers3,
-  Link2,
-  MessageSquare,
   Send,
 } from '@lucide/vue'
 
@@ -110,7 +106,6 @@ interface PublicRequestURLTypeOption {
   ariaLabel: string
   value: PublicRequestURLType
   path: string
-  icon: Component
 }
 
 const chatCompletionsEndpointOption = computed<RequestEndpointOption>(() => ({
@@ -205,7 +200,6 @@ const publicRequestURLTypeOptions = computed<PublicRequestURLTypeOption[]>(() =>
     ariaLabel: t('基础 URL', 'Base URL'),
     value: 'base',
     path: '',
-    icon: Link2,
   },
   ...requestEndpointOptions.value.map((option) => ({
     label:
@@ -217,12 +211,6 @@ const publicRequestURLTypeOptions = computed<PublicRequestURLTypeOption[]>(() =>
     ariaLabel: option.label,
     value: option.value,
     path: option.path,
-    icon:
-      option.value === 'chat_completions'
-        ? MessageSquare
-        : option.value === 'responses'
-          ? Braces
-          : Bot,
   })),
 ])
 const publicRequestURLTypeMeta = computed(
@@ -862,26 +850,27 @@ onMounted(refresh)
           <h2 class="section-title">API Endpoint</h2>
           <div class="api-endpoint-type-picker">
             <span id="api-endpoint-url-type-label" class="request-endpoint-label">{{ t('URL 类型', 'URL type') }}</span>
-            <ToggleGroup
+            <Tabs
               :model-value="publicRequestURLType"
-              class="api-endpoint-type-options"
-              type="single"
-              variant="outline"
-              size="default"
-              aria-labelledby="api-endpoint-url-type-label"
+              class="api-endpoint-type-tabs w-full"
               @update:model-value="updatePublicRequestURLType"
             >
-              <ToggleGroupItem
-                v-for="option in publicRequestURLTypeOptions"
-                :key="option.value"
-                :value="option.value"
-                :aria-label="option.ariaLabel"
-                :title="option.ariaLabel"
+              <TabsList
+                class="api-endpoint-type-options grid h-10 w-full grid-cols-4 p-1"
+                aria-labelledby="api-endpoint-url-type-label"
               >
-                <component :is="option.icon" data-icon="inline-start" aria-hidden="true" />
-                <span>{{ option.label }}</span>
-              </ToggleGroupItem>
-            </ToggleGroup>
+                <TabsTrigger
+                  v-for="option in publicRequestURLTypeOptions"
+                  :key="option.value"
+                  :value="option.value"
+                  class="min-w-0 px-2"
+                  :aria-label="option.ariaLabel"
+                  :title="option.ariaLabel"
+                >
+                  {{ option.label }}
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
           </div>
           <div class="request-guide-list">
             <div v-for="endpoint in publicRequestEndpointRows" :key="endpoint.key" class="request-guide-row">
@@ -1094,34 +1083,6 @@ onMounted(refresh)
 
 .api-endpoint-panel .section-title {
   margin-bottom: 0;
-}
-
-.api-endpoint-type-options {
-  width: 100%;
-  max-width: 100%;
-  min-width: 0;
-}
-
-.api-endpoint-type-options :deep([data-slot="toggle-group-item"]) {
-  flex: 1 1 0;
-  min-width: 0;
-  min-height: 36px;
-  padding-inline: 8px;
-  border-color: var(--cpa-border-strong);
-  color: var(--cpa-text-muted);
-  cursor: pointer;
-  box-shadow: none;
-}
-
-.api-endpoint-type-options :deep([data-slot="toggle-group-item"]:hover) {
-  color: var(--cpa-text-strong);
-}
-
-.api-endpoint-type-options :deep([data-slot="toggle-group-item"][data-state="on"]) {
-  z-index: 1;
-  border-color: var(--cpa-primary);
-  background: var(--cpa-primary);
-  color: var(--cpa-primary-foreground);
 }
 
 .api-endpoint-type-picker {
