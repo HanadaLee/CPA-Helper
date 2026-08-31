@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 
 const adminRoutes = [
   ['/admin/usage', /用量分析|Usage Analytics/i],
@@ -51,6 +51,13 @@ async function expectTableInsidePanel(page: Page, tableSelector: string, panelSe
   ).toBe(true)
 }
 
+async function expectPlainDialogFooter(dialog: Locator) {
+  const footer = dialog.locator('[data-slot="dialog-footer"]')
+  await expect(footer).toHaveCSS('border-top-width', '0px')
+  await expect(footer).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+  await expect(footer).toHaveCSS('box-shadow', 'none')
+}
+
 test('all migrated routes render and core controls remain interactive', async ({ page }) => {
   const consoleErrors: string[] = []
   page.on('console', (message) => {
@@ -77,7 +84,8 @@ test('all migrated routes render and core controls remain interactive', async ({
   }
   await expect(page.getByRole('button', { name: /账户设置|Account Settings/ })).toHaveCount(0)
   await page.goto('/account/settings')
-  await page.waitForURL(/\/account\/usage$/)
+  await expect(page).toHaveURL(/\/account\/settings$/)
+  await expect(page.locator('[data-page-title]')).toHaveCount(0)
 
   await page.route('**/api/codex-keeper/accounts', async (route) => {
     await route.fulfill({
@@ -106,6 +114,17 @@ test('all migrated routes render and core controls remain interactive', async ({
           },
         ],
         priority_rules: [],
+      },
+    })
+  })
+  await page.route('**/api/codex-keeper/auth-files/menu-test.json', async (route) => {
+    await route.fulfill({
+      json: {
+        json: {
+          note: 'E2E auth file note',
+          priority: 0,
+          websockets: false,
+        },
       },
     })
   })
@@ -139,7 +158,17 @@ test('all migrated routes render and core controls remain interactive', async ({
   await expect(page.getByRole('menuitem', { name: /禁用|Disable/ })).toBeVisible()
   await expect(page.getByRole('menuitem', { name: /刷新|Refresh/ })).toBeVisible()
   await expect(page.getByRole('menuitem', { name: /删除|Delete/ })).toBeVisible()
-  await page.keyboard.press('Escape')
+  await page.getByRole('menuitem', { name: /删除|Delete/ }).click()
+  const accountDeleteDialog = page.getByRole('dialog', { name: /删除账号|Delete Account/ })
+  await expectPlainDialogFooter(accountDeleteDialog)
+  await accountDeleteDialog.getByRole('button', { name: /取消|Cancel/ }).click()
+  await page.getByRole('button', { name: /打开 .*操作菜单|Open actions for/ }).first().click()
+  await page.getByRole('menuitem', { name: /详情|Details/ }).click()
+  await page.getByRole('button', { name: /认证文件详情 \/ 编辑|Auth File Details \/ Edit/ }).click()
+  const authFileDialog = page.getByRole('dialog', { name: /认证文件详情 \/ 编辑|Auth File Details \/ Edit/ })
+  await expect(authFileDialog.getByRole('textbox').last()).toHaveValue('E2E auth file note')
+  await expectPlainDialogFooter(authFileDialog)
+  await authFileDialog.locator('[data-slot="dialog-footer"]').getByRole('button', { name: /关闭|Close/ }).click()
 
   await page.goto('/admin/pricing')
   const statusFilter = page.getByRole('combobox').nth(1)
@@ -154,12 +183,9 @@ test('all migrated routes render and core controls remain interactive', async ({
   await page.getByRole('button', { name: /新增价格|Add price/ }).click()
   const priceDialog = page.getByRole('dialog', { name: /新增价格|Add price/ })
   const priceCancelButton = priceDialog.getByRole('button', { name: /取消|Cancel/ })
-  const priceDialogFooter = priceDialog.locator('[data-slot="dialog-footer"]')
   await expect(priceCancelButton).toHaveCSS('cursor', 'pointer')
   await expect(priceCancelButton).toHaveCSS('border-top-width', '1px')
-  await expect(priceDialogFooter).toHaveCSS('border-top-width', '0px')
-  await expect(priceDialogFooter).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
-  await expect(priceDialogFooter).toHaveCSS('box-shadow', 'none')
+  await expectPlainDialogFooter(priceDialog)
   await priceCancelButton.click()
 
   await page.goto('/admin/upstreams')
@@ -257,22 +283,33 @@ test('all migrated routes render and core controls remain interactive', async ({
   expect(editorSaveBox).not.toBeNull()
   expect((editorSaveBox?.y ?? 0) - ((editorInputBox?.y ?? 0) + (editorInputBox?.height ?? 0))).toBeGreaterThanOrEqual(8)
   await page.getByRole('button', { name: /取消|Cancel/ }).click()
-  const endpointTypeButtons = page.locator('.api-endpoint-type-options .n-radio-button')
+  const endpointTypeGroup = page.locator('.api-endpoint-type-options[data-slot="toggle-group"]')
+  const endpointTypeButtons = endpointTypeGroup.locator('[data-slot="toggle-group-item"]')
+  await expect(endpointTypeGroup).toHaveAttribute('aria-labelledby', 'api-endpoint-url-type-label')
   await expect(endpointTypeButtons).toHaveCount(4)
-  await expect(endpointTypeButtons.first()).toHaveCSS('justify-content', 'center')
-  await expect(endpointTypeButtons.first()).toHaveCSS('text-align', 'center')
   await expect(endpointTypeButtons.first()).toHaveCSS('cursor', 'pointer')
+  await expect(endpointTypeButtons.first()).toHaveAttribute('data-state', 'on')
   const endpointTypeLayout = await endpointTypeButtons.evaluateAll((elements) => {
     const boxes = elements.map((element) => element.getBoundingClientRect())
-    const widths = boxes.map((box) => box.width)
     const yPositions = boxes.map((box) => box.y)
     return {
-      widthDifference: Math.max(...widths) - Math.min(...widths),
       yDifference: Math.max(...yPositions) - Math.min(...yPositions),
     }
   })
-  expect(endpointTypeLayout.widthDifference).toBeLessThanOrEqual(1)
   expect(endpointTypeLayout.yDifference).toBeLessThanOrEqual(1)
+  const endpointGroupBox = await endpointTypeGroup.boundingBox()
+  const endpointLastButtonBox = await endpointTypeButtons.last().boundingBox()
+  expect(endpointGroupBox).not.toBeNull()
+  expect(endpointLastButtonBox).not.toBeNull()
+  expect(
+    Math.abs(
+      ((endpointGroupBox?.x ?? 0) + (endpointGroupBox?.width ?? 0)) -
+      ((endpointLastButtonBox?.x ?? 0) + (endpointLastButtonBox?.width ?? 0)),
+    ),
+  ).toBeLessThanOrEqual(1)
+  await endpointTypeButtons.nth(1).click()
+  await expect(endpointTypeButtons.nth(1)).toHaveAttribute('data-state', 'on')
+  await expect(endpointTypeButtons.first()).toHaveAttribute('data-state', 'off')
 
   expect(consoleErrors).toEqual([])
 })
@@ -332,7 +369,7 @@ test('theme and mobile navigation survive the migration', async ({ page }) => {
   await expect(page.locator('[data-slot="sidebar-container"]')).toHaveCSS('border-right-color', 'rgba(15, 23, 42, 0.1)')
   const usageMenuButton = page.getByRole('button', { name: /用量分析|Usage Analytics/ })
   await expect(usageMenuButton).toHaveCSS('cursor', 'pointer')
-  await expect(usageMenuButton).toHaveCSS('font-size', '16px')
+  await expect(usageMenuButton).toHaveCSS('font-size', '12.25px')
   await expect(page.locator('a[href*="github.com/walkingddd/CPA-Helper"]')).toHaveCount(0)
   await page.getByRole('button', { name: /admin.*管理员|admin.*Admin/i }).click()
   await expect(page.getByRole('menuitem', { name: /退出登录|Sign out/ })).toBeVisible()

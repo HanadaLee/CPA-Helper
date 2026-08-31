@@ -120,10 +120,6 @@ export const router = createRouter({
           component: () => import('@/features/codex-keeper/views/CodexKeeperStatusView.vue'),
           meta: { requiresAccountStatus: true },
         },
-        {
-          path: 'account/settings',
-          redirect: '/account/usage',
-        },
       ],
     },
     {

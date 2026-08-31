@@ -967,15 +967,6 @@ onBeforeUnmount(() => {
   width: min(640px, calc(100vw - 24px));
 }
 
-:global(.price-modal [data-slot="dialog-footer"]) {
-  margin: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
 .proxy-modal {
   width: min(520px, calc(100vw - 24px));
 }

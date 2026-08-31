@@ -813,10 +813,6 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
   cursor: pointer;
 }
 
-:global(.app-sidebar [data-sidebar="menu-button"][data-navigation="true"]) {
-  font-size: 16px;
-}
-
 .app-sidebar :deep([data-sidebar="menu-button"]:hover) {
   border-color: color-mix(in srgb, var(--cpa-border) 74%, transparent);
   background: color-mix(in srgb, var(--cpa-surface-muted) 76%, transparent);

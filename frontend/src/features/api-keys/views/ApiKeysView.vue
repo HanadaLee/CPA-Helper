@@ -11,22 +11,25 @@ import {
   AppIcon,
   AppInput,
   AppModal,
-  AppRadioButton,
-  AppRadioGroup,
   AppSelect,
   AppStack,
   useDialog,
   useMessage,
   type DataTableColumns,
 } from '@/shared/ui/app-kit'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import {
   Activity,
+  Bot,
+  Braces,
   CircleDollarSign,
   Copy,
   Eye,
   EyeOff,
   KeyRound,
   Layers3,
+  Link2,
+  MessageSquare,
   Send,
 } from '@lucide/vue'
 
@@ -104,8 +107,10 @@ interface PublicRequestEndpoint {
 
 interface PublicRequestURLTypeOption {
   label: string
+  ariaLabel: string
   value: PublicRequestURLType
   path: string
+  icon: Component
 }
 
 const chatCompletionsEndpointOption = computed<RequestEndpointOption>(() => ({
@@ -196,14 +201,28 @@ const canCreateApiKey = computed(() => quotaStatus.value?.can_create_keys ?? tru
 const requestBaseURL = computed(() => modelRequestGuide.value?.openai_base_url ?? requestLoadingText.value)
 const publicRequestURLTypeOptions = computed<PublicRequestURLTypeOption[]>(() => [
   {
-    label: t('基础 URL', 'Base URL'),
+    label: t('基础', 'Base'),
+    ariaLabel: t('基础 URL', 'Base URL'),
     value: 'base',
     path: '',
+    icon: Link2,
   },
   ...requestEndpointOptions.value.map((option) => ({
-    label: option.label,
+    label:
+      option.value === 'chat_completions'
+        ? t('聊天', 'Chat')
+        : option.value === 'responses'
+          ? 'Responses'
+          : 'Claude',
+    ariaLabel: option.label,
     value: option.value,
     path: option.path,
+    icon:
+      option.value === 'chat_completions'
+        ? MessageSquare
+        : option.value === 'responses'
+          ? Braces
+          : Bot,
   })),
 ])
 const publicRequestURLTypeMeta = computed(
@@ -237,6 +256,13 @@ const publicRequestEndpointRows = computed(() => {
         : `${endpoint.baseURL.replace(/\/$/, '')}${path}`,
   }))
 })
+
+function updatePublicRequestURLType(value: unknown) {
+  if (publicRequestURLTypeOptions.value.some((option) => option.value === value)) {
+    publicRequestURLType.value = value as PublicRequestURLType
+  }
+}
+
 const requestEndpointMeta = computed(
   () =>
     requestEndpointOptions.value.find((option) => option.value === requestEndpoint.value) ??
@@ -834,17 +860,28 @@ onMounted(refresh)
       <section class="panel api-endpoint-panel-shell">
         <div class="panel-inner api-endpoint-panel">
           <h2 class="section-title">API Endpoint</h2>
-          <div class="request-endpoint-switch">
-            <span class="request-endpoint-label">{{ t('URL 类型', 'URL type') }}</span>
-            <AppRadioGroup v-model:value="publicRequestURLType" class="api-endpoint-type-options" size="small">
-              <AppRadioButton
+          <div class="api-endpoint-type-picker">
+            <span id="api-endpoint-url-type-label" class="request-endpoint-label">{{ t('URL 类型', 'URL type') }}</span>
+            <ToggleGroup
+              :model-value="publicRequestURLType"
+              class="api-endpoint-type-options"
+              type="single"
+              variant="outline"
+              size="default"
+              aria-labelledby="api-endpoint-url-type-label"
+              @update:model-value="updatePublicRequestURLType"
+            >
+              <ToggleGroupItem
                 v-for="option in publicRequestURLTypeOptions"
                 :key="option.value"
                 :value="option.value"
+                :aria-label="option.ariaLabel"
+                :title="option.ariaLabel"
               >
-                {{ option.label }}
-              </AppRadioButton>
-            </AppRadioGroup>
+                <component :is="option.icon" data-icon="inline-start" aria-hidden="true" />
+                <span>{{ option.label }}</span>
+              </ToggleGroupItem>
+            </ToggleGroup>
           </div>
           <div class="request-guide-list">
             <div v-for="endpoint in publicRequestEndpointRows" :key="endpoint.key" class="request-guide-row">
@@ -1060,24 +1097,38 @@ onMounted(refresh)
 }
 
 .api-endpoint-type-options {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  flex: 1 1 0;
-  width: auto;
+  width: 100%;
   max-width: 100%;
   min-width: 0;
-  align-items: stretch;
-  justify-content: flex-start;
 }
 
-.api-endpoint-type-options :deep(.n-radio-button) {
-  justify-content: center;
+.api-endpoint-type-options :deep([data-slot="toggle-group-item"]) {
+  flex: 1 1 0;
   min-width: 0;
   min-height: 36px;
-  padding-inline: 6px;
-  line-height: 1.2;
-  text-align: center;
-  white-space: normal;
+  padding-inline: 8px;
+  border-color: var(--cpa-border-strong);
+  color: var(--cpa-text-muted);
+  cursor: pointer;
+  box-shadow: none;
+}
+
+.api-endpoint-type-options :deep([data-slot="toggle-group-item"]:hover) {
+  color: var(--cpa-text-strong);
+}
+
+.api-endpoint-type-options :deep([data-slot="toggle-group-item"][data-state="on"]) {
+  z-index: 1;
+  border-color: var(--cpa-primary);
+  background: var(--cpa-primary);
+  color: var(--cpa-primary-foreground);
+}
+
+.api-endpoint-type-picker {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  min-width: 0;
 }
 
 .api-key-metrics {
@@ -1154,10 +1205,6 @@ onMounted(refresh)
   color: var(--cpa-text-muted);
   font-size: 12px;
   font-weight: 700;
-}
-
-.api-endpoint-panel .request-endpoint-switch {
-  justify-content: flex-start;
 }
 
 .request-guide-list {
@@ -1375,15 +1422,6 @@ onMounted(refresh)
 
   .request-guide-row {
     grid-template-columns: 1fr;
-  }
-
-  .api-endpoint-panel .request-endpoint-switch {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .api-endpoint-type-options {
-    width: 100%;
   }
 
   .request-example-head,
