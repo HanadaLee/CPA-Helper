@@ -1390,6 +1390,7 @@ onBeforeUnmount(() => {
                 :items="tokenBreakdownItems"
                 :center-value="formatCompact(summary?.total_tokens ?? 0)"
                 center-label="Token"
+                :value-formatter="formatCompact"
               />
             </template>
             <ol class="distribution-legend token-legend" :aria-label="t('Token 构成图例', 'Token breakdown legend')">

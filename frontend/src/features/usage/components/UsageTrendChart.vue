@@ -77,8 +77,13 @@ const chartConfig = computed<ChartConfig>(() => ({
 const tooltipTemplate = computed(() => componentToString(
   chartConfig.value,
   ChartTooltipContent,
-  { indicator: 'line', labelKey: 'bucketLabel' },
+  { indicator: 'dot', labelKey: 'bucketLabel', valueFormatter: formatTooltipValue },
 ))
+
+function formatTooltipValue(value: unknown, key: string): string {
+  if (typeof value !== 'number') return String(value)
+  return key === 'tokens' ? formatCompact(value) : value.toLocaleString()
+}
 
 function xLabel(value: number): string {
   const item = chartData.value[Math.max(0, Math.round(value) - 1)]

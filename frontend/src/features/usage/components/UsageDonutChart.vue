@@ -23,6 +23,7 @@ const props = defineProps<{
   items: DonutItem[]
   centerValue: string
   centerLabel: string
+  valueFormatter?: (value: number) => string
 }>()
 
 const chartColors = [
@@ -45,7 +46,15 @@ watchEffect(() => {
 })
 
 const chartData = computed<DonutDatum[]>(() => props.items.map((item) => ({ [item.key]: item.value })))
-const tooltipTemplate = componentToString(chartConfig, ChartTooltipContent, { hideLabel: true })
+const tooltipTemplate = componentToString(chartConfig, ChartTooltipContent, {
+  hideLabel: true,
+  valueFormatter: formatTooltipValue,
+})
+
+function formatTooltipValue(value: unknown): string {
+  if (typeof value !== 'number') return String(value)
+  return props.valueFormatter?.(value) ?? value.toLocaleString()
+}
 
 function datumKey(datum: DonutDatum): string {
   return Object.keys(datum)[0] ?? ''

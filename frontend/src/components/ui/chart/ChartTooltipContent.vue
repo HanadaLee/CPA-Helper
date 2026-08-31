@@ -11,6 +11,7 @@ const props = withDefaults(defineProps<{
   nameKey?: string
   labelKey?: string
   labelFormatter?: (d: number | Date) => string
+  valueFormatter?: (value: unknown, key: string) => string
   payload?: Record<string, any>
   config?: ChartConfig
   class?: HTMLAttributes['class']
@@ -37,6 +38,11 @@ const tooltipLabel = computed(() => {
   if (props.labelFormatter && props.x !== undefined) return props.labelFormatter(props.x)
   return props.labelKey ? props.config[props.labelKey]?.label || props.payload[props.labelKey] : props.x
 })
+
+function formatValue(value: unknown, key: string): string {
+  if (props.valueFormatter) return props.valueFormatter(value, key)
+  return typeof value === 'number' ? value.toLocaleString() : String(value)
+}
 </script>
 
 <template>
@@ -65,7 +71,7 @@ const tooltipLabel = computed(() => {
               }"
             />
           </template>
-          <div :class="cn('flex flex-1 justify-between leading-none', nestLabel ? 'items-end' : 'items-center')">
+          <div :class="cn('flex flex-1 justify-between gap-4 leading-none', nestLabel ? 'items-end' : 'items-center')">
             <div class="grid gap-1.5">
               <div v-if="nestLabel" class="font-medium">
                 {{ tooltipLabel }}
@@ -73,7 +79,7 @@ const tooltipLabel = computed(() => {
               <span class="text-muted-foreground">{{ itemConfig?.label || value }}</span>
             </div>
             <span v-if="value !== undefined && value !== null" class="font-mono font-medium tabular-nums text-foreground">
-              {{ typeof value === 'number' ? value.toLocaleString() : value }}
+              {{ formatValue(value, key) }}
             </span>
           </div>
         </div>
