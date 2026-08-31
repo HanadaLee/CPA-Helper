@@ -1496,7 +1496,6 @@ export const AppDataTable = defineComponent({
       left: column.fixed === 'left' ? '0' : undefined,
       right: column.fixed === 'right' ? `${rightOffset(index)}px` : undefined,
       zIndex: column.fixed ? 2 : undefined,
-      background: column.fixed ? 'var(--cpa-surface)' : undefined,
     })
     const renderHeader = (column: DataTableColumn<any>) => {
       if (column.type === 'selection') {
@@ -1555,10 +1554,12 @@ export const AppDataTable = defineComponent({
                     default: () => props.columns.map((column, index) =>
                       h(TableHead, {
                         key: String(column.key ?? index),
-                        class: 'n-data-table-th h-11 bg-muted/55 px-3 text-left align-middle text-xs font-semibold tracking-[0.01em] text-foreground backdrop-blur-sm',
+                        class: cn(
+                          'n-data-table-th h-11 bg-muted/55 px-3 text-left align-middle text-xs font-semibold tracking-[0.01em] text-foreground backdrop-blur-sm',
+                          column.fixed && 'bg-muted',
+                        ),
                         style: {
                           ...cellStyle(column, index),
-                          background: column.fixed ? 'var(--cpa-surface-muted)' : undefined,
                           borderTopLeftRadius: index === 0 ? 'calc(var(--cpa-radius) - 1px)' : undefined,
                           borderTopRightRadius: index === props.columns.length - 1 ? 'calc(var(--cpa-radius) - 1px)' : undefined,
                         },
@@ -1568,10 +1569,13 @@ export const AppDataTable = defineComponent({
                 }),
                 h(TableBody, { class: 'n-data-table-base-table-body' }, {
                   default: () => props.loading && rows.value.length === 0
-                    ? Array.from({ length: 5 }, (_, rowIndex) =>
+                      ? Array.from({ length: 5 }, (_, rowIndex) =>
                         h(TableRow, { key: `skeleton-${rowIndex}` }, {
                           default: () => props.columns.map((column, columnIndex) =>
-                            h(TableCell, { class: 'n-data-table-td px-3 py-2.5', style: cellStyle(column, columnIndex) }, { default: () => h(Skeleton, { class: 'h-4 w-full' }) }),
+                            h(TableCell, {
+                              class: cn('n-data-table-td px-3 py-2.5', column.fixed && 'bg-card'),
+                              style: cellStyle(column, columnIndex),
+                            }, { default: () => h(Skeleton, { class: 'h-4 w-full' }) }),
                           ),
                         }),
                       )
@@ -1584,12 +1588,15 @@ export const AppDataTable = defineComponent({
                           return h(TableRow, {
                             ...rowAttrs,
                             key: getRowKey(row, rowIndex),
-                            class: cn('n-data-table-tr transition-colors hover:bg-accent/45', rowAttrs.class as HTMLAttributes['class']),
+                            class: cn('n-data-table-tr group/data-table-row transition-colors hover:bg-accent/45', rowAttrs.class as HTMLAttributes['class']),
                           }, {
                             default: () => props.columns.map((column, columnIndex) =>
                               h(TableCell, {
                                 key: String(column.key ?? columnIndex),
-                                class: 'n-data-table-td px-3 py-3 align-middle text-foreground',
+                                class: cn(
+                                  'n-data-table-td px-3 py-3 align-middle text-foreground',
+                                  column.fixed && 'bg-card transition-colors group-hover/data-table-row:bg-accent/45',
+                                ),
                                 style: cellStyle(column, columnIndex),
                               }, { default: () => renderCell(column, row, rowIndex) as never }),
                             ),

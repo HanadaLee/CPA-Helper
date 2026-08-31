@@ -287,12 +287,8 @@ onMounted(refresh)
               </FieldSet>
 
               <FieldSet class="settings-section">
-                <FieldLegend>{{ t('访问与采集', 'Access and collection') }}</FieldLegend>
+                <FieldLegend>{{ t('访问配置', 'Access control') }}</FieldLegend>
                 <FieldGroup class="settings-switch-list">
-                  <Field orientation="horizontal" class="settings-switch">
-                    <FieldContent><FieldTitle>{{ t('开启本地采集', 'Enable local collection') }}</FieldTitle><FieldDescription>{{ t('定时将 CPA 队列写入本地用量数据库。', 'Periodically write CPA queue data to the local usage database.') }}</FieldDescription></FieldContent>
-                    <AppSwitch v-model:value="settingsForm.collector_enabled" />
-                  </Field>
                   <Field orientation="horizontal" class="settings-switch">
                     <FieldContent><FieldTitle>{{ t('允许普通用户查看账号状态', 'Allow standard users to view account status') }}</FieldTitle><FieldDescription>{{ t('普通用户仅能只读查看账号状态。', 'Standard users receive read-only account status access.') }}</FieldDescription></FieldContent>
                     <AppSwitch v-model:value="settingsForm.allow_user_account_status" />
@@ -306,6 +302,12 @@ onMounted(refresh)
 
               <FieldSet class="settings-section">
                 <FieldLegend>{{ t('采集与保留参数', 'Collection and retention') }}</FieldLegend>
+                <FieldGroup class="settings-switch-list">
+                  <Field orientation="horizontal" class="settings-switch">
+                    <FieldContent><FieldTitle>{{ t('开启本地采集', 'Enable local collection') }}</FieldTitle><FieldDescription>{{ t('定时将 CPA 队列写入本地用量数据库。', 'Periodically write CPA queue data to the local usage database.') }}</FieldDescription></FieldContent>
+                    <AppSwitch v-model:value="settingsForm.collector_enabled" />
+                  </Field>
+                </FieldGroup>
                 <FieldGroup class="form-grid">
                   <AppFormItem :label="t('批量读取数', 'Batch size')"><AppNumberInput v-model:value="settingsForm.batch_size" :min="1" :max="1000" /></AppFormItem>
                   <AppFormItem :label="t('轮询间隔（秒）', 'Poll interval (seconds)')"><AppNumberInput v-model:value="settingsForm.poll_interval_seconds" :min="0.2" /></AppFormItem>

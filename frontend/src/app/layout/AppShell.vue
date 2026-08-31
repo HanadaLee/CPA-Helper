@@ -780,6 +780,13 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
   display: none;
 }
 
+:global([data-collapsible="icon"] [data-sidebar="header"].sidebar-brand-header),
+:global([data-collapsible="icon"] [data-sidebar="group"]),
+:global([data-collapsible="icon"] [data-sidebar="footer"].sidebar-user-footer) {
+  padding-right: calc((0.75rem - 1px) / 2);
+  padding-left: calc((0.75rem - 1px) / 2);
+}
+
 .sidebar-brand-button {
   height: 48px !important;
   cursor: default !important;
@@ -804,6 +811,10 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
   border-radius: 9px;
   color: var(--cpa-text);
   cursor: pointer;
+}
+
+:global(.app-sidebar [data-sidebar="menu-button"][data-navigation="true"]) {
+  font-size: 16px;
 }
 
 .app-sidebar :deep([data-sidebar="menu-button"]:hover) {

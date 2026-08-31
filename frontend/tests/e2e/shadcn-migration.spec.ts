@@ -79,6 +79,36 @@ test('all migrated routes render and core controls remain interactive', async ({
   await page.goto('/account/settings')
   await page.waitForURL(/\/account\/usage$/)
 
+  await page.route('**/api/codex-keeper/accounts', async (route) => {
+    await route.fulfill({
+      json: {
+        items: [
+          {
+            name: 'menu-test.json',
+            email: 'menu-test@example.com',
+            account_type: 'plus',
+            disabled: false,
+            priority: 0,
+            primary_used_percent: 20,
+            secondary_used_percent: 10,
+            primary_reset_at: null,
+            secondary_reset_at: null,
+            primary_window_seconds: 18_000,
+            secondary_window_seconds: 604_800,
+            primary_window_usage: null,
+            secondary_window_usage: null,
+            quota_threshold: 90,
+            last_status_code: 200,
+            last_error: null,
+            latest_action: null,
+            last_checked_at: null,
+            last_healthy_at: null,
+          },
+        ],
+        priority_rules: [],
+      },
+    })
+  })
   await page.goto('/admin/account-mgmt')
   const accountTypeFilter = page.getByRole('combobox', { name: /账号类型|Account Type/ })
   await accountTypeFilter.click()
@@ -91,6 +121,25 @@ test('all migrated routes render and core controls remain interactive', async ({
   const latestActionHeaderBox = await page.getByRole('columnheader', { name: /最近操作|Latest Action/ }).boundingBox()
   expect(latestActionHeaderBox).not.toBeNull()
   expect(latestActionHeaderBox?.width).toBeLessThanOrEqual(170)
+  const accountActionHeaderBox = await page.locator('.account-table .n-data-table-th').last().boundingBox()
+  expect(accountActionHeaderBox).not.toBeNull()
+  expect(accountActionHeaderBox?.width).toBeLessThanOrEqual(64)
+  const accountRow = page.locator('.account-table .n-data-table-base-table-body .n-data-table-tr').first()
+  const accountFixedCell = accountRow.locator('.n-data-table-td').last()
+  await accountRow.hover()
+  await expect.poll(async () => {
+    const [rowColor, fixedCellColor] = await Promise.all([
+      accountRow.evaluate((element) => getComputedStyle(element).backgroundColor),
+      accountFixedCell.evaluate((element) => getComputedStyle(element).backgroundColor),
+    ])
+    return fixedCellColor === rowColor
+  }).toBe(true)
+  await page.getByRole('button', { name: /打开 .*操作菜单|Open actions for/ }).first().click()
+  await expect(page.getByRole('menuitem', { name: /详情|Details/ })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: /禁用|Disable/ })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: /刷新|Refresh/ })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: /删除|Delete/ })).toBeVisible()
+  await page.keyboard.press('Escape')
 
   await page.goto('/admin/pricing')
   const statusFilter = page.getByRole('combobox').nth(1)
@@ -148,6 +197,7 @@ test('all migrated routes render and core controls remain interactive', async ({
   const adminSwitch = page.locator('button[role="switch"]').first()
   await adminSwitch.click()
   await expect(adminSwitch).toHaveAttribute('data-state', 'checked')
+  await expect(adminSwitch.locator('[data-slot="switch-thumb"]')).toHaveCSS('border-top-width', '1px')
   await page.getByRole('button', { name: /取消|Cancel/ }).click()
 
   await page.goto('/admin/records')
@@ -167,6 +217,12 @@ test('all migrated routes render and core controls remain interactive', async ({
 
   await page.goto('/admin/settings')
   const brandingSection = page.locator('.settings-section').filter({ hasText: /界面品牌|Interface branding/ })
+  const accessSection = page.locator('.settings-section').filter({ hasText: /访问配置|Access control/ })
+  const collectionSection = page.locator('.settings-section').filter({ hasText: /采集与保留参数|Collection and retention/ })
+  await expect(accessSection).toBeVisible()
+  await expect(accessSection.getByText(/开启本地采集|Enable local collection/)).toHaveCount(0)
+  await expect(collectionSection.getByText(/开启本地采集|Enable local collection/)).toBeVisible()
+  await expect(collectionSection.getByText(/用量明细保留天数|Usage detail retention days/)).toBeVisible()
   const brandingInputs = brandingSection.locator('input')
   await expect(brandingInputs).toHaveCount(4)
   await expect(brandingInputs.nth(0)).toHaveValue('CPA-Helper')
@@ -274,7 +330,9 @@ test('theme and mobile navigation survive the migration', async ({ page }) => {
     page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--cpa-primary').trim()),
   ).toBe('#2563eb')
   await expect(page.locator('[data-slot="sidebar-container"]')).toHaveCSS('border-right-color', 'rgba(15, 23, 42, 0.1)')
-  await expect(page.getByRole('button', { name: /用量分析|Usage Analytics/ })).toHaveCSS('cursor', 'pointer')
+  const usageMenuButton = page.getByRole('button', { name: /用量分析|Usage Analytics/ })
+  await expect(usageMenuButton).toHaveCSS('cursor', 'pointer')
+  await expect(usageMenuButton).toHaveCSS('font-size', '16px')
   await expect(page.locator('a[href*="github.com/walkingddd/CPA-Helper"]')).toHaveCount(0)
   await page.getByRole('button', { name: /admin.*管理员|admin.*Admin/i }).click()
   await expect(page.getByRole('menuitem', { name: /退出登录|Sign out/ })).toBeVisible()
@@ -282,6 +340,15 @@ test('theme and mobile navigation survive the migration', async ({ page }) => {
 
   await page.getByRole('button', { name: /打开导航|Open navigation/ }).click()
   await expect(page.locator('div[data-state="collapsed"][data-side="left"]')).toBeVisible()
+  await expect.poll(() => page.locator('[data-slot="sidebar-container"]').evaluate((sidebar) => {
+    const mark = sidebar.querySelector<HTMLElement>('.brand-mark')
+    if (!mark) return Number.POSITIVE_INFINITY
+    const sidebarBox = sidebar.getBoundingClientRect()
+    const markBox = mark.getBoundingClientRect()
+    return Math.abs(
+      (sidebarBox.left + sidebarBox.width / 2) - (markBox.left + markBox.width / 2),
+    )
+  })).toBeLessThanOrEqual(1)
   await page.getByRole('button', { name: /打开导航|Open navigation/ }).click()
   await page.getByRole('button', { name: /切换主题|Switch theme/ }).first().click()
   await page.getByRole('button', { name: /切换主题|Switch theme/ }).first().click()

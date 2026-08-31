@@ -21,13 +21,24 @@ import {
   type DataTableColumns,
   type DataTableRowKey,
 } from '@/shared/ui/app-kit'
+import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import {
   Activity,
   ArrowLeft,
   Copy,
+  Eye,
   ExternalLink,
   Gauge,
   LogIn,
+  MoreHorizontal,
   PauseCircle,
   Pencil,
   RefreshCw,
@@ -129,7 +140,7 @@ const AUTH_FILE_MAX_SIZE = 10 * 1024 * 1024
 const CODEX_FIVE_HOUR_WINDOW_SECONDS = 5 * 60 * 60
 const CODEX_WEEK_WINDOW_SECONDS = 7 * 24 * 60 * 60
 const CODEX_MONTH_WINDOW_SECONDS = 30 * 24 * 60 * 60
-const accountManageTableScrollX = 1664
+const accountManageTableScrollX = 1496
 const accountReadOnlyTableScrollX = 1468
 const KEEPER_STATUS_POLL_INTERVAL_MS = 3000
 const REFRESH_STATUS_POLL_INTERVAL_MS = 1500
@@ -2260,59 +2271,105 @@ const baseColumns = computed<DataTableColumns<CodexKeeperAccount>>(() => [
 const manageActionColumn = computed<DataTableColumns<CodexKeeperAccount>[number]>(() => ({
   title: '',
   key: 'actions',
-  width: 224,
+  width: 56,
+  align: 'right',
   fixed: 'right',
-  render: (row: CodexKeeperAccount) => {
-    return h(
-      AppStack,
-      { class: 'account-actions', size: 4, wrap: false },
+  render: (row: CodexKeeperAccount) =>
+    h(
+      DropdownMenu,
+      {},
       {
         default: () => [
           h(
-            AppButton,
-            { size: 'small', quaternary: true, onClick: () => openDetail(row) },
-            { default: () => t('详情', 'Details') },
+            DropdownMenuTrigger,
+            { asChild: true },
+            {
+              default: () =>
+                h(
+                  Button,
+                  {
+                    variant: 'ghost',
+                    size: 'icon-sm',
+                    class: 'account-actions-trigger',
+                    'aria-label': t(
+                      `打开 ${row.email ?? row.name} 的操作菜单`,
+                      `Open actions for ${row.email ?? row.name}`,
+                    ),
+                  },
+                  { default: () => h(MoreHorizontal) },
+                ),
+            },
           ),
           h(
-            AppButton,
+            DropdownMenuContent,
+            { align: 'end', sideOffset: 4, class: 'w-40' },
             {
-              size: 'small',
-              quaternary: true,
-              style: { color: row.disabled ? 'var(--cpa-primary)' : 'var(--cpa-warning)' },
-              disabled: isRowActing(row) || isBulkOperationRunning.value,
-              loading: isActionLoading(row, 'toggle'),
-              onClick: () => row.disabled ? confirmEnableAccount(row) : confirmDisableAccount(row),
+              default: () => [
+                h(
+                  DropdownMenuGroup,
+                  {},
+                  {
+                    default: () =>
+                      h(
+                        DropdownMenuItem,
+                        { onSelect: () => openDetail(row) },
+                        { default: () => [h(Eye), h('span', t('详情', 'Details'))] },
+                      ),
+                  },
+                ),
+                h(DropdownMenuSeparator),
+                h(
+                  DropdownMenuGroup,
+                  {},
+                  {
+                    default: () => [
+                      h(
+                        DropdownMenuItem,
+                        {
+                          disabled: isRowActing(row) || isBulkOperationRunning.value,
+                          onSelect: () => row.disabled ? confirmEnableAccount(row) : confirmDisableAccount(row),
+                        },
+                        {
+                          default: () => [
+                            h(row.disabled ? ShieldCheck : PauseCircle),
+                            h('span', row.disabled ? t('启用', 'Enable') : t('禁用', 'Disable')),
+                          ],
+                        },
+                      ),
+                      h(
+                        DropdownMenuItem,
+                        {
+                          disabled: isRowActing(row) || isBulkOperationRunning.value,
+                          onSelect: () => refreshAccount(row),
+                        },
+                        { default: () => [h(RefreshCw), h('span', t('刷新', 'Refresh'))] },
+                      ),
+                    ],
+                  },
+                ),
+                h(DropdownMenuSeparator),
+                h(
+                  DropdownMenuGroup,
+                  {},
+                  {
+                    default: () =>
+                      h(
+                        DropdownMenuItem,
+                        {
+                          variant: 'destructive',
+                          disabled: isRowActing(row) || isBulkOperationRunning.value,
+                          onSelect: () => confirmDeleteAccount(row),
+                        },
+                        { default: () => [h(Trash2), h('span', t('删除', 'Delete'))] },
+                      ),
+                  },
+                ),
+              ],
             },
-            { default: () => row.disabled ? t('启用', 'Enable') : t('禁用', 'Disable') },
-          ),
-          h(
-            AppButton,
-            {
-              size: 'small',
-              quaternary: true,
-              style: { color: 'var(--cpa-danger)' },
-              disabled: isRowActing(row) || isBulkOperationRunning.value,
-              loading: isActionLoading(row, 'delete'),
-              onClick: () => confirmDeleteAccount(row),
-            },
-            { default: () => t('删除', 'Delete') },
-          ),
-          h(
-            AppButton,
-            {
-              size: 'small',
-              quaternary: true,
-              style: { color: 'var(--cpa-primary)' },
-              disabled: isRowActing(row) || isBulkOperationRunning.value,
-              loading: isActionLoading(row, 'refresh'),
-              onClick: () => refreshAccount(row),
-            },
-            { default: () => t('刷新', 'Refresh') },
           ),
         ],
       },
-    )
-  },
+    ),
 }))
 
 const readOnlyActionColumn = computed<DataTableColumns<CodexKeeperAccount>[number]>(() => ({
@@ -3801,8 +3858,9 @@ onBeforeUnmount(() => {
   font-weight: 700;
 }
 
-:global(.account-actions) {
-  justify-content: flex-end;
+:global(.account-actions-trigger) {
+  margin-left: auto;
+  color: var(--cpa-text-muted);
 }
 
 .empty-state {
