@@ -703,10 +703,21 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
 }
 
 .user-avatar {
+  position: relative;
   width: 32px;
   height: 32px;
   flex: 0 0 32px;
+  border: 0;
   border-radius: 9999px;
+}
+
+.user-avatar::after {
+  position: absolute;
+  inset: 0;
+  border: 1px solid color-mix(in oklch, var(--cpa-border) 58%, transparent);
+  border-radius: inherit;
+  content: "";
+  pointer-events: none;
 }
 
 .user-copy {
