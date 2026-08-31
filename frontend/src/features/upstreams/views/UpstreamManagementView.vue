@@ -49,6 +49,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Table,
   TableBody,
@@ -319,6 +320,11 @@ function upstreamSearchText(item: UpstreamItem): string {
 function selectSection(name: UpstreamSection) {
   activeSection.value = name
   searchText.value = ''
+}
+
+function handleSectionChange(value: unknown) {
+  if (typeof value !== 'string' || !upstreamSectionNames.includes(value as UpstreamSection)) return
+  selectSection(value as UpstreamSection)
 }
 
 async function loadUpstreams(showSuccess = false) {
@@ -660,170 +666,171 @@ void loadUpstreams()
       <AlertDescription>{{ loadError }}</AlertDescription>
     </Alert>
 
-    <Card class="upstream-workbench">
-      <CardContent class="min-h-0 p-0">
-        <div class="workbench-layout">
-          <aside class="provider-nav">
-            <div class="provider-nav__heading">
-              <span>{{ t('提供商', 'Providers') }}</span>
-              <Badge variant="secondary">{{ configuredFamilies }}/{{ upstreamSectionNames.length }}</Badge>
-            </div>
-            <Button
+    <Card class="upstream-workbench gap-0 py-0">
+      <CardHeader class="provider-switcher">
+        <Tabs
+          :model-value="activeSection"
+          class="provider-tabs"
+          @update:model-value="handleSectionChange"
+        >
+          <TabsList
+            class="provider-tabs__list"
+            :aria-label="t('提供商', 'Providers')"
+          >
+            <TabsTrigger
               v-for="definition in sectionDefinitions"
               :key="definition.name"
-              type="button"
-              :variant="activeSection === definition.name ? 'secondary' : 'ghost'"
-              class="provider-nav__item"
-              @click="selectSection(definition.name)"
+              :value="definition.name"
+              class="provider-tabs__item"
             >
               <component :is="definition.icon" data-icon="inline-start" />
-              <span class="provider-nav__label">{{ definition.label }}</span>
-              <Badge variant="outline" class="provider-nav__count tabular-nums">
+              <span class="provider-tabs__label">{{ definition.label }}</span>
+              <Badge variant="outline" class="provider-tabs__count tabular-nums">
                 {{ sections[definition.name].length }}
               </Badge>
-            </Button>
-          </aside>
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </CardHeader>
 
-          <div class="provider-panel">
-            <div class="provider-panel__toolbar">
-              <div class="provider-panel__context">
-                <component :is="activeDefinition?.icon" aria-hidden="true" />
-                <strong>{{ activeDefinition?.label }}</strong>
-                <Badge variant="secondary">
-                  {{ filteredRows.length }}/{{ sections[activeSection].length }}
-                </Badge>
-              </div>
-              <InputGroup class="provider-search">
-                <InputGroupAddon>
-                  <Search aria-hidden="true" />
-                </InputGroupAddon>
-                <InputGroupInput
-                  v-model="searchText"
-                  :placeholder="t('搜索密钥、地址或前缀', 'Search keys, URLs, or prefixes')"
-                />
-                <InputGroupAddon v-if="searchText" align="inline-end">
-                  <InputGroupButton
-                    :aria-label="t('清空搜索', 'Clear search')"
-                    :title="t('清空搜索', 'Clear search')"
-                    @click="searchText = ''"
-                  >
-                    <X aria-hidden="true" />
-                  </InputGroupButton>
-                </InputGroupAddon>
-              </InputGroup>
+      <CardContent class="min-h-0 p-0">
+        <div class="provider-panel">
+          <div class="provider-panel__toolbar">
+            <InputGroup class="provider-search">
+              <InputGroupAddon>
+                <Search aria-hidden="true" />
+              </InputGroupAddon>
+              <InputGroupInput
+                v-model="searchText"
+                :placeholder="t('搜索密钥、地址或前缀', 'Search keys, URLs, or prefixes')"
+              />
+              <InputGroupAddon v-if="searchText" align="inline-end">
+                <InputGroupButton
+                  :aria-label="t('清空搜索', 'Clear search')"
+                  :title="t('清空搜索', 'Clear search')"
+                  @click="searchText = ''"
+                >
+                  <X aria-hidden="true" />
+                </InputGroupButton>
+              </InputGroupAddon>
+            </InputGroup>
+            <div class="provider-toolbar__actions">
+              <Badge variant="secondary" class="provider-result-count tabular-nums">
+                {{ filteredRows.length }} / {{ sections[activeSection].length }}
+              </Badge>
               <Button class="provider-create-button" :disabled="isLoading" @click="openEditor()">
                 <Plus data-icon="inline-start" />
                 {{ t('新建', 'New') }}
               </Button>
             </div>
+          </div>
 
-            <div class="provider-table-shell">
-              <Table class="min-w-[766px] table-fixed">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead class="w-[160px]">
-                      {{ isOpenAISection ? t('提供商', 'Provider') : t('密钥', 'Key') }}
-                    </TableHead>
-                    <TableHead class="w-[180px]">{{ t('服务地址', 'Base URL') }}</TableHead>
-                    <TableHead class="w-[80px]">{{ t('前缀', 'Prefix') }}</TableHead>
-                    <TableHead class="w-[140px]">{{ t('模型 / 请求头', 'Models / Headers') }}</TableHead>
-                    <TableHead class="w-[70px] text-center">{{ t('优先级', 'Priority') }}</TableHead>
-                    <TableHead class="w-[80px]">{{ t('状态', 'Status') }}</TableHead>
-                    <TableHead class="w-[56px]">
-                      <span class="sr-only">{{ t('操作', 'Actions') }}</span>
-                    </TableHead>
+          <div class="provider-table-shell">
+            <Table class="min-w-[766px] table-fixed">
+              <TableHeader>
+                <TableRow>
+                  <TableHead class="w-[160px]">
+                    {{ isOpenAISection ? t('提供商', 'Provider') : t('密钥', 'Key') }}
+                  </TableHead>
+                  <TableHead class="w-[180px]">{{ t('服务地址', 'Base URL') }}</TableHead>
+                  <TableHead class="w-[80px]">{{ t('前缀', 'Prefix') }}</TableHead>
+                  <TableHead class="w-[140px]">{{ t('模型 / 请求头', 'Models / Headers') }}</TableHead>
+                  <TableHead class="w-[70px] text-center">{{ t('优先级', 'Priority') }}</TableHead>
+                  <TableHead class="w-[80px]">{{ t('状态', 'Status') }}</TableHead>
+                  <TableHead class="w-[56px]">
+                    <span class="sr-only">{{ t('操作', 'Actions') }}</span>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <template v-if="isLoading && filteredRows.length === 0">
+                  <TableRow v-for="rowIndex in 6" :key="`upstream-skeleton-${rowIndex}`">
+                    <TableCell v-for="columnIndex in 7" :key="columnIndex">
+                      <Skeleton class="h-4 w-full" />
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  <template v-if="isLoading && filteredRows.length === 0">
-                    <TableRow v-for="rowIndex in 6" :key="`upstream-skeleton-${rowIndex}`">
-                      <TableCell v-for="columnIndex in 7" :key="columnIndex">
-                        <Skeleton class="h-4 w-full" />
-                      </TableCell>
-                    </TableRow>
-                  </template>
+                </template>
 
-                  <TableEmpty v-else-if="filteredRows.length === 0" :colspan="7">
-                    {{ t('暂无上游配置', 'No upstream configurations') }}
-                  </TableEmpty>
+                <TableEmpty v-else-if="filteredRows.length === 0" :colspan="7">
+                  {{ t('暂无上游配置', 'No upstream configurations') }}
+                </TableEmpty>
 
-                  <TableRow v-for="row in filteredRows" v-else :key="row.key">
-                    <TableCell>
-                      <div class="identity-cell">
-                        <strong :title="upstreamTitle(activeSection, row.item, row.index)">
-                          {{ upstreamTitle(activeSection, row.item, row.index) }}
-                        </strong>
-                        <code>{{ maskSecret(primaryAPIKey(activeSection, row.item)) }}</code>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <code class="url-cell" :title="readString(row.item, 'base-url') || '-'">
-                        {{ readString(row.item, 'base-url') || '-' }}
-                      </code>
-                    </TableCell>
-                    <TableCell>
-                      <span class="block truncate" :title="readString(row.item, 'prefix') || '-'">
-                        {{ readString(row.item, 'prefix') || '-' }}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <div class="flex flex-wrap gap-1">
-                        <Badge variant="secondary">
-                          {{ t(`模型 ${modelCount(row.item)}`, `Models ${modelCount(row.item)}`) }}
-                        </Badge>
-                        <Badge variant="outline">
-                          {{ t(`头 ${headerCount(row.item)}`, `Headers ${headerCount(row.item)}`) }}
-                        </Badge>
-                      </div>
-                    </TableCell>
-                    <TableCell class="text-center tabular-nums">
-                      {{ readNumber(row.item, 'priority') ?? '-' }}
-                    </TableCell>
-                    <TableCell>
-                      <div class="status-control">
-                        <Switch
-                          :model-value="!upstreamDisabled(activeSection, row.item)"
-                          :disabled="isSaving || isLoading || mutatingKey === row.key"
-                          :aria-label="t('切换上游状态', 'Toggle upstream status')"
-                          @update:model-value="handleToggleUpstream(row, $event)"
-                        />
-                        <Spinner v-if="mutatingKey === row.key" />
-                      </div>
-                    </TableCell>
-                    <TableCell class="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger as-child>
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            :aria-label="t(`打开 ${upstreamTitle(activeSection, row.item, row.index)} 的操作菜单`, `Open actions for ${upstreamTitle(activeSection, row.item, row.index)}`)"
-                          >
-                            <MoreHorizontal />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" class="w-40">
-                          <DropdownMenuGroup>
-                            <DropdownMenuItem @select="openDetail(row)">
-                              <Eye />
-                              <span>{{ t('详情', 'Details') }}</span>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem @select="openEditor(row)">
-                              <Pencil />
-                              <span>{{ t('编辑', 'Edit') }}</span>
-                            </DropdownMenuItem>
-                          </DropdownMenuGroup>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem variant="destructive" @select="confirmDelete(row)">
-                            <Trash2 />
-                            <span>{{ t('删除', 'Delete') }}</span>
+                <TableRow v-for="row in filteredRows" v-else :key="row.key">
+                  <TableCell>
+                    <div class="identity-cell">
+                      <strong :title="upstreamTitle(activeSection, row.item, row.index)">
+                        {{ upstreamTitle(activeSection, row.item, row.index) }}
+                      </strong>
+                      <code>{{ maskSecret(primaryAPIKey(activeSection, row.item)) }}</code>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <code class="url-cell" :title="readString(row.item, 'base-url') || '-'">
+                      {{ readString(row.item, 'base-url') || '-' }}
+                    </code>
+                  </TableCell>
+                  <TableCell>
+                    <span class="block truncate" :title="readString(row.item, 'prefix') || '-'">
+                      {{ readString(row.item, 'prefix') || '-' }}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <div class="flex flex-wrap gap-1">
+                      <Badge variant="secondary">
+                        {{ t(`模型 ${modelCount(row.item)}`, `Models ${modelCount(row.item)}`) }}
+                      </Badge>
+                      <Badge variant="outline">
+                        {{ t(`头 ${headerCount(row.item)}`, `Headers ${headerCount(row.item)}`) }}
+                      </Badge>
+                    </div>
+                  </TableCell>
+                  <TableCell class="text-center tabular-nums">
+                    {{ readNumber(row.item, 'priority') ?? '-' }}
+                  </TableCell>
+                  <TableCell>
+                    <div class="status-control">
+                      <Switch
+                        :model-value="!upstreamDisabled(activeSection, row.item)"
+                        :disabled="isSaving || isLoading || mutatingKey === row.key"
+                        :aria-label="t('切换上游状态', 'Toggle upstream status')"
+                        @update:model-value="handleToggleUpstream(row, $event)"
+                      />
+                      <Spinner v-if="mutatingKey === row.key" />
+                    </div>
+                  </TableCell>
+                  <TableCell class="text-right">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger as-child>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          :aria-label="t(`打开 ${upstreamTitle(activeSection, row.item, row.index)} 的操作菜单`, `Open actions for ${upstreamTitle(activeSection, row.item, row.index)}`)"
+                        >
+                          <MoreHorizontal />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" class="w-40">
+                        <DropdownMenuGroup>
+                          <DropdownMenuItem @select="openDetail(row)">
+                            <Eye />
+                            <span>{{ t('详情', 'Details') }}</span>
                           </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
-            </div>
+                          <DropdownMenuItem @select="openEditor(row)">
+                            <Pencil />
+                            <span>{{ t('编辑', 'Edit') }}</span>
+                          </DropdownMenuItem>
+                        </DropdownMenuGroup>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem variant="destructive" @select="confirmDelete(row)">
+                          <Trash2 />
+                          <span>{{ t('删除', 'Delete') }}</span>
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
           </div>
         </div>
       </CardContent>
@@ -1163,51 +1170,42 @@ void loadUpstreams()
   overflow: hidden;
 }
 
-.workbench-layout {
-  display: grid;
-  grid-template-columns: 208px minmax(0, 1fr);
-  min-height: 480px;
-}
-
-.provider-nav {
-  display: flex;
+.provider-switcher {
   min-width: 0;
-  flex-direction: column;
-  gap: .25rem;
   padding: .75rem;
-  border-right: 1px solid var(--border);
-  background: color-mix(in srgb, var(--muted) 24%, transparent);
+  border-bottom: 1px solid var(--border);
 }
 
-.provider-nav__heading {
-  display: flex;
-  min-height: 2rem;
-  align-items: center;
-  justify-content: space-between;
-  gap: .5rem;
-  padding: 0 .5rem .375rem;
-  color: var(--muted-foreground);
-  font-size: .75rem;
-  font-weight: 600;
-}
-
-.provider-nav__item {
-  width: 100%;
-  height: 2.25rem;
-  justify-content: flex-start;
-  padding-inline: .625rem;
-  text-align: left;
-}
-
-.provider-nav__label {
+.provider-tabs {
+  display: block;
   min-width: 0;
-  flex: 1 1 auto;
+  width: 100%;
+  overflow-x: auto;
+}
+
+.provider-tabs__list {
+  display: grid;
+  width: 100%;
+  min-width: 750px;
+  height: 2.5rem;
+  grid-template-columns: repeat(6, minmax(7.5rem, 1fr));
+  padding: .25rem;
+}
+
+.provider-tabs__item {
+  min-width: 0;
+  gap: .375rem;
+  padding-inline: .625rem;
+}
+
+.provider-tabs__label {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.provider-nav__count {
-  margin-left: auto;
+.provider-tabs__count {
   min-width: 1.5rem;
 }
 
@@ -1223,49 +1221,30 @@ void loadUpstreams()
   min-width: 0;
   align-items: center;
   gap: .625rem;
-  padding: .75rem;
+  padding: .75rem 1rem;
   border-bottom: 1px solid var(--border);
 }
 
-.provider-panel__context {
+.provider-toolbar__actions {
   display: flex;
-  min-width: 8.5rem;
+  margin-left: auto;
   align-items: center;
   gap: .5rem;
 }
 
-.provider-panel__context > svg {
-  width: 1rem;
-  height: 1rem;
-  flex: 0 0 auto;
-  color: var(--primary);
-}
-
-.provider-panel__context strong {
-  overflow: hidden;
-  font-size: .875rem;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.provider-result-count {
+  min-width: 3.5rem;
+  justify-content: center;
 }
 
 .provider-search {
-  width: min(100%, 30rem);
+  width: min(100%, 36rem);
   min-width: 13rem;
-}
-
-.provider-create-button {
-  margin-left: auto;
 }
 
 .provider-table-shell {
   min-width: 0;
   overflow-x: auto;
-  padding: 0;
-}
-
-.provider-table-shell :deep(table) {
-  border: 0;
 }
 
 .identity-cell {
@@ -1409,26 +1388,6 @@ void loadUpstreams()
 }
 
 @media (max-width: 980px) {
-  .workbench-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .provider-nav {
-    display: flex;
-    overflow-x: auto;
-    padding: .625rem;
-    border-right: 0;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .provider-nav__heading {
-    display: none;
-  }
-
-  .provider-nav__item {
-    min-width: 8.5rem;
-  }
-
   .metric-grid {
     grid-template-columns: 1fr;
   }
@@ -1439,21 +1398,18 @@ void loadUpstreams()
     flex-wrap: wrap;
   }
 
-  .provider-panel__context {
-    min-width: 0;
-  }
-
   .provider-search {
     width: 100%;
     min-width: 0;
   }
 
-  .provider-create-button {
-    order: 2;
+  .provider-toolbar__actions {
+    width: 100%;
+    margin-left: 0;
   }
 
-  .provider-table-shell {
-    padding: 0;
+  .provider-create-button {
+    margin-left: auto;
   }
 
   .detail-row,

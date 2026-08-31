@@ -773,15 +773,16 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
   grid-template-columns: auto 1px minmax(0, 1fr) auto;
   flex: 0 0 56px;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   height: 56px;
-  padding: 0 20px;
+  padding: 0 24px;
   border-bottom: 1px solid var(--cpa-border);
   background: color-mix(in srgb, var(--cpa-canvas) 94%, transparent);
   backdrop-filter: blur(12px);
 }
 
 .navigation-trigger {
+  margin-left: -4px;
   width: 32px;
   height: 32px;
   color: var(--cpa-text-muted);
@@ -803,7 +804,7 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
   overflow: hidden;
   color: var(--cpa-text-strong);
   font-size: 14px;
-  font-weight: 720;
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

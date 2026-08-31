@@ -174,6 +174,19 @@ test('all migrated routes render and core controls remain interactive', async ({
   await expect(page.getByRole('button', { name: /账户设置|Account Settings/ })).toHaveCount(0)
 
   await page.goto('/admin/usage')
+  const headerLayout = await page.locator('.app-header').evaluate((header) => {
+    const headerBox = header.getBoundingClientRect()
+    const title = header.querySelector<HTMLElement>('.desktop-location')
+    if (!title) return null
+    const titleBox = title.getBoundingClientRect()
+    return {
+      titleInset: titleBox.x - headerBox.x,
+      titleWeight: getComputedStyle(title).fontWeight,
+    }
+  })
+  expect(headerLayout).not.toBeNull()
+  expect(headerLayout?.titleInset).toBeCloseTo(77, 0)
+  expect(headerLayout?.titleWeight).toBe('500')
   const analyticsQuickRangeTabs = page.locator('.quick-ranges[data-slot="tabs"]')
   await expect(analyticsQuickRangeTabs.getByRole('tablist')).toHaveAccessibleName(/快捷时间范围|Quick time ranges/)
   await expect(analyticsQuickRangeTabs.getByRole('tab')).toHaveCount(5)
@@ -335,8 +348,26 @@ test('all migrated routes render and core controls remain interactive', async ({
   await page.goto('/admin/upstreams')
   await expect(page.getByText(/上游配置|Upstream configuration/, { exact: true })).toHaveCount(0)
   await expect(page.getByText(/按提供商类型管理 API 密钥、路由和模型映射。|Manage API keys, routes, and model mappings by provider family\./, { exact: true })).toHaveCount(0)
-  await expect(page.locator('.provider-nav__item')).toHaveCount(6)
-  await expect(page.locator('.provider-nav__copy')).toHaveCount(0)
+  const providerTabs = page.locator('.provider-tabs[data-slot="tabs"]')
+  await expect(providerTabs.getByRole('tablist')).toHaveAccessibleName(/提供商|Providers/)
+  await expect(providerTabs.getByRole('tab')).toHaveCount(6)
+  await expect(page.locator('.provider-nav')).toHaveCount(0)
+  const upstreamWorkbenchLayout = await page.locator('.upstream-workbench').evaluate((workbench) => {
+    const switcher = workbench.querySelector<HTMLElement>('.provider-switcher')
+    const table = workbench.querySelector<HTMLElement>('.provider-table-shell')
+    if (!switcher || !table) return null
+    const switcherBox = switcher.getBoundingClientRect()
+    const tableBox = table.getBoundingClientRect()
+    return {
+      leftDifference: Math.abs(switcherBox.x - tableBox.x),
+      widthDifference: Math.abs(switcherBox.width - tableBox.width),
+      tableBelowSwitcher: tableBox.y >= switcherBox.bottom,
+    }
+  })
+  expect(upstreamWorkbenchLayout).not.toBeNull()
+  expect(upstreamWorkbenchLayout?.leftDifference).toBeLessThanOrEqual(1)
+  expect(upstreamWorkbenchLayout?.widthDifference).toBeLessThanOrEqual(1)
+  expect(upstreamWorkbenchLayout?.tableBelowSwitcher).toBe(true)
   const upstreamSearch = page.getByPlaceholder(/搜索密钥、地址或前缀|Search keys, URLs, or prefixes/)
   await expect(upstreamSearch.locator('..')).toHaveAttribute('data-slot', 'input-group')
   await expect(upstreamSearch.locator('..').locator('svg.lucide-search')).toBeVisible()
@@ -364,9 +395,8 @@ test('all migrated routes render and core controls remain interactive', async ({
   await page.getByRole('button', { name: /取消|Cancel/ }).click()
 
   await page.goto('/admin/users')
-  await page.getByRole('button', { name: /打开 .*操作菜单|Open actions for/ }).first().click()
-  await expect(page.getByRole('menuitem', { name: /编辑|Edit/ })).toBeVisible()
-  await page.keyboard.press('Escape')
+  await expect(page.getByRole('button', { name: /^编辑 |^Edit / }).first()).toBeVisible()
+  await expect(page.getByRole('button', { name: /打开 .*操作菜单|Open actions for/ })).toHaveCount(0)
   await page.getByRole('button', { name: /增加用户|Add user/ }).click()
   await expect(page.getByText(/增加用户|Add user/, { exact: true }).last()).toBeVisible()
   const adminSwitch = page.locator('button[role="switch"]').first()
@@ -473,6 +503,7 @@ test('all migrated routes render and core controls remain interactive', async ({
   const requestDetailSheetBox = await requestDetailSheet.boundingBox()
   expect(requestDetailSheetBox).not.toBeNull()
   expect(requestDetailSheetBox?.width).toBeGreaterThanOrEqual(900)
+  await expect(requestDetailSheet).toHaveCSS('border-left-width', '0px')
   await expect(requestDetailSheet.locator('.mono-json')).toHaveCSS('overflow-x', 'auto')
   await requestDetailSheet.getByRole('button', { name: /Close/ }).click()
 

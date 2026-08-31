@@ -1047,7 +1047,7 @@ onBeforeUnmount(() => {
     <Sheet v-model:open="drawerOpen">
       <SheetContent
         side="right"
-        class="w-full overflow-y-auto data-[side=right]:sm:w-[88vw] data-[side=right]:sm:max-w-[1080px]"
+        class="w-full overflow-y-auto data-[side=right]:border-l-0 data-[side=right]:sm:w-[88vw] data-[side=right]:sm:max-w-[1080px]"
       >
         <SheetHeader>
           <SheetTitle>{{ t('请求事件详情', 'Request event details') }}</SheetTitle>

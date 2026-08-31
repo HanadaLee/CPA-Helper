@@ -2,7 +2,6 @@
 import type { Component } from 'vue'
 import { computed, onMounted, ref } from 'vue'
 import { toast } from 'vue-sonner'
-import { useConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -21,14 +20,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import {
   Field,
   FieldContent,
@@ -63,14 +54,11 @@ import {
   AlertTriangle,
   CircleDollarSign,
   KeyRound,
-  MoreHorizontal,
   Pencil,
   Plus,
   RefreshCw,
   ShieldCheck,
-  UserCheck,
   UserRound,
-  UserX,
 } from '@lucide/vue'
 
 import {
@@ -86,7 +74,6 @@ import type { UserSummary } from '@/shared/types/api'
 import { formatCompact, formatDateTime, formatInteger, formatUsd } from '@/shared/utils/format'
 
 const message = toast
-const dialog = useConfirmDialog()
 const { errorText, t } = useI18n()
 const isLoading = ref(false)
 const isSavingUser = ref(false)
@@ -96,6 +83,8 @@ const editingUserId = ref<number | null>(null)
 const userAccount = ref('')
 const userPassword = ref('')
 const isUserAdmin = ref(false)
+const userEnabled = ref(true)
+const originalUserEnabled = ref(true)
 const userNickname = ref('')
 const quotaUnlimited = ref(true)
 const quotaLifetimeUsd = ref(0)
@@ -258,6 +247,8 @@ function resetEditor() {
   userAccount.value = ''
   userPassword.value = ''
   isUserAdmin.value = false
+  userEnabled.value = true
+  originalUserEnabled.value = true
   userNickname.value = ''
   quotaUnlimited.value = true
   quotaLifetimeUsd.value = 0
@@ -277,6 +268,8 @@ function editUser(row: UserSummary) {
   userAccount.value = row.username
   userPassword.value = ''
   isUserAdmin.value = row.id === 1 ? true : row.is_admin
+  userEnabled.value = !isUserDisabled(row)
+  originalUserEnabled.value = userEnabled.value
   userNickname.value = row.nickname
   quotaUnlimited.value = row.quota.unlimited
   quotaLifetimeUsd.value = row.quota.lifetime_quota_usd ?? 0
@@ -301,52 +294,6 @@ async function refresh() {
 
 function isUserDisabled(row: UserSummary): boolean {
   return row.disabled_at !== null
-}
-
-async function disableUserRow(row: UserSummary) {
-  try {
-    await disableUser(row.id)
-    message.success(t('用户已禁用', 'User disabled'))
-    await refresh()
-  } catch (error) {
-    message.error(errorText(error, '禁用用户失败', 'Failed to disable user'))
-  }
-}
-
-async function enableUserRow(row: UserSummary) {
-  try {
-    await enableUser(row.id)
-    message.success(t('用户已启用', 'User enabled'))
-    await refresh()
-  } catch (error) {
-    message.error(errorText(error, '启用用户失败', 'Failed to enable user'))
-  }
-}
-
-function confirmEnableUser(row: UserSummary) {
-  dialog.warning({
-    title: t('启用用户', 'Enable user'),
-    content: t(
-      `启用用户 ${userLabel(row)} 并恢复其 API KEY？`,
-      `Enable user ${userLabel(row)} and restore their API keys?`,
-    ),
-    positiveText: t('启用', 'Enable'),
-    negativeText: t('取消', 'Cancel'),
-    onPositiveClick: () => enableUserRow(row),
-  })
-}
-
-function confirmDisableUser(row: UserSummary) {
-  dialog.warning({
-    title: t('禁用用户', 'Disable user'),
-    content: t(
-      `禁用用户 ${userLabel(row)} 并从 CPA 移除其 API KEY？`,
-      `Disable user ${userLabel(row)} and remove their API keys from CPA?`,
-    ),
-    positiveText: t('禁用', 'Disable'),
-    negativeText: t('取消', 'Cancel'),
-    onPositiveClick: () => disableUserRow(row),
-  })
 }
 
 async function saveUser() {
@@ -384,6 +331,10 @@ async function saveUser() {
       weekly_quota_usd: quotaUnlimited.value ? null : quotaWeeklyUsd.value,
       daily_quota_usd: quotaUnlimited.value ? null : quotaDailyUsd.value,
     })
+    if (isEditing && !isEditingFirstUser.value && userEnabled.value !== originalUserEnabled.value) {
+      if (userEnabled.value) await enableUser(saved.id)
+      else await disableUser(saved.id)
+    }
     message.success(isEditing ? t('用户已保存', 'User saved') : t('用户已创建', 'User created'))
     editorVisible.value = false
     resetEditor()
@@ -536,44 +487,16 @@ onMounted(refresh)
                 </div>
               </TableCell>
               <TableCell class="text-right">
-                <DropdownMenu>
-                  <DropdownMenuTrigger as-child>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      class="row-actions-trigger"
-                      :aria-label="t(`打开 ${userLabel(row)} 的操作菜单`, `Open actions for ${userLabel(row)}`)"
-                    >
-                      <MoreHorizontal />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" :side-offset="4" class="w-40">
-                    <DropdownMenuGroup>
-                      <DropdownMenuItem @select="editUser(row)">
-                        <Pencil />
-                        <span>{{ t('编辑', 'Edit') }}</span>
-                      </DropdownMenuItem>
-                    </DropdownMenuGroup>
-                    <template v-if="row.id !== 1">
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        v-if="isUserDisabled(row)"
-                        @select="confirmEnableUser(row)"
-                      >
-                        <UserCheck />
-                        <span>{{ t('启用', 'Enable') }}</span>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        v-else
-                        variant="destructive"
-                        @select="confirmDisableUser(row)"
-                      >
-                        <UserX />
-                        <span>{{ t('禁用', 'Disable') }}</span>
-                      </DropdownMenuItem>
-                    </template>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  class="row-actions-trigger"
+                  :aria-label="t(`编辑 ${userLabel(row)}`, `Edit ${userLabel(row)}`)"
+                  :title="t('编辑', 'Edit')"
+                  @click="editUser(row)"
+                >
+                  <Pencil />
+                </Button>
               </TableCell>
             </TableRow>
           </TableBody>
@@ -675,6 +598,16 @@ onMounted(refresh)
                 </FieldDescription>
               </FieldContent>
               <Switch id="user-admin" v-model="isUserAdmin" :disabled="isEditingFirstUser" />
+            </Field>
+
+            <Field v-if="editingUserId !== null && !isEditingFirstUser" orientation="horizontal" class="switch-setting">
+              <FieldContent>
+                <FieldLabel for="user-enabled">{{ t('启用账号', 'Account enabled') }}</FieldLabel>
+                <FieldDescription>
+                  {{ t('关闭并保存后将禁用账号，并从 CPA 移除其 API KEY。', 'Turning this off disables the account and removes its API keys from CPA when saved.') }}
+                </FieldDescription>
+              </FieldContent>
+              <Switch id="user-enabled" v-model="userEnabled" />
             </Field>
 
             <FieldSet class="quota-fieldset">
