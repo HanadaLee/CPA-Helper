@@ -1,8 +1,14 @@
 <script setup lang="ts">
-import { computed, h, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, type Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import {
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  ChevronsUpDown,
   CircleCheck,
   Cpu,
   Database,
@@ -12,16 +18,57 @@ import {
   UserRound,
 } from '@lucide/vue'
 import {
-  AppButton,
-  AppDataTable,
-  AppDateTimeRange,
-  AppDrawer,
-  AppDrawerContent,
-  AppPagination,
-  AppSelect,
-  AppBadge,
-  type DataTableColumns,
-} from '@/shared/ui/app-kit'
+  Combobox,
+  ComboboxAnchor,
+  ComboboxEmpty,
+  ComboboxGroup,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxItemIndicator,
+  ComboboxList,
+  ComboboxTrigger,
+} from '@/components/ui/combobox'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationFirst,
+  PaginationItem,
+  PaginationLast,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/components/ui/pagination'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Spinner } from '@/components/ui/spinner'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableEmpty,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import { cn } from '@/lib/utils'
+import DateTimeRangePicker from '@/shared/ui/DateTimeRangePicker.vue'
 
 import { getUsageOptions, getUsageRecord, getUsageRecords } from '@/features/usage/api/usageApi'
 import type {
@@ -43,9 +90,6 @@ import { useI18n } from '@/shared/i18n'
 type FailedFilter = 'all' | 'success' | 'failed'
 type QuickRangeKey = 'today' | 'last24h' | 'last3d' | 'last7d' | 'all'
 type UsageScope = 'admin' | 'account'
-type RecordsTableLayoutProps =
-  | { flexHeight: true }
-  | { flexHeight: false; maxHeight: string }
 
 interface RefreshOptions {
   resetPage?: boolean
@@ -56,38 +100,28 @@ interface Props {
   scope: UsageScope
 }
 
+interface UsageFilterOption {
+  label: string
+  value: string | number
+}
+
+interface UsageFilterCombobox {
+  key: string
+  icon: Component
+  selected: UsageFilterOption | null
+  options: UsageFilterOption[]
+  placeholder: string
+  searchPlaceholder: string
+  emptyText: string
+  onChange: (value: unknown) => void
+}
+
 const AUTO_REFRESH_INTERVAL_MS = 10_000
 const TOTAL_REFRESH_INTERVAL_MS = 60_000
 const HOUR_MS = 60 * 60 * 1000
 const DAY_MS = 24 * HOUR_MS
 const ALL_RECORDS_START_PARAM = '0001-01-01T00:00:00+08:00'
 const ALL_RECORDS_END_PARAM = '9999-12-31T23:59:59+08:00'
-const RECORDS_TABLE_MIN_ROW_HEIGHT = 40
-const RECORDS_TABLE_COLUMN_WIDTHS = {
-  timestamp: 138,
-  user: 118,
-  apiKeyDescription: 110,
-  model: 152,
-  failed: 72,
-  ttft: 92,
-  latency: 92,
-  inputTokens: 86,
-  outputTokens: 132,
-  cachedTokens: 106,
-  totalTokens: 108,
-  provider: 100,
-  requestId: 132,
-  actions: 72,
-} as const
-const ADMIN_RECORDS_TABLE_SCROLL_X = Object.values(RECORDS_TABLE_COLUMN_WIDTHS).reduce(
-  (total, width) => total + width,
-  0,
-)
-const ACCOUNT_RECORDS_TABLE_SCROLL_X =
-  ADMIN_RECORDS_TABLE_SCROLL_X -
-  RECORDS_TABLE_COLUMN_WIDTHS.user
-const RECORDS_TABLE_FALLBACK_MAX_HEIGHT = 'max(320px, calc(100dvh - 318px))'
-const desktopRecordsLayoutQuery = window.matchMedia('(min-width: 861px)')
 
 const route = useRoute()
 const router = useRouter()
@@ -104,7 +138,6 @@ const records = ref<UsageRecordListItem[]>([])
 const total = ref(0)
 const page = ref(1)
 const pageSize = ref(50)
-const isDesktopRecordsLayout = ref(desktopRecordsLayoutQuery.matches)
 const options = ref<UsageOptionsResponse>({
   users: [],
   api_key_descriptions: [],
@@ -291,14 +324,98 @@ const isAccountScope = computed(() => props.scope === 'account')
 const pageTitle = computed(() =>
   isAccountScope.value ? t('我的明细', 'My records') : t('请求明细', 'Request records'),
 )
-const recordsTableScrollX = computed(() =>
-  isAccountScope.value ? ACCOUNT_RECORDS_TABLE_SCROLL_X : ADMIN_RECORDS_TABLE_SCROLL_X,
-)
-const recordsTableLayoutProps = computed<RecordsTableLayoutProps>(() =>
-  isDesktopRecordsLayout.value
-    ? { flexHeight: true }
-    : { flexHeight: false, maxHeight: RECORDS_TABLE_FALLBACK_MAX_HEIGHT },
-)
+
+function selectedFilterOption(
+  filterOptions: UsageFilterOption[],
+  value: string | number | null,
+): UsageFilterOption | null {
+  return filterOptions.find((option) => option.value === value) ?? null
+}
+
+function filterOptionValue(value: unknown): string | number | null {
+  if (typeof value !== 'object' || value === null || !('value' in value)) {
+    return null
+  }
+  const optionValue = value.value
+  return typeof optionValue === 'string' || typeof optionValue === 'number' ? optionValue : null
+}
+
+const filterComboboxes = computed<UsageFilterCombobox[]>(() => {
+  const items: UsageFilterCombobox[] = [
+    {
+      key: 'api-key',
+      icon: KeyRound,
+      selected: selectedFilterOption(selectOptions.value.apiKeyDescriptions, filterForm.api_key_description),
+      options: selectOptions.value.apiKeyDescriptions,
+      placeholder: t('KEY 描述', 'Key description'),
+      searchPlaceholder: t('搜索 KEY 描述', 'Search key descriptions'),
+      emptyText: t('没有匹配的 KEY 描述', 'No matching key descriptions'),
+      onChange: (value) => handleApiKeyChange(filterOptionValue(value)),
+    },
+    {
+      key: 'provider',
+      icon: Server,
+      selected: selectedFilterOption(selectOptions.value.providers, filterForm.provider),
+      options: selectOptions.value.providers,
+      placeholder: t('服务商', 'Provider'),
+      searchPlaceholder: t('搜索服务商', 'Search providers'),
+      emptyText: t('没有匹配的服务商', 'No matching providers'),
+      onChange: (value) => handleProviderChange(filterOptionValue(value)),
+    },
+    {
+      key: 'model',
+      icon: Cpu,
+      selected: selectedFilterOption(selectOptions.value.models, filterForm.model),
+      options: selectOptions.value.models,
+      placeholder: t('模型', 'Model'),
+      searchPlaceholder: t('搜索模型', 'Search models'),
+      emptyText: t('没有匹配的模型', 'No matching models'),
+      onChange: (value) => handleModelChange(filterOptionValue(value)),
+    },
+  ]
+
+  if (!isAccountScope.value) {
+    items.unshift({
+      key: 'user',
+      icon: UserRound,
+      selected: selectedFilterOption(selectOptions.value.users, filterForm.user_id),
+      options: selectOptions.value.users,
+      placeholder: t('用户昵称', 'User nickname'),
+      searchPlaceholder: t('搜索用户', 'Search users'),
+      emptyText: t('没有匹配的用户', 'No matching users'),
+      onChange: (value) => handleUserChange(filterOptionValue(value)),
+    })
+    items.push({
+      key: 'source',
+      icon: Database,
+      selected: selectedFilterOption(selectOptions.value.sources, filterForm.source_key),
+      options: selectOptions.value.sources,
+      placeholder: t('来源', 'Source'),
+      searchPlaceholder: t('搜索来源', 'Search sources'),
+      emptyText: t('没有匹配的来源', 'No matching sources'),
+      onChange: (value) => handleSourceChange(filterOptionValue(value)),
+    })
+  }
+
+  items.push({
+    key: 'endpoint',
+    icon: Route,
+    selected: selectedFilterOption(selectOptions.value.endpoints, filterForm.endpoint),
+    options: selectOptions.value.endpoints,
+    placeholder: t('接口', 'Endpoint'),
+    searchPlaceholder: t('搜索接口', 'Search endpoints'),
+    emptyText: t('没有匹配的接口', 'No matching endpoints'),
+    onChange: (value) => handleEndpointChange(filterOptionValue(value)),
+  })
+
+  return items
+})
+
+const recordColumnCount = computed(() => isAccountScope.value ? 13 : 14)
+const recordsTableClass = computed(() => cn(
+  'table-fixed',
+  isAccountScope.value ? 'min-w-[1392px]' : 'min-w-[1510px]',
+))
 
 const refreshStatusText = computed(() => {
   const lastRefreshTime = lastRefreshedAt.value
@@ -456,6 +573,30 @@ async function applyQuickRange(key: QuickRangeKey) {
   await refresh({ resetPage: true })
 }
 
+function handleQuickRangeChange(value: unknown) {
+  if (isQuickRangeKey(value)) {
+    void applyQuickRange(value)
+  }
+}
+
+function isQuickRangeKey(value: unknown): value is QuickRangeKey {
+  return typeof value === 'string' && quickRangeOptions.value.some((option) => option.key === value)
+}
+
+function handlePageChange(value: number) {
+  page.value = value
+  void refresh()
+}
+
+function handlePageSizeChange(value: unknown) {
+  const nextPageSize = Number(value)
+  if (!Number.isFinite(nextPageSize) || nextPageSize <= 0 || nextPageSize === pageSize.value) {
+    return
+  }
+  pageSize.value = nextPageSize
+  void refresh({ resetPage: true })
+}
+
 let queuedRefresh: RefreshOptions | null = null
 let lastTotalRefreshAt = 0
 
@@ -570,46 +711,6 @@ function userLabel(value: string | null | undefined): string {
   return normalized
 }
 
-function userLabelColorKey(row: UsageRecordListItem): string | null {
-  const normalized = row.user_label?.trim()
-  if (!normalized || normalized === '未绑定') {
-    return null
-  }
-  if (row.user_id !== null) {
-    return `user:${row.user_id}`
-  }
-  return `label:${normalized}`
-}
-
-function hashString(value: string): number {
-  let hash = 2166136261
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index)
-    hash = Math.imul(hash, 16777619)
-  }
-  return hash >>> 0
-}
-
-function userLabelChipStyle(colorKey: string): Record<string, string> {
-  return {
-    '--user-label-hue': `${hashString(colorKey) % 360}deg`,
-  }
-}
-
-function renderUserLabel(row: UsageRecordListItem) {
-  const label = userLabel(row.user_label)
-  const colorKey = userLabelColorKey(row)
-  return h(
-    'span',
-    {
-      class: ['user-label-chip', { 'is-neutral': colorKey === null }],
-      style: colorKey ? userLabelChipStyle(colorKey) : undefined,
-      title: label,
-    },
-    label,
-  )
-}
-
 function apiKeyDescriptionLabel(value: string | null | undefined): string {
   const normalized = value?.trim()
   return normalized || t('未知', 'Unknown')
@@ -669,37 +770,6 @@ function formatOutputWithTps(row: Pick<UsageRecordListItem, 'latency_ms' | 'outp
   return outputTps === '-' ? output : `${output} (${outputTps} tps)`
 }
 
-function renderOutputWithTps(row: Pick<UsageRecordListItem, 'latency_ms' | 'output_tokens'>) {
-  const output = formatInteger(row.output_tokens)
-  const outputTps = formatOutputTps(row)
-  if (outputTps === '-') {
-    return output
-  }
-  return h(
-    'span',
-    {
-      class: 'output-with-tps',
-      style: { whiteSpace: 'nowrap' },
-    },
-    [
-      output,
-      h(
-        'span',
-        {
-          class: 'output-tps-muted',
-          style: {
-            color: 'var(--cpa-text-muted)',
-            fontSize: '11px',
-            fontWeight: '400',
-            lineHeight: '1',
-          },
-        },
-        ` (${outputTps} tps)`,
-      ),
-    ],
-  )
-}
-
 function isClaudeProvider(provider: string | null | undefined): boolean {
   const normalized = provider?.trim().toLowerCase()
   return normalized === 'claude' || normalized === 'anthropic'
@@ -720,14 +790,6 @@ function uncachedInputTokens(row: UsageRecordListItem): number {
     return Math.max(0, row.input_tokens)
   }
   return Math.max(0, row.input_tokens - row.cached_tokens)
-}
-
-function recordRowKey(row: UsageRecordListItem): number {
-  return row.id
-}
-
-function handleRecordsLayoutChange(event: MediaQueryListEvent) {
-  isDesktopRecordsLayout.value = event.matches
 }
 
 const detailRows = computed(() => {
@@ -766,111 +828,6 @@ const detailRows = computed(() => {
   return rows
 })
 
-const columns = computed<DataTableColumns<UsageRecordListItem>>(() => [
-  {
-    title: t('时间', 'Time'),
-    key: 'timestamp',
-    width: RECORDS_TABLE_COLUMN_WIDTHS.timestamp,
-    render: (row) => formatDateTime(row.timestamp),
-  },
-  ...(isAccountScope.value
-    ? []
-    : [
-        {
-          title: t('用户昵称', 'User nickname'),
-          key: 'user_label',
-          width: RECORDS_TABLE_COLUMN_WIDTHS.user,
-          ellipsis: { tooltip: true },
-          render: (row: UsageRecordListItem) => renderUserLabel(row),
-        },
-      ]),
-  {
-    title: t('KEY 描述', 'Key description'),
-    key: 'api_key_description',
-    width: RECORDS_TABLE_COLUMN_WIDTHS.apiKeyDescription,
-    ellipsis: { tooltip: true },
-    render: (row) => apiKeyDescriptionLabel(row.api_key_description),
-  },
-  {
-    title: t('模型', 'Model'),
-    key: 'model',
-    width: RECORDS_TABLE_COLUMN_WIDTHS.model,
-    ellipsis: { tooltip: true },
-    render: (row) => formatModelWithReasoning(row),
-  },
-  {
-    title: t('结果', 'Result'),
-    key: 'failed',
-    width: RECORDS_TABLE_COLUMN_WIDTHS.failed,
-    render: (row) =>
-      h(
-        AppBadge,
-        { type: row.failed ? 'error' : 'success', size: 'small', bordered: false },
-        { default: () => (row.failed ? t('失败', 'Failed') : t('成功', 'Success')) },
-      ),
-  },
-  {
-    title: t('首字耗时', 'TTFT'),
-    key: 'ttft_ms',
-    width: RECORDS_TABLE_COLUMN_WIDTHS.ttft,
-    render: (row) => formatPositiveLatency(row.ttft_ms),
-  },
-  {
-    title: t('总耗时', 'Latency'),
-    key: 'latency_ms',
-    width: RECORDS_TABLE_COLUMN_WIDTHS.latency,
-    render: (row) => formatLatency(row.latency_ms),
-  },
-  {
-    title: t('输入', 'Input'),
-    key: 'input_tokens',
-    width: RECORDS_TABLE_COLUMN_WIDTHS.inputTokens,
-    render: (row) => formatInteger(uncachedInputTokens(row)),
-  },
-  {
-    title: t('输出', 'Output'),
-    key: 'output_tokens',
-    width: RECORDS_TABLE_COLUMN_WIDTHS.outputTokens,
-    render: renderOutputWithTps,
-  },
-  {
-    title: t('缓存', 'Cache'),
-    key: 'cached_tokens',
-    width: RECORDS_TABLE_COLUMN_WIDTHS.cachedTokens,
-    render: formatCacheTokens,
-  },
-  {
-    title: t('总 Token', 'Total tokens'),
-    key: 'total_tokens',
-    width: RECORDS_TABLE_COLUMN_WIDTHS.totalTokens,
-    render: (row) => formatInteger(row.total_tokens),
-  },
-  {
-    title: t('服务商', 'Provider'),
-    key: 'provider',
-    width: RECORDS_TABLE_COLUMN_WIDTHS.provider,
-    ellipsis: { tooltip: true },
-  },
-  {
-    title: t('请求 ID', 'Request ID'),
-    key: 'request_id',
-    width: RECORDS_TABLE_COLUMN_WIDTHS.requestId,
-    ellipsis: { tooltip: true },
-  },
-  {
-    title: '',
-    key: 'actions',
-    width: RECORDS_TABLE_COLUMN_WIDTHS.actions,
-    fixed: 'right',
-    render: (row) =>
-      h(
-        AppButton,
-        { size: 'small', quaternary: true, onClick: () => void openRecord(row) },
-        { default: () => t('详情', 'Details') },
-      ),
-  },
-])
-
 let autoRefreshTimer: number | undefined
 
 function handleVisibilityChange() {
@@ -880,7 +837,6 @@ function handleVisibilityChange() {
 }
 
 onMounted(() => {
-  desktopRecordsLayoutQuery.addEventListener('change', handleRecordsLayoutChange)
   document.addEventListener('visibilitychange', handleVisibilityChange)
   void refresh()
   autoRefreshTimer = window.setInterval(() => {
@@ -889,7 +845,6 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
-  desktopRecordsLayoutQuery.removeEventListener('change', handleRecordsLayoutChange)
   document.removeEventListener('visibilitychange', handleVisibilityChange)
   if (autoRefreshTimer !== undefined) {
     window.clearInterval(autoRefreshTimer)
@@ -911,148 +866,262 @@ onBeforeUnmount(() => {
     <section class="panel">
       <div class="panel-inner filter-toolbar">
         <div class="time-row">
-          <div class="quick-ranges" role="group" :aria-label="t('快捷时间范围', 'Quick time ranges')">
-            <AppButton
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            size="sm"
+            class="quick-ranges"
+            :model-value="activeQuickRange ?? undefined"
+            :aria-label="t('快捷时间范围', 'Quick time ranges')"
+            @update:model-value="handleQuickRangeChange"
+          >
+            <ToggleGroupItem
               v-for="option in quickRangeOptions"
               :key="option.key"
-              class="quick-range-button"
-              size="small"
-              secondary
-              :type="activeQuickRange === option.key ? 'primary' : 'default'"
-              @click="applyQuickRange(option.key)"
+              :value="option.key"
+              :aria-label="option.label"
             >
               {{ option.label }}
-            </AppButton>
-          </div>
-          <AppDateTimeRange
-            :value="dateRange"
+            </ToggleGroupItem>
+          </ToggleGroup>
+          <DateTimeRangePicker
+            :model-value="dateRange"
             class="range-picker"
-            type="datetimerange"
             clearable
-            @update:value="handleCustomRangeChange"
+            @update:model-value="handleCustomRangeChange"
           />
         </div>
         <div class="field-row" :class="{ 'is-account-scope': isAccountScope }">
-          <AppSelect
-            v-if="!isAccountScope"
-            grow
-            :icon="UserRound"
-            :value="filterForm.user_id"
-            :options="selectOptions.users"
-            clearable
-            filterable
-            :placeholder="t('用户昵称', 'User nickname')"
-            @update:value="handleUserChange"
-          />
-          <AppSelect
-            grow
-            :icon="KeyRound"
-            :value="filterForm.api_key_description"
-            :options="selectOptions.apiKeyDescriptions"
-            clearable
-            filterable
-            :placeholder="t('KEY 描述', 'Key description')"
-            @update:value="handleApiKeyChange"
-          />
-          <AppSelect
-            grow
-            :icon="Server"
-            :value="filterForm.provider"
-            :options="selectOptions.providers"
-            clearable
-            filterable
-            :placeholder="t('服务商', 'Provider')"
-            @update:value="handleProviderChange"
-          />
-          <AppSelect
-            grow
-            :icon="Cpu"
-            :value="filterForm.model"
-            :options="selectOptions.models"
-            clearable
-            filterable
-            :placeholder="t('模型', 'Model')"
-            @update:value="handleModelChange"
-          />
-          <AppSelect
-            v-if="!isAccountScope"
-            grow
-            :icon="Database"
-            :value="filterForm.source_key"
-            :options="selectOptions.sources"
-            clearable
-            filterable
-            :placeholder="t('来源', 'Source')"
-            @update:value="handleSourceChange"
-          />
-          <AppSelect
-            grow
-            :icon="Route"
-            :value="filterForm.endpoint"
-            :options="selectOptions.endpoints"
-            clearable
-            filterable
-            :placeholder="t('接口', 'Endpoint')"
-            @update:value="handleEndpointChange"
-          />
+          <Combobox
+            v-for="filter in filterComboboxes"
+            :key="filter.key"
+            class="filter-combobox"
+            :model-value="filter.selected"
+            by="value"
+            @update:model-value="filter.onChange"
+          >
+            <ComboboxAnchor as-child>
+              <ComboboxTrigger as-child>
+                <Button variant="outline" class="filter-combobox-trigger">
+                  <component :is="filter.icon" data-icon="inline-start" />
+                  <span class="min-w-0 flex-1 truncate text-left">
+                    {{ filter.selected?.label ?? filter.placeholder }}
+                  </span>
+                  <ChevronsUpDown data-icon="inline-end" class="text-muted-foreground" />
+                </Button>
+              </ComboboxTrigger>
+            </ComboboxAnchor>
+            <ComboboxList align="start">
+              <ComboboxInput :placeholder="filter.searchPlaceholder" />
+              <ComboboxEmpty>{{ filter.emptyText }}</ComboboxEmpty>
+              <ComboboxGroup>
+                <ComboboxItem :value="null">
+                  {{ t('清除筛选', 'Clear filter') }}
+                </ComboboxItem>
+                <ComboboxItem
+                  v-for="option in filter.options"
+                  :key="String(option.value)"
+                  :value="option"
+                >
+                  <span class="truncate">{{ option.label }}</span>
+                  <ComboboxItemIndicator>
+                    <Check />
+                  </ComboboxItemIndicator>
+                </ComboboxItem>
+              </ComboboxGroup>
+            </ComboboxList>
+          </Combobox>
           <div class="status-actions">
-            <AppSelect
-              :icon="CircleCheck"
-              :value="filterForm.failed"
-              class="status-select"
-              :options="failedFilterOptions"
-              @update:value="handleFailedChange"
-            />
-            <AppButton secondary :loading="isLoading" @click="refresh({ resetPage: true })">
+            <Select :model-value="filterForm.failed" @update:model-value="handleFailedChange">
+              <SelectTrigger class="status-select">
+                <CircleCheck />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem
+                    v-for="option in failedFilterOptions"
+                    :key="option.value"
+                    :value="option.value"
+                  >
+                    {{ option.label }}
+                  </SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+            <Button variant="outline" :disabled="isLoading" @click="refresh({ resetPage: true })">
+              <Spinner v-if="isLoading" data-icon="inline-start" />
               {{ t('筛选', 'Filter') }}
-            </AppButton>
+            </Button>
           </div>
         </div>
       </div>
     </section>
 
     <section class="panel table-panel records-table-panel">
-      <AppDataTable
-        class="records-table"
-        v-bind="recordsTableLayoutProps"
-        remote
-        virtual-scroll
-        size="small"
-        table-layout="fixed"
-        :loading="isLoading"
-        :columns="columns"
-        :data="records"
-        :min-row-height="RECORDS_TABLE_MIN_ROW_HEIGHT"
-        :pagination="false"
-        :row-key="recordRowKey"
-        :scroll-x="recordsTableScrollX"
-      />
+      <div class="records-table">
+        <Table :class="recordsTableClass">
+          <TableHeader class="sticky top-0 bg-card">
+            <TableRow>
+              <TableHead class="w-[138px]">{{ t('时间', 'Time') }}</TableHead>
+              <TableHead v-if="!isAccountScope" class="w-[118px]">{{ t('用户昵称', 'User nickname') }}</TableHead>
+              <TableHead class="w-[110px]">{{ t('KEY 描述', 'Key description') }}</TableHead>
+              <TableHead class="w-[152px]">{{ t('模型', 'Model') }}</TableHead>
+              <TableHead class="w-[72px]">{{ t('结果', 'Result') }}</TableHead>
+              <TableHead class="w-[92px] text-right">{{ t('首字耗时', 'TTFT') }}</TableHead>
+              <TableHead class="w-[92px] text-right">{{ t('总耗时', 'Latency') }}</TableHead>
+              <TableHead class="w-[86px] text-right">{{ t('输入', 'Input') }}</TableHead>
+              <TableHead class="w-[132px] text-right">{{ t('输出', 'Output') }}</TableHead>
+              <TableHead class="w-[106px] text-right">{{ t('缓存', 'Cache') }}</TableHead>
+              <TableHead class="w-[108px] text-right">{{ t('总 Token', 'Total tokens') }}</TableHead>
+              <TableHead class="w-[100px]">{{ t('服务商', 'Provider') }}</TableHead>
+              <TableHead class="w-[132px]">{{ t('请求 ID', 'Request ID') }}</TableHead>
+              <TableHead class="w-[72px]"><span class="sr-only">{{ t('操作', 'Actions') }}</span></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <template v-if="isLoading && records.length === 0">
+              <TableRow v-for="rowIndex in 8" :key="`record-skeleton-${rowIndex}`">
+                <TableCell v-for="columnIndex in recordColumnCount" :key="columnIndex">
+                  <Skeleton class="h-4 w-full" />
+                </TableCell>
+              </TableRow>
+            </template>
+
+            <TableEmpty v-else-if="records.length === 0" :colspan="recordColumnCount">
+              {{ t('暂无请求明细', 'No request records') }}
+            </TableEmpty>
+
+            <TableRow v-for="record in records" v-else :key="record.id">
+              <TableCell class="tabular-nums">{{ formatDateTime(record.timestamp) }}</TableCell>
+              <TableCell v-if="!isAccountScope">
+                <Badge variant="outline" class="max-w-full" :title="userLabel(record.user_label)">
+                  <span class="truncate">{{ userLabel(record.user_label) }}</span>
+                </Badge>
+              </TableCell>
+              <TableCell>
+                <span class="block truncate" :title="apiKeyDescriptionLabel(record.api_key_description)">
+                  {{ apiKeyDescriptionLabel(record.api_key_description) }}
+                </span>
+              </TableCell>
+              <TableCell>
+                <span class="block truncate" :title="formatModelWithReasoning(record)">
+                  {{ formatModelWithReasoning(record) }}
+                </span>
+              </TableCell>
+              <TableCell>
+                <Badge :variant="record.failed ? 'destructive' : 'secondary'">
+                  {{ record.failed ? t('失败', 'Failed') : t('成功', 'Success') }}
+                </Badge>
+              </TableCell>
+              <TableCell class="text-right tabular-nums">{{ formatPositiveLatency(record.ttft_ms) }}</TableCell>
+              <TableCell class="text-right tabular-nums">{{ formatLatency(record.latency_ms) }}</TableCell>
+              <TableCell class="text-right tabular-nums">{{ formatInteger(uncachedInputTokens(record)) }}</TableCell>
+              <TableCell class="text-right tabular-nums">
+                <span class="output-with-tps">
+                  {{ formatInteger(record.output_tokens) }}
+                  <span v-if="formatOutputTps(record) !== '-'" class="output-tps-muted">
+                    ({{ formatOutputTps(record) }} tps)
+                  </span>
+                </span>
+              </TableCell>
+              <TableCell class="text-right tabular-nums">{{ formatCacheTokens(record) }}</TableCell>
+              <TableCell class="text-right tabular-nums">{{ formatInteger(record.total_tokens) }}</TableCell>
+              <TableCell>
+                <span class="block truncate" :title="textOrDash(record.provider)">{{ textOrDash(record.provider) }}</span>
+              </TableCell>
+              <TableCell class="font-mono text-xs">
+                <span class="block truncate" :title="textOrDash(record.request_id)">{{ textOrDash(record.request_id) }}</span>
+              </TableCell>
+              <TableCell class="text-right">
+                <Button size="xs" variant="ghost" @click="openRecord(record)">
+                  {{ t('详情', 'Details') }}
+                </Button>
+              </TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+
+        <div v-if="isLoading && records.length > 0" class="table-loading-overlay">
+          <Spinner />
+        </div>
+      </div>
       <div class="pagination-row">
-        <AppPagination
-          v-model:page="page"
-          v-model:page-size="pageSize"
-          show-size-picker
-          :page-sizes="[20, 50, 100, 200]"
-          :item-count="total"
-          @update:page="refresh()"
-          @update:page-size="refresh({ resetPage: true })"
-        />
+        <div class="pagination-summary">
+          <span>{{ t(`共 ${formatInteger(total)} 条`, `${formatInteger(total)} total`) }}</span>
+          <span>{{ t('每页', 'Per page') }}</span>
+          <Select :model-value="String(pageSize)" @update:model-value="handlePageSizeChange">
+            <SelectTrigger size="sm" class="w-20">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent align="end">
+              <SelectGroup>
+                <SelectItem v-for="size in [20, 50, 100, 200]" :key="size" :value="String(size)">
+                  {{ size }}
+                </SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <Pagination
+          :page="page"
+          :items-per-page="pageSize"
+          :total="total"
+          :sibling-count="1"
+          show-edges
+          class="mx-0 w-auto"
+          @update:page="handlePageChange"
+        >
+          <PaginationContent v-slot="{ items }">
+            <PaginationFirst size="icon-sm" :aria-label="t('第一页', 'First page')">
+              <ChevronsLeft />
+            </PaginationFirst>
+            <PaginationPrevious size="icon-sm" :aria-label="t('上一页', 'Previous page')">
+              <ChevronLeft />
+            </PaginationPrevious>
+            <template v-for="(item, index) in items" :key="index">
+              <PaginationItem
+                v-if="item.type === 'page'"
+                :value="item.value"
+                :is-active="item.value === page"
+              >
+                {{ item.value }}
+              </PaginationItem>
+              <PaginationEllipsis v-else :index="index" />
+            </template>
+            <PaginationNext size="icon-sm" :aria-label="t('下一页', 'Next page')">
+              <ChevronRight />
+            </PaginationNext>
+            <PaginationLast size="icon-sm" :aria-label="t('最后一页', 'Last page')">
+              <ChevronsRight />
+            </PaginationLast>
+          </PaginationContent>
+        </Pagination>
       </div>
     </section>
 
-    <AppDrawer v-model:show="drawerOpen" placement="right" width="min(760px, 100vw)">
-      <AppDrawerContent :title="t('请求事件详情', 'Request event details')">
-        <h3 class="drawer-section-title">{{ t('结构化信息', 'Structured information') }}</h3>
-        <div class="detail-grid">
-          <div v-for="row in detailRows" :key="row.label" class="detail-item">
-            <div class="detail-label">{{ row.label }}</div>
-            <div class="detail-value">{{ row.value }}</div>
+    <Sheet v-model:open="drawerOpen">
+      <SheetContent side="right" class="w-full overflow-y-auto sm:max-w-[760px]">
+        <SheetHeader>
+          <SheetTitle>{{ t('请求事件详情', 'Request event details') }}</SheetTitle>
+          <SheetDescription>
+            {{ t('查看结构化字段和原始请求记录。', 'Review structured fields and the raw request record.') }}
+          </SheetDescription>
+        </SheetHeader>
+        <div class="sheet-body">
+          <h3 class="drawer-section-title">{{ t('结构化信息', 'Structured information') }}</h3>
+          <div class="detail-grid">
+            <div v-for="row in detailRows" :key="row.label" class="detail-item">
+              <div class="detail-label">{{ row.label }}</div>
+              <div class="detail-value">{{ row.value }}</div>
+            </div>
           </div>
+          <h3 class="drawer-section-title">{{ t('原始数据', 'Raw data') }}</h3>
+          <pre class="mono-json">{{ jsonPretty(selectedRecord?.raw_json ?? {}) }}</pre>
         </div>
-        <h3 class="drawer-section-title">{{ t('原始数据', 'Raw data') }}</h3>
-        <pre class="mono-json">{{ jsonPretty(selectedRecord?.raw_json ?? {}) }}</pre>
-      </AppDrawerContent>
-    </AppDrawer>
+      </SheetContent>
+    </Sheet>
   </section>
 </template>
 
@@ -1062,42 +1131,27 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 
-:global(.records-table .user-label-chip) {
-  display: inline-flex;
-  max-width: 100%;
-  min-width: 0;
-  align-items: center;
-  height: 24px;
-  padding: 0 8px;
+.records-table {
+  position: relative;
+  min-height: 0;
   overflow: hidden;
-  border: 1px solid hsl(var(--user-label-hue) 56% 64% / 42%);
-  border-radius: 6px;
-  background: hsl(var(--user-label-hue) 78% 93% / 92%);
-  color: hsl(var(--user-label-hue) 58% 27%);
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 22px;
-  text-overflow: ellipsis;
-  vertical-align: middle;
-  white-space: nowrap;
+  border: 1px solid var(--border);
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: var(--card);
 }
 
-:global(.records-table .user-label-chip.is-neutral) {
-  border-color: var(--cpa-border);
-  background: var(--cpa-surface-muted);
-  color: var(--cpa-text-muted);
+.records-table :deep([data-slot="table-container"]) {
+  max-height: max(320px, calc(100dvh - 318px));
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
-:global(:root.dark .records-table .user-label-chip) {
-  border-color: hsl(var(--user-label-hue) 48% 52% / 52%);
-  background: hsl(var(--user-label-hue) 42% 24% / 76%);
-  color: hsl(var(--user-label-hue) 70% 84%);
-}
-
-:global(:root.dark .records-table .user-label-chip.is-neutral) {
-  border-color: var(--cpa-border-strong);
-  background: var(--cpa-surface-muted);
-  color: var(--cpa-text-muted);
+.table-loading-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: color-mix(in oklch, var(--background) 62%, transparent);
 }
 
 .output-with-tps {
@@ -1141,37 +1195,19 @@ onBeforeUnmount(() => {
 }
 
 .quick-ranges {
-  display: flex;
   flex-wrap: wrap;
-  gap: 3px;
   min-width: 0;
   width: fit-content;
-  padding: 3px;
-  border: 1px solid color-mix(in srgb, var(--cpa-border) 76%, transparent);
-  border-radius: 11px;
-  background: var(--cpa-surface-muted);
 }
 
-.quick-range-button {
-  flex: 0 0 auto;
-  min-width: 68px;
-  border-color: transparent;
-  border-radius: 8px;
-  font-weight: 700;
-  box-shadow: none;
+.filter-combobox {
+  min-width: min(180px, 100%);
+  flex: 1 1 180px;
 }
 
-.quick-ranges :deep(.quick-range-button[data-variant="outline"]) {
-  border-color: transparent;
-  background: transparent;
-}
-
-.quick-ranges :deep(.quick-range-button[data-variant="outline"]:hover) {
-  background: color-mix(in srgb, var(--cpa-surface) 74%, var(--cpa-primary-wash));
-}
-
-.quick-ranges :deep(.quick-range-button[data-variant="default"]) {
-  box-shadow: 0 1px 2px color-mix(in srgb, var(--cpa-primary) 20%, transparent);
+.filter-combobox-trigger {
+  width: 100%;
+  justify-content: flex-start;
 }
 
 .status-actions {
@@ -1181,19 +1217,29 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 
-.status-actions :deep(.n-button) {
+.status-actions :deep([data-slot="button"]) {
   min-width: 82px;
 }
 
 .pagination-row {
   display: flex;
-  justify-content: flex-end;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   padding: 12px 16px;
-  border: 1px solid var(--cpa-border);
+  border: 1px solid var(--border);
   border-top: 0;
-  border-radius: 0 0 var(--cpa-radius) var(--cpa-radius);
-  background: var(--cpa-surface-raised);
-  box-shadow: var(--cpa-shadow-hairline);
+  border-radius: 0 0 var(--radius) var(--radius);
+  background: var(--card);
+}
+
+.pagination-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted-foreground);
+  font-size: 12px;
 }
 
 .header-actions {
@@ -1218,6 +1264,13 @@ onBeforeUnmount(() => {
   color: var(--cpa-text);
   font-size: 14px;
   font-weight: 700;
+}
+
+.sheet-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 16px 16px;
 }
 
 .drawer-section-title:not(:first-child) {
@@ -1251,16 +1304,6 @@ onBeforeUnmount(() => {
   overflow-wrap: anywhere;
 }
 
-.records-table :deep(.v-vl),
-.records-table :deep(.n-scrollbar-container) {
-  overscroll-behavior: contain;
-  scrollbar-gutter: auto;
-}
-
-.records-table :deep(.n-data-table-wrapper) {
-  border-radius: var(--cpa-radius) var(--cpa-radius) 0 0;
-}
-
 @media (min-width: 861px) {
   .records-page {
     grid-template-rows: auto auto minmax(0, 1fr);
@@ -1280,10 +1323,9 @@ onBeforeUnmount(() => {
     min-height: 0;
   }
 
-  .records-table :deep(.n-data-table-wrapper),
-  .records-table :deep(.n-data-table-base-table),
-  .records-table :deep(.n-data-table-base-table-body) {
-    min-height: 0;
+  .records-table :deep([data-slot="table-container"]) {
+    height: 100%;
+    max-height: none;
   }
 }
 
@@ -1327,7 +1369,7 @@ onBeforeUnmount(() => {
     align-items: stretch;
   }
 
-  .status-actions :deep(.n-select) {
+  .status-actions :deep([data-slot="select-trigger"]) {
     min-width: 0;
   }
 

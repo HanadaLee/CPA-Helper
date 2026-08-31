@@ -280,9 +280,9 @@ test('all migrated routes render and core controls remain interactive', async ({
 
   await page.goto('/admin/records')
   await expect(page.locator('input[type="datetime-local"]')).toHaveCount(0)
-  await expect(page.locator('.n-date-range-start')).toBeVisible()
-  await expect(page.locator('.n-date-range-end')).toBeVisible()
-  await page.locator('.n-date-range-trigger').click()
+  await expect(page.locator('[data-slot="date-time-range-start"]')).toBeVisible()
+  await expect(page.locator('[data-slot="date-time-range-end"]')).toBeVisible()
+  await page.locator('[data-slot="date-time-range-trigger"]').click()
   await expect(page.locator('[data-slot="range-calendar"]')).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(page.locator('table')).toBeVisible()
@@ -290,7 +290,7 @@ test('all migrated routes render and core controls remain interactive', async ({
   await expect(page.getByRole('columnheader', { name: /^(思考|Reasoning)$/ })).toHaveCount(0)
   await expect(page.getByRole('columnheader', { name: /^(接口|Endpoint)$/ })).toHaveCount(0)
   await expect(page.getByRole('columnheader', { name: /^(费用|Cost)$/ })).toHaveCount(0)
-  await expect(page.locator('.records-table .n-data-table-th').first()).toHaveCSS('border-top-left-radius', /[1-9]/)
+  await expect(page.locator('.records-table')).toHaveCSS('border-top-left-radius', /[1-9]/)
   await expectTableInsidePanel(page, '.records-table', '.records-table-panel')
 
   await page.goto('/admin/settings')

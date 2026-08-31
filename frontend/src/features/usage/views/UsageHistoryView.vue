@@ -2,8 +2,31 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, type Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
-import { AppButton, AppDateTimeRange, AppSelect } from '@/shared/ui/app-kit'
+import { Button } from '@/components/ui/button'
 import {
+  Combobox,
+  ComboboxAnchor,
+  ComboboxEmpty,
+  ComboboxGroup,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxItemIndicator,
+  ComboboxList,
+  ComboboxTrigger,
+} from '@/components/ui/combobox'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Spinner } from '@/components/ui/spinner'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import {
+  Check,
+  ChevronsUpDown,
   CircleCheck,
   CircleDollarSign,
   ClipboardList,
@@ -42,6 +65,7 @@ import {
   formatUsd,
 } from '@/shared/utils/format'
 import { useI18n } from '@/shared/i18n'
+import DateTimeRangePicker from '@/shared/ui/DateTimeRangePicker.vue'
 
 type FailedFilter = 'all' | 'success' | 'failed'
 type QuickRangeKey = 'today' | 'last24h' | 'last3d' | 'last7d' | 'last30d'
@@ -337,6 +361,82 @@ const pageTitle = computed(() =>
 const rankingTitle = computed(() =>
   isAccountScope.value ? t('KEY 排行', 'Key ranking') : t('用户排行', 'User ranking'),
 )
+
+function selectedFilterOption(
+  filterOptions: UsageFilterOption[],
+  value: string | number | null,
+): UsageFilterOption | null {
+  return filterOptions.find((option) => option.value === value) ?? null
+}
+
+function filterOptionValue(value: unknown): string | number | null {
+  if (typeof value !== 'object' || value === null || !('value' in value)) {
+    return null
+  }
+  const optionValue = value.value
+  return typeof optionValue === 'string' || typeof optionValue === 'number' ? optionValue : null
+}
+
+const filterComboboxes = computed<UsageFilterCombobox[]>(() => {
+  const items: UsageFilterCombobox[] = [
+    {
+      key: 'api-key',
+      icon: KeyRound,
+      selected: selectedFilterOption(selectOptions.value.apiKeyDescriptions, filterForm.api_key_description),
+      options: selectOptions.value.apiKeyDescriptions,
+      placeholder: t('KEY 描述', 'Key description'),
+      searchPlaceholder: t('搜索 KEY 描述', 'Search key descriptions'),
+      emptyText: t('没有匹配的 KEY 描述', 'No matching key descriptions'),
+      onChange: (value) => handleApiKeyChange(filterOptionValue(value)),
+    },
+    {
+      key: 'provider',
+      icon: Server,
+      selected: selectedFilterOption(selectOptions.value.providers, filterForm.provider),
+      options: selectOptions.value.providers,
+      placeholder: t('服务商', 'Provider'),
+      searchPlaceholder: t('搜索服务商', 'Search providers'),
+      emptyText: t('没有匹配的服务商', 'No matching providers'),
+      onChange: (value) => handleProviderChange(filterOptionValue(value)),
+    },
+    {
+      key: 'model',
+      icon: Cpu,
+      selected: selectedFilterOption(selectOptions.value.models, filterForm.model),
+      options: selectOptions.value.models,
+      placeholder: t('模型', 'Model'),
+      searchPlaceholder: t('搜索模型', 'Search models'),
+      emptyText: t('没有匹配的模型', 'No matching models'),
+      onChange: (value) => handleModelChange(filterOptionValue(value)),
+    },
+    {
+      key: 'endpoint',
+      icon: Route,
+      selected: selectedFilterOption(selectOptions.value.endpoints, filterForm.endpoint),
+      options: selectOptions.value.endpoints,
+      placeholder: t('接口', 'Endpoint'),
+      searchPlaceholder: t('搜索接口', 'Search endpoints'),
+      emptyText: t('没有匹配的接口', 'No matching endpoints'),
+      onChange: (value) => handleEndpointChange(filterOptionValue(value)),
+    },
+  ]
+
+  if (!isAccountScope.value) {
+    items.unshift({
+      key: 'user',
+      icon: UserRound,
+      selected: selectedFilterOption(selectOptions.value.users, filterForm.user_id),
+      options: selectOptions.value.users,
+      placeholder: t('用户昵称', 'User nickname'),
+      searchPlaceholder: t('搜索用户', 'Search users'),
+      emptyText: t('没有匹配的用户', 'No matching users'),
+      onChange: (value) => handleUserChange(filterOptionValue(value)),
+    })
+  }
+
+  return items
+})
+
 const rankingSortOptions = computed(() => [
   { label: t('按 Token', 'By tokens'), value: 'tokens' },
   { label: t('按费用', 'By cost'), value: 'cost' },
@@ -490,6 +590,12 @@ async function applyQuickRange(key: QuickRangeKey) {
   activeQuickRange.value = key
   dateRange.value = buildQuickRange(key)
   await refresh()
+}
+
+function handleQuickRangeChange(value: unknown) {
+  if (isQuickRangeKey(value)) {
+    void applyQuickRange(value)
+  }
 }
 
 let queuedRefresh: RefreshOptions | null = null
@@ -738,6 +844,22 @@ function quotaValueText(quota: UserQuotaStatus | null): string {
     (quota.monthly_remaining_usd ?? 0) +
     (quota.lifetime_remaining_usd ?? 0)
   return t(`可用余额 ${formatUsd(total)}`, `Available balance ${formatUsd(total)}`)
+}
+
+interface UsageFilterOption {
+  label: string
+  value: string | number
+}
+
+interface UsageFilterCombobox {
+  key: string
+  icon: Component
+  selected: UsageFilterOption | null
+  options: UsageFilterOption[]
+  placeholder: string
+  searchPlaceholder: string
+  emptyText: string
+  onChange: (value: unknown) => void
 }
 
 function quotaStatusTitle(quota: UserQuotaStatus | null): string {
@@ -1251,7 +1373,9 @@ onBeforeUnmount(() => {
         <span class="refresh-status" :class="{ 'is-error': autoRefreshError }">
           {{ refreshStatusText }}
         </span>
-        <AppButton v-if="canOpenRecords" secondary @click="goRecords()">{{ t('明细', 'Records') }}</AppButton>
+        <Button v-if="canOpenRecords" variant="outline" @click="goRecords()">
+          {{ t('明细', 'Records') }}
+        </Button>
       </div>
     </div>
 
@@ -1261,94 +1385,99 @@ onBeforeUnmount(() => {
           <strong>{{ t('筛选', 'Filters') }}</strong>
           <span>{{ dashboardRangeLabel }}</span>
         </div>
-        <AppButton class="filter-toggle" secondary size="small" @click="filtersExpanded = !filtersExpanded">
+        <Button class="filter-toggle" variant="outline" size="sm" @click="filtersExpanded = !filtersExpanded">
           {{ filtersExpanded ? t('收起', 'Collapse') : t('展开', 'Expand') }}
-        </AppButton>
+        </Button>
       </div>
       <div class="panel-inner filter-toolbar">
         <div class="time-row">
-          <div class="quick-ranges" role="group" :aria-label="t('快捷时间范围', 'Quick time ranges')">
-            <AppButton
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            size="sm"
+            class="quick-ranges"
+            :model-value="activeQuickRange ?? undefined"
+            :aria-label="t('快捷时间范围', 'Quick time ranges')"
+            @update:model-value="handleQuickRangeChange"
+          >
+            <ToggleGroupItem
               v-for="option in quickRangeOptions"
               :key="option.key"
-              class="quick-range-button"
-              size="small"
-              secondary
-              :type="activeQuickRange === option.key ? 'primary' : 'default'"
-              @click="applyQuickRange(option.key)"
+              :value="option.key"
+              :aria-label="option.label"
             >
               {{ option.label }}
-            </AppButton>
-          </div>
-          <AppDateTimeRange
-            :value="dateRange"
+            </ToggleGroupItem>
+          </ToggleGroup>
+          <DateTimeRangePicker
+            :model-value="dateRange"
             class="range-picker"
-            type="datetimerange"
             clearable
-            @update:value="handleCustomRangeChange"
+            @update:model-value="handleCustomRangeChange"
           />
         </div>
         <div class="field-row" :class="{ 'is-account-scope': isAccountScope }">
-          <AppSelect
-            v-if="!isAccountScope"
-            grow
-            :icon="UserRound"
-            :value="filterForm.user_id"
-            :options="selectOptions.users"
-            clearable
-            filterable
-            :placeholder="t('用户昵称', 'User nickname')"
-            @update:value="handleUserChange"
-          />
-          <AppSelect
-            grow
-            :icon="KeyRound"
-            :value="filterForm.api_key_description"
-            :options="selectOptions.apiKeyDescriptions"
-            clearable
-            filterable
-            :placeholder="t('KEY 描述', 'Key description')"
-            @update:value="handleApiKeyChange"
-          />
-          <AppSelect
-            grow
-            :icon="Server"
-            :value="filterForm.provider"
-            :options="selectOptions.providers"
-            clearable
-            filterable
-            :placeholder="t('服务商', 'Provider')"
-            @update:value="handleProviderChange"
-          />
-          <AppSelect
-            grow
-            :icon="Cpu"
-            :value="filterForm.model"
-            :options="selectOptions.models"
-            clearable
-            filterable
-            :placeholder="t('模型', 'Model')"
-            @update:value="handleModelChange"
-          />
-          <AppSelect
-            grow
-            :icon="Route"
-            :value="filterForm.endpoint"
-            :options="selectOptions.endpoints"
-            clearable
-            filterable
-            :placeholder="t('接口', 'Endpoint')"
-            @update:value="handleEndpointChange"
-          />
+          <Combobox
+            v-for="filter in filterComboboxes"
+            :key="filter.key"
+            class="filter-combobox"
+            :model-value="filter.selected"
+            by="value"
+            @update:model-value="filter.onChange"
+          >
+            <ComboboxAnchor as-child>
+              <ComboboxTrigger as-child>
+                <Button variant="outline" class="filter-combobox-trigger">
+                  <component :is="filter.icon" data-icon="inline-start" />
+                  <span class="min-w-0 flex-1 truncate text-left">
+                    {{ filter.selected?.label ?? filter.placeholder }}
+                  </span>
+                  <ChevronsUpDown data-icon="inline-end" class="text-muted-foreground" />
+                </Button>
+              </ComboboxTrigger>
+            </ComboboxAnchor>
+            <ComboboxList align="start">
+              <ComboboxInput :placeholder="filter.searchPlaceholder" />
+              <ComboboxEmpty>{{ filter.emptyText }}</ComboboxEmpty>
+              <ComboboxGroup>
+                <ComboboxItem :value="null">
+                  {{ t('清除筛选', 'Clear filter') }}
+                </ComboboxItem>
+                <ComboboxItem
+                  v-for="option in filter.options"
+                  :key="String(option.value)"
+                  :value="option"
+                >
+                  <span class="truncate">{{ option.label }}</span>
+                  <ComboboxItemIndicator>
+                    <Check />
+                  </ComboboxItemIndicator>
+                </ComboboxItem>
+              </ComboboxGroup>
+            </ComboboxList>
+          </Combobox>
           <div class="status-actions">
-            <AppSelect
-              :icon="CircleCheck"
-              :value="filterForm.failed"
-              class="status-select"
-              :options="failedFilterOptions"
-              @update:value="handleFailedChange"
-            />
-            <AppButton secondary :loading="isLoading" @click="refresh()">{{ t('筛选', 'Filter') }}</AppButton>
+            <Select :model-value="filterForm.failed" @update:model-value="handleFailedChange">
+              <SelectTrigger class="status-select">
+                <CircleCheck />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem
+                    v-for="option in failedFilterOptions"
+                    :key="option.value"
+                    :value="option.value"
+                  >
+                    {{ option.label }}
+                  </SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+            <Button variant="outline" :disabled="isLoading" @click="refresh()">
+              <Spinner v-if="isLoading" data-icon="inline-start" />
+              {{ t('筛选', 'Filter') }}
+            </Button>
           </div>
         </div>
       </div>
@@ -1511,7 +1640,9 @@ onBeforeUnmount(() => {
             <section class="panel anomaly-panel area-anomaly">
               <div class="panel-heading-row dashboard-panel-heading">
                 <h2 class="section-title">{{ t('异常概览', 'Anomaly overview') }}</h2>
-                <AppButton v-if="canOpenRecords" size="small" quaternary @click="goRecords({ failed: true })">{{ t('更多', 'More') }}</AppButton>
+                <Button v-if="canOpenRecords" size="sm" variant="ghost" @click="goRecords({ failed: true })">
+                  {{ t('更多', 'More') }}
+                </Button>
               </div>
               <div class="panel-inner compact-panel-inner">
                 <div class="anomaly-stat-grid">
@@ -1588,14 +1719,22 @@ onBeforeUnmount(() => {
             <section class="panel ranking-panel area-primary-ranking">
               <div class="panel-heading-row dashboard-panel-heading">
                 <h2 class="section-title">{{ rankingTitle }}</h2>
-                <AppSelect
-                  class="ranking-sort-select"
-                  size="tiny"
-                  :value="primaryRankingSort"
-                  :options="rankingSortOptions"
-                  :consistent-menu-width="false"
-                  @update:value="handlePrimaryRankingSortChange"
-                />
+                <Select :model-value="primaryRankingSort" @update:model-value="handlePrimaryRankingSortChange">
+                  <SelectTrigger class="ranking-sort-select" size="sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent align="end">
+                    <SelectGroup>
+                      <SelectItem
+                        v-for="option in rankingSortOptions"
+                        :key="option.value"
+                        :value="option.value"
+                      >
+                        {{ option.label }}
+                      </SelectItem>
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
               </div>
               <div class="panel-inner compact-panel-inner">
                 <div class="ranking-list">
@@ -1619,9 +1758,9 @@ onBeforeUnmount(() => {
                       <strong>{{ rankingPrimaryText(row, primaryRankingSort) }}</strong>
                       <span>{{ t(`${formatInteger(row.records)} 次`, `${formatInteger(row.records)} requests`) }}</span>
                     </div>
-                    <AppButton v-if="canOpenRecords" size="tiny" quaternary @click="goRecords(rankingFilters(row))">
+                    <Button v-if="canOpenRecords" size="xs" variant="ghost" @click="goRecords(rankingFilters(row))">
                       {{ t('明细', 'Records') }}
-                    </AppButton>
+                    </Button>
                   </div>
                 </div>
               </div>
@@ -1630,14 +1769,22 @@ onBeforeUnmount(() => {
             <section class="panel ranking-panel area-model-ranking">
               <div class="panel-heading-row dashboard-panel-heading">
                 <h2 class="section-title">{{ t('模型排行', 'Model ranking') }}</h2>
-                <AppSelect
-                  class="ranking-sort-select"
-                  size="tiny"
-                  :value="modelRankingSort"
-                  :options="rankingSortOptions"
-                  :consistent-menu-width="false"
-                  @update:value="handleModelRankingSortChange"
-                />
+                <Select :model-value="modelRankingSort" @update:model-value="handleModelRankingSortChange">
+                  <SelectTrigger class="ranking-sort-select" size="sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent align="end">
+                    <SelectGroup>
+                      <SelectItem
+                        v-for="option in rankingSortOptions"
+                        :key="option.value"
+                        :value="option.value"
+                      >
+                        {{ option.label }}
+                      </SelectItem>
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
               </div>
               <div class="panel-inner compact-panel-inner">
                 <div class="ranking-list">
@@ -1661,9 +1808,9 @@ onBeforeUnmount(() => {
                       <strong>{{ rankingPrimaryText(row, modelRankingSort) }}</strong>
                       <span>{{ t(`${formatInteger(row.records)} 次`, `${formatInteger(row.records)} requests`) }}</span>
                     </div>
-                    <AppButton v-if="canOpenRecords" size="tiny" quaternary @click="goRecords(modelFilters(row))">
+                    <Button v-if="canOpenRecords" size="xs" variant="ghost" @click="goRecords(modelFilters(row))">
                       {{ t('明细', 'Records') }}
-                    </AppButton>
+                    </Button>
                   </div>
                 </div>
               </div>
@@ -1747,37 +1894,19 @@ onBeforeUnmount(() => {
 }
 
 .quick-ranges {
-  display: flex;
   flex-wrap: wrap;
-  gap: 3px;
   min-width: 0;
   width: fit-content;
-  padding: 3px;
-  border: 1px solid color-mix(in srgb, var(--cpa-border) 76%, transparent);
-  border-radius: 11px;
-  background: var(--cpa-surface-muted);
 }
 
-.quick-range-button {
-  flex: 0 0 auto;
-  min-width: 68px;
-  border-color: transparent;
-  border-radius: 8px;
-  font-weight: 700;
-  box-shadow: none;
+.filter-combobox {
+  min-width: min(180px, 100%);
+  flex: 1 1 180px;
 }
 
-.quick-ranges :deep(.quick-range-button[data-variant="outline"]) {
-  border-color: transparent;
-  background: transparent;
-}
-
-.quick-ranges :deep(.quick-range-button[data-variant="outline"]:hover) {
-  background: color-mix(in srgb, var(--cpa-surface) 74%, var(--cpa-primary-wash));
-}
-
-.quick-ranges :deep(.quick-range-button[data-variant="default"]) {
-  box-shadow: 0 1px 2px color-mix(in srgb, var(--cpa-primary) 20%, transparent);
+.filter-combobox-trigger {
+  width: 100%;
+  justify-content: flex-start;
 }
 
 .status-actions {
@@ -1791,7 +1920,7 @@ onBeforeUnmount(() => {
   min-width: 96px;
 }
 
-.status-actions :deep(.n-button) {
+.status-actions :deep([data-slot="button"]) {
   min-width: 78px;
 }
 
@@ -2733,7 +2862,7 @@ onBeforeUnmount(() => {
     width: 100%;
   }
 
-  .quick-range-button {
+  .quick-ranges :deep([data-slot="toggle-group-item"]) {
     min-width: 0;
   }
 
@@ -2744,7 +2873,7 @@ onBeforeUnmount(() => {
     align-items: stretch;
   }
 
-  .status-actions :deep(.n-select) {
+  .status-actions :deep([data-slot="select-trigger"]) {
     min-width: 0;
   }
 
@@ -2822,7 +2951,7 @@ onBeforeUnmount(() => {
     gap: 8px;
   }
 
-  .ranking-row :deep(.n-button) {
+  .ranking-row :deep([data-slot="button"]) {
     grid-column: 2 / -1;
     justify-self: end;
   }

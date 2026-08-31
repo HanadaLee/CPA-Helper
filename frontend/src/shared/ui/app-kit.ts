@@ -8,7 +8,6 @@ import type {
   Slots,
   VNodeChild,
 } from 'vue'
-import type { DateRange } from 'reka-ui'
 import {
   computed,
   defineComponent,
@@ -19,7 +18,6 @@ import {
   watch,
 } from 'vue'
 import {
-  CalendarDaysIcon,
   CheckIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
@@ -30,7 +28,6 @@ import {
   LoaderCircleIcon,
   XIcon,
 } from '@lucide/vue'
-import { CalendarDate } from '@internationalized/date'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -72,10 +69,7 @@ import {
 } from '@/components/ui/empty'
 import { Field, FieldDescription, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { RangeCalendar } from '@/components/ui/range-calendar'
-import { Separator } from '@/components/ui/separator'
 import {
   Select,
   SelectContent,
@@ -1060,213 +1054,6 @@ export const AppPagination = defineComponent({
               'onUpdate:value': (value: number) => emit('update:page-size', value),
             })
           : null,
-      ])
-  },
-})
-
-function formatDateTimeLocal(timestamp: number) {
-  const date = new Date(timestamp)
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
-  return local.toISOString().slice(0, 16)
-}
-
-function parseDateTimeLocal(value: string) {
-  const timestamp = new Date(value).getTime()
-  return Number.isFinite(timestamp) ? timestamp : null
-}
-
-function timestampToCalendarDate(timestamp: number) {
-  const date = new Date(timestamp)
-  return new CalendarDate(date.getFullYear(), date.getMonth() + 1, date.getDate())
-}
-
-function dateValueToInputDate(value: { year: number, month: number, day: number }) {
-  return `${String(value.year).padStart(4, '0')}-${String(value.month).padStart(2, '0')}-${String(value.day).padStart(2, '0')}`
-}
-
-function formatRangePart(timestamp: number) {
-  const formatter = new Intl.DateTimeFormat(localize('zh-CN', 'en-US'), {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  })
-  return formatter.format(new Date(timestamp))
-}
-
-export const AppDateTimeRange = defineComponent({
-  name: 'AppDateTimeRange',
-  inheritAttrs: false,
-  props: {
-    value: Array as unknown as PropType<[number, number] | null>,
-    type: String,
-    clearable: Boolean,
-    disabled: Boolean,
-    size: String,
-  },
-  emits: ['update:value', 'clear'],
-  setup(props, { attrs, emit }) {
-    const open = ref(false)
-    const draftStart = ref('')
-    const draftEnd = ref('')
-    const calendarRange = ref<DateRange | null>(null)
-
-    const syncDraft = (value: [number, number] | null | undefined) => {
-      draftStart.value = value ? formatDateTimeLocal(value[0]) : ''
-      draftEnd.value = value ? formatDateTimeLocal(value[1]) : ''
-      calendarRange.value = value
-        ? { start: timestampToCalendarDate(value[0]), end: timestampToCalendarDate(value[1]) }
-        : null
-    }
-
-    watch(
-      () => props.value,
-      syncDraft,
-      { immediate: true, deep: true },
-    )
-
-    const canApply = computed(() => {
-      const start = parseDateTimeLocal(draftStart.value)
-      const end = parseDateTimeLocal(draftEnd.value)
-      return start !== null && end !== null && start <= end
-    })
-
-    const updateCalendarRange = (value: DateRange) => {
-      calendarRange.value = value
-      if (value.start) {
-        const time = draftStart.value.slice(11, 16) || '00:00'
-        draftStart.value = `${dateValueToInputDate(value.start)}T${time}`
-      }
-      if (value.end) {
-        const time = draftEnd.value.slice(11, 16) || '23:59'
-        draftEnd.value = `${dateValueToInputDate(value.end)}T${time}`
-      }
-    }
-
-    const updateTime = (target: 'start' | 'end', time: string) => {
-      const current = target === 'start' ? draftStart.value : draftEnd.value
-      const calendarValue = target === 'start' ? calendarRange.value?.start : calendarRange.value?.end
-      const date = current.slice(0, 10) || (calendarValue ? dateValueToInputDate(calendarValue) : '')
-      if (!date) return
-      if (target === 'start') draftStart.value = `${date}T${time}`
-      else draftEnd.value = `${date}T${time}`
-    }
-
-    const apply = () => {
-      const start = parseDateTimeLocal(draftStart.value)
-      const end = parseDateTimeLocal(draftEnd.value)
-      if (start === null || end === null || start > end) return
-      emit('update:value', [start, end])
-      open.value = false
-    }
-
-    const clear = () => {
-      syncDraft(null)
-      emit('update:value', null)
-      emit('clear')
-      open.value = false
-    }
-
-    const cancel = () => {
-      syncDraft(props.value)
-      open.value = false
-    }
-
-    const renderRangeValue = () => {
-      if (!props.value) {
-        return h(
-          'span',
-          { class: 'col-span-3 truncate text-left text-muted-foreground' },
-          localize('选择日期与时间', 'Select date and time'),
-        )
-      }
-      const start = formatRangePart(props.value[0])
-      const end = formatRangePart(props.value[1])
-      return [
-        h('span', { class: 'n-date-range-start truncate text-left', title: start }, start),
-        h('span', { class: 'n-date-range-separator text-center text-muted-foreground' }, '—'),
-        h('span', { class: 'n-date-range-end truncate text-right', title: end }, end),
-      ]
-    }
-
-    return () =>
-      h('div', { ...attrs, class: cn('n-date-picker flex min-w-0 items-center gap-1 bg-transparent shadow-none', attrs.class as HTMLAttributes['class']) }, [
-        h(Popover, {
-          open: open.value,
-          'onUpdate:open': (value: boolean) => {
-            if (value) syncDraft(props.value)
-            open.value = value
-          },
-        } as never, {
-          default: () => [
-            h(PopoverTrigger, { asChild: true } as never, {
-              default: () => h(Button, {
-                variant: 'outline',
-                size: props.size === 'small' ? 'sm' : 'default',
-                disabled: props.disabled,
-                class: 'n-date-range-trigger min-w-0 flex-1 justify-start',
-              } as never, {
-                default: () => [
-                  h(CalendarDaysIcon, { 'data-icon': 'inline-start' }),
-                  h(
-                    'span',
-                    { class: 'n-date-range-value grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 tabular-nums' },
-                    renderRangeValue(),
-                  ),
-                  h(ChevronDownIcon, { class: 'ml-auto text-muted-foreground', 'data-icon': 'inline-end' }),
-                ],
-              }),
-            }),
-            h(PopoverContent, { align: 'start', class: 'max-h-[calc(100dvh-2rem)] w-auto max-w-[calc(100vw-2rem)] gap-0 overflow-y-auto p-0' }, {
-              default: () => [
-                h(RangeCalendar, {
-                  modelValue: calendarRange.value,
-                  numberOfMonths: 2,
-                  weekStartsOn: 1,
-                  initialFocus: true,
-                  locale: localize('zh-CN', 'en-US'),
-                  'onUpdate:modelValue': updateCalendarRange,
-                } as never),
-                h(Separator),
-                h('div', { class: 'grid gap-3 p-3 sm:grid-cols-2' }, [
-                  h(Field, {}, {
-                    default: () => [
-                      h(FieldLabel, {}, { default: () => localize('开始时间', 'Start time') }),
-                      h(Input, {
-                        type: 'time',
-                        modelValue: draftStart.value.slice(11, 16),
-                        disabled: !calendarRange.value?.start,
-                        'onUpdate:modelValue': (value: string | number) => updateTime('start', String(value)),
-                      } as never),
-                    ],
-                  }),
-                  h(Field, {}, {
-                    default: () => [
-                      h(FieldLabel, {}, { default: () => localize('结束时间', 'End time') }),
-                      h(Input, {
-                        type: 'time',
-                        modelValue: draftEnd.value.slice(11, 16),
-                        disabled: !calendarRange.value?.end,
-                        'onUpdate:modelValue': (value: string | number) => updateTime('end', String(value)),
-                      } as never),
-                    ],
-                  }),
-                ]),
-                h('div', { class: 'flex items-center justify-between gap-2 px-3 pb-3' }, [
-                  props.clearable
-                    ? h(Button, { type: 'button', variant: 'ghost', size: 'sm', disabled: !props.value, onClick: clear } as never, { default: () => localize('清除', 'Clear') })
-                    : h('span'),
-                  h('div', { class: 'flex items-center gap-2' }, [
-                    h(Button, { type: 'button', variant: 'outline', size: 'sm', onClick: cancel } as never, { default: () => localize('取消', 'Cancel') }),
-                    h(Button, { type: 'button', size: 'sm', disabled: !canApply.value, onClick: apply } as never, { default: () => localize('应用', 'Apply') }),
-                  ]),
-                ]),
-              ],
-            }),
-          ],
-        }),
       ])
   },
 })
