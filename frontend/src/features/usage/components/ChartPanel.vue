@@ -1,161 +1,18 @@
 <script setup lang="ts">
 import { ChartNoAxesCombinedIcon } from '@lucide/vue'
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import * as echarts from 'echarts/core'
-import { BarChart, LineChart, PieChart } from 'echarts/charts'
-import {
-  AxisPointerComponent,
-  DatasetComponent,
-  GridComponent,
-  GridSimpleComponent,
-  LegendComponent,
-  TooltipComponent,
-  type GridComponentOption,
-  type LegendComponentOption,
-  type TooltipComponentOption,
-} from 'echarts/components'
-import { CanvasRenderer } from 'echarts/renderers'
-import type { BarSeriesOption, LineSeriesOption, PieSeriesOption } from 'echarts/charts'
-import type { ComposeOption, ECharts } from 'echarts/core'
 
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { Spinner } from '@/components/ui/spinner'
-import { useThemePreference } from '@/shared/composables/useThemePreference'
 import { useI18n } from '@/shared/i18n'
-
-echarts.use([
-  BarChart,
-  LineChart,
-  PieChart,
-  AxisPointerComponent,
-  DatasetComponent,
-  GridComponent,
-  GridSimpleComponent,
-  LegendComponent,
-  TooltipComponent,
-  CanvasRenderer,
-])
-
-export type ChartOption = ComposeOption<
-  | BarSeriesOption
-  | LineSeriesOption
-  | PieSeriesOption
-  | GridComponentOption
-  | LegendComponentOption
-  | TooltipComponentOption
->
 
 const props = defineProps<{
   title: string
-  option: ChartOption
   empty: boolean
   loading?: boolean
   compactFooter?: boolean
 }>()
 
-const chartEl = ref<HTMLDivElement | null>(null)
-const chart = ref<ECharts | null>(null)
-const { isDark } = useThemePreference()
 const { t } = useI18n()
-
-let chartThemeFrame: number | undefined
-
-function getChartTextColor(): string {
-  return (
-    getComputedStyle(document.documentElement).getPropertyValue('--cpa-text').trim() ||
-    (isDark.value ? '#dbe7f7' : '#334155')
-  )
-}
-
-function getChartMutedColor(): string {
-  return (
-    getComputedStyle(document.documentElement).getPropertyValue('--cpa-text-muted').trim() ||
-    (isDark.value ? '#94a3b8' : '#64748b')
-  )
-}
-
-function getThemeColor(name: string, fallback: string): string {
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback
-}
-
-function buildCurrentOption(): ChartOption {
-  const option: ChartOption = {
-    backgroundColor: 'transparent',
-    textStyle: {
-      fontFamily: 'Geist Variable, Microsoft YaHei UI, sans-serif',
-      color: getChartTextColor(),
-    },
-    tooltip: {
-      backgroundColor: getThemeColor('--popover', isDark.value ? '#27272a' : '#ffffff'),
-      borderColor: getThemeColor('--border', isDark.value ? '#3f3f46' : '#e4e4e7'),
-      textStyle: {
-        color: getChartTextColor(),
-      },
-      extraCssText: 'box-shadow: 0 18px 40px rgba(15, 23, 42, 0.16); border-radius: 10px; padding: 10px 12px;',
-    },
-    ...props.option,
-  }
-  const configuredLegend = props.option.legend
-  if (Array.isArray(configuredLegend)) {
-    return option
-  }
-  option.legend = {
-    ...configuredLegend,
-    textStyle: {
-      ...configuredLegend?.textStyle,
-      color: getChartMutedColor(),
-    },
-  }
-  return option
-}
-
-function initializeChart() {
-  if (!chartEl.value) {
-    return
-  }
-  chart.value = echarts.init(chartEl.value, isDark.value ? 'dark' : undefined)
-  chart.value.setOption(buildCurrentOption())
-}
-
-function resize() {
-  chart.value?.resize()
-}
-
-onMounted(() => {
-  initializeChart()
-  window.addEventListener('resize', resize)
-})
-
-watch(
-  () => props.option,
-  () => {
-    chart.value?.setOption(buildCurrentOption(), true)
-  },
-  { deep: true },
-)
-
-watch(isDark, () => {
-  if (chartThemeFrame !== undefined) {
-    window.cancelAnimationFrame(chartThemeFrame)
-  }
-  chartThemeFrame = window.requestAnimationFrame(() => {
-    if (!chartEl.value) {
-      chartThemeFrame = undefined
-      return
-    }
-    chart.value?.dispose()
-    initializeChart()
-    chartThemeFrame = undefined
-  })
-})
-
-onBeforeUnmount(() => {
-  window.removeEventListener('resize', resize)
-  if (chartThemeFrame !== undefined) {
-    window.cancelAnimationFrame(chartThemeFrame)
-  }
-  chart.value?.dispose()
-})
 </script>
 
 <template>
@@ -171,7 +28,9 @@ onBeforeUnmount(() => {
     </div>
     <div class="chart-loading-container">
       <div class="chart-body">
-        <div ref="chartEl" class="chart-surface" :class="{ 'is-empty': empty }" />
+        <div class="chart-surface" :class="{ 'is-empty': empty }">
+          <slot name="chart" />
+        </div>
         <div v-if="empty" class="chart-empty">
           <Empty class="border-0 p-0">
             <EmptyHeader>

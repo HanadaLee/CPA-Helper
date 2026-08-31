@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/spinner'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Toggle } from '@/components/ui/toggle'
 import {
   Check,
   ChevronDown,
@@ -42,8 +43,10 @@ import {
 
 import { getUsageOptions, getUsageOverview } from '@/features/usage/api/usageApi'
 import { getCurrentUserQuota } from '@/features/users/api/usersApi'
-import ChartPanel, { type ChartOption } from '@/features/usage/components/ChartPanel.vue'
+import ChartPanel from '@/features/usage/components/ChartPanel.vue'
+import UsageDonutChart from '@/features/usage/components/UsageDonutChart.vue'
 import UsageDashboardSkeleton from '@/features/usage/components/UsageDashboardSkeleton.vue'
+import UsageTrendChart from '@/features/usage/components/UsageTrendChart.vue'
 import type {
   DistributionItem,
   RankingItem,
@@ -93,6 +96,7 @@ interface MetricCardConfig {
 interface DistributionLegendItem {
   key: string
   label: string
+  value: number
   recordsText: string
   percentText: string
   colorIndex: number
@@ -735,14 +739,6 @@ function modelFilters(row: RankingItem): UsageFilters {
   return filters
 }
 
-function cssVar(name: string, fallback: string): string {
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback
-}
-
-function distributionChartColors(): string[] {
-  return DISTRIBUTION_CHART_COLORS.map((color) => cssVar(color.token, color.fallback))
-}
-
 function distributionMarkerStyle(index: number): Record<string, string> {
   const color =
     DISTRIBUTION_CHART_COLORS[index % DISTRIBUTION_CHART_COLORS.length] ??
@@ -758,6 +754,7 @@ function distributionLegendItems(items: DistributionItem[]): DistributionLegendI
   return items.map((item, index) => ({
     key: item.key,
     label: item.label,
+    value: item.records,
     recordsText: formatCompact(item.records),
     percentText: totalRecords > 0 ? `${Math.round((item.records / totalRecords) * 100)}%` : '0%',
     colorIndex: index,
@@ -964,84 +961,15 @@ const trendLegendItems = computed<Array<{ key: TrendSeriesKey; label: string }>>
   { key: 'tokens', label: 'Token' },
   { key: 'failed', label: t('失败请求', 'Failed requests') },
 ])
+const trendChartKey = computed(() => [
+  trendSeriesVisibility.requests ? 'requests' : '',
+  trendSeriesVisibility.tokens ? 'tokens' : '',
+  trendSeriesVisibility.failed ? 'failed' : '',
+].filter(Boolean).join('-') || 'empty')
 
 function toggleTrendSeries(key: TrendSeriesKey) {
   trendSeriesVisibility[key] = !trendSeriesVisibility[key]
 }
-
-const trendOption = computed<ChartOption>(() => {
-  const mutedColor = cssVar('--cpa-text-muted', '#64748b')
-  const gridColor = cssVar('--cpa-chart-grid', 'rgba(100, 116, 139, 0.16)')
-  const requestColor = cssVar('--cpa-accent-blue', '#0ea5e9')
-  const tokenColor = cssVar('--cpa-primary', '#2563eb')
-  const dangerColor = cssVar('--cpa-danger', '#dc2626')
-  const requestLabel = t('请求数', 'Requests')
-  const failedLabel = t('失败请求', 'Failed requests')
-
-  return {
-    animation: false,
-    tooltip: { trigger: 'axis' },
-    legend: {
-      show: false,
-    },
-    grid: { left: 42, right: 58, top: 44, bottom: 34 },
-    xAxis: {
-      type: 'category',
-      data: trends.value.map((item) => item.bucket),
-      axisLabel: {
-        hideOverlap: true,
-        color: mutedColor,
-        formatter: (value: string) => formatTrendBucket(value),
-      },
-      axisLine: { lineStyle: { color: gridColor } },
-      axisTick: { show: false },
-    },
-    yAxis: [
-      {
-        type: 'value',
-        name: t('请求', 'Requests'),
-        nameTextStyle: { color: mutedColor },
-        axisLabel: { color: mutedColor, formatter: (value: number) => formatCompact(value) },
-        splitLine: { lineStyle: { color: gridColor } },
-      },
-      {
-        type: 'value',
-        name: 'Token',
-        nameTextStyle: { color: mutedColor },
-        axisLabel: { color: mutedColor, formatter: (value: number) => formatCompact(value) },
-        splitLine: { show: false },
-      },
-    ],
-    series: [
-      {
-        name: requestLabel,
-        type: 'bar',
-        data: trends.value.map((item) => (trendSeriesVisibility.requests ? item.records : null)),
-        barMaxWidth: 18,
-        itemStyle: { color: requestColor, borderRadius: [4, 4, 0, 0] },
-      },
-      {
-        name: 'Token',
-        type: 'line',
-        yAxisIndex: 1,
-        smooth: true,
-        showSymbol: false,
-        data: trends.value.map((item) => (trendSeriesVisibility.tokens ? item.total_tokens : null)),
-        lineStyle: { color: tokenColor, width: 3 },
-        itemStyle: { color: tokenColor },
-      },
-      {
-        name: failedLabel,
-        type: 'line',
-        data: trends.value.map((item) => (trendSeriesVisibility.failed ? item.failed_records : null)),
-        showSymbol: true,
-        symbolSize: 6,
-        lineStyle: { color: dangerColor, width: 1, type: 'dashed' },
-        itemStyle: { color: dangerColor },
-      },
-    ],
-  }
-})
 
 const tokenBreakdownItems = computed<TokenBreakdownItem[]>(() => {
   const currentSummary = summary.value
@@ -1065,92 +993,6 @@ const tokenBreakdownItems = computed<TokenBreakdownItem[]>(() => {
 const tokenBreakdownTotal = computed(() =>
   tokenBreakdownItems.value.reduce((sum, item) => sum + item.value, 0),
 )
-
-const tokenBreakdownOption = computed<ChartOption>(() =>
-  breakdownPieOption(
-    tokenBreakdownItems.value.map((item) => ({ label: item.label, value: item.value })),
-    'Token',
-    formatCompact(summary.value?.total_tokens ?? 0),
-  ),
-)
-
-function breakdownPieOption(
-  items: Array<{ label: string; value: number }>,
-  name: string,
-  centerValue: string,
-): ChartOption {
-  const surfaceColor = cssVar('--cpa-surface', '#ffffff')
-  const textColor = cssVar('--cpa-text-strong', '#111827')
-  const mutedColor = cssVar('--cpa-text-muted', '#64748b')
-
-  return {
-    tooltip: {
-      trigger: 'item',
-      formatter: `${name}<br/>{b}: {c} ({d}%)`,
-    },
-    color: distributionChartColors(),
-    legend: { show: false },
-    series: [
-      {
-        name,
-        type: 'pie',
-        radius: ['52%', '74%'],
-        center: ['50%', '52%'],
-        startAngle: 94,
-        minAngle: 4,
-        avoidLabelOverlap: true,
-        label: { show: false },
-        labelLine: { show: false },
-        itemStyle: {
-          borderColor: surfaceColor,
-          borderWidth: 3,
-          borderRadius: 5,
-        },
-        emphasis: {
-          scaleSize: 3,
-          itemStyle: {
-            shadowBlur: 10,
-            shadowColor: 'rgba(37, 99, 235, 0.18)',
-          },
-        },
-        data: items.map((item, index) => ({
-          name: item.label,
-          value: item.value,
-          label:
-            index === 0
-              ? {
-                  show: true,
-                  position: 'center',
-                  formatter: `{total|${centerValue}}\n{caption|${name}}`,
-                  rich: {
-                    total: {
-                      color: textColor,
-                      fontSize: 22,
-                      fontWeight: 750,
-                      lineHeight: 28,
-                    },
-                    caption: {
-                      color: mutedColor,
-                      fontSize: 12,
-                      lineHeight: 18,
-                    },
-                  },
-                }
-              : { show: false },
-        })),
-      },
-    ],
-  }
-}
-
-function distributionPieOption(items: DistributionItem[], name: string): ChartOption {
-  const totalRecords = items.reduce((sum, item) => sum + item.records, 0)
-  return breakdownPieOption(
-    items.map((item) => ({ label: item.label, value: item.records })),
-    name,
-    formatCompact(totalRecords),
-  )
-}
 
 function hourFromBucket(bucket: string): number | null {
   const localHourMatch = bucket.match(/\s(\d{2})(?::\d{2})?$/)
@@ -1318,13 +1160,6 @@ const providerDistributionLegend = computed(() =>
 )
 const endpointDistributionLegend = computed(() =>
   distributionLegendItems(distributions.value.endpoints),
-)
-
-const providerDistributionOption = computed<ChartOption>(() =>
-  distributionPieOption(distributions.value.providers, t('服务商', 'Providers')),
-)
-const endpointDistributionOption = computed<ChartOption>(() =>
-  distributionPieOption(distributions.value.endpoints, t('接口', 'Endpoints')),
 )
 
 let autoRefreshTimer: number | undefined
@@ -1510,24 +1345,35 @@ onBeforeUnmount(() => {
           <ChartPanel
             class="usage-trend-panel area-trend"
             :title="t('用量趋势', 'Usage trend')"
-            :option="trendOption"
             :empty="trends.length === 0"
             :loading="isLoading"
           >
+            <template #chart>
+              <UsageTrendChart
+                :key="trendChartKey"
+                :data="trends"
+                :requests-visible="trendSeriesVisibility.requests"
+                :tokens-visible="trendSeriesVisibility.tokens"
+                :failed-visible="trendSeriesVisibility.failed"
+                :requests-label="t('请求数', 'Requests')"
+                :failed-label="t('失败请求', 'Failed requests')"
+                :format-bucket="formatTrendBucket"
+              />
+            </template>
             <template #actions>
               <div class="trend-legend" :aria-label="t('用量趋势图例', 'Usage trend legend')">
-                <button
+                <Toggle
                   v-for="item in trendLegendItems"
                   :key="item.key"
-                  type="button"
                   class="trend-legend-button"
                   :class="[`is-${item.key}`, { 'is-hidden': !trendSeriesVisibility[item.key] }]"
-                  :aria-pressed="trendSeriesVisibility[item.key]"
-                  @click="toggleTrendSeries(item.key)"
+                  size="sm"
+                  :model-value="trendSeriesVisibility[item.key]"
+                  @update:model-value="toggleTrendSeries(item.key)"
                 >
                   <span class="trend-legend-marker" aria-hidden="true" />
                   <span>{{ item.label }}</span>
-                </button>
+                </Toggle>
               </div>
             </template>
           </ChartPanel>
@@ -1535,11 +1381,17 @@ onBeforeUnmount(() => {
           <ChartPanel
             class="token-panel area-token"
             :title="t('Token 构成', 'Token breakdown')"
-            :option="tokenBreakdownOption"
             :empty="tokenBreakdownTotal === 0"
             :loading="isLoading"
             :compact-footer="tokenBreakdownItems.length <= 1"
           >
+            <template #chart>
+              <UsageDonutChart
+                :items="tokenBreakdownItems"
+                :center-value="formatCompact(summary?.total_tokens ?? 0)"
+                center-label="Token"
+              />
+            </template>
             <ol class="distribution-legend token-legend" :aria-label="t('Token 构成图例', 'Token breakdown legend')">
               <li
                 v-for="item in tokenBreakdownItems"
@@ -1610,11 +1462,17 @@ onBeforeUnmount(() => {
             <ChartPanel
               class="distribution-panel area-provider"
               :title="t('服务商分布', 'Provider distribution')"
-              :option="providerDistributionOption"
               :empty="distributions.providers.length === 0"
               :loading="isLoading"
               :compact-footer="providerDistributionLegend.length <= 1"
             >
+              <template #chart>
+                <UsageDonutChart
+                  :items="providerDistributionLegend"
+                  :center-value="formatCompact(distributions.providers.reduce((sum, item) => sum + item.records, 0))"
+                  :center-label="t('服务商', 'Providers')"
+                />
+              </template>
               <ol
                 class="distribution-legend"
                 :class="{ 'is-single': providerDistributionLegend.length === 1 }"
@@ -1689,11 +1547,17 @@ onBeforeUnmount(() => {
             <ChartPanel
               class="distribution-panel area-endpoint"
               :title="t('接口分布', 'Endpoint distribution')"
-              :option="endpointDistributionOption"
               :empty="distributions.endpoints.length === 0"
               :loading="isLoading"
               :compact-footer="endpointDistributionLegend.length <= 1"
             >
+              <template #chart>
+                <UsageDonutChart
+                  :items="endpointDistributionLegend"
+                  :center-value="formatCompact(distributions.endpoints.reduce((sum, item) => sum + item.records, 0))"
+                  :center-label="t('接口', 'Endpoints')"
+                />
+              </template>
               <ol
                 class="distribution-legend"
                 :class="{ 'is-single': endpointDistributionLegend.length === 1 }"
@@ -2619,11 +2483,11 @@ onBeforeUnmount(() => {
 }
 
 .trend-legend-button.is-requests {
-  --trend-color: var(--cpa-accent-blue);
+  --trend-color: var(--chart-2);
 }
 
 .trend-legend-button.is-tokens {
-  --trend-color: var(--cpa-primary);
+  --trend-color: var(--chart-4);
 }
 
 .trend-legend-button.is-failed {

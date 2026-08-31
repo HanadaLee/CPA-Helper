@@ -35,7 +35,7 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          echarts: ['echarts/core', 'echarts/charts', 'echarts/components', 'echarts/renderers'],
+          unovis: ['@unovis/vue'],
         },
       },
     },
@@ -48,6 +48,10 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
+        target: apiProxyTarget,
+        changeOrigin: true,
+      },
+      '/cas': {
         target: apiProxyTarget,
         changeOrigin: true,
       },

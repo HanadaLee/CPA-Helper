@@ -189,19 +189,6 @@ const accountText = computed(() => currentUser.value?.username || t('当前账�
 const brandName = computed(() => language.value === 'zh' ? branding.value.brand_name_zh : branding.value.brand_name_en)
 const brandSubtitle = computed(() => language.value === 'zh' ? branding.value.brand_subtitle_zh : branding.value.brand_subtitle_en)
 
-function formatAppVersion(value: string | undefined): string {
-  const version = value?.trim()
-  if (!version) {
-    return 'dev'
-  }
-  if (version === 'latest' || version === 'dev') {
-    return version
-  }
-  return version.startsWith('v') ? version : `v${version}`
-}
-
-const appVersion = formatAppVersion(import.meta.env.VITE_APP_VERSION)
-
 const leafMenuOptions = computed(() =>
   isAdmin.value
     ? [...adminMenuItems.value, ...accountMenuItems.value]
@@ -276,9 +263,13 @@ async function handleMenuUpdate(key: string) {
 }
 
 async function handleLogout() {
-  await logout()
+  const result = await logout()
   setCurrentUser(null)
   hasLoadedUser.value = true
+  if (result.cas_logout_url) {
+    window.location.assign(result.cas_logout_url)
+    return
+  }
   toast.success(t('已退出登录', 'Signed out'))
   await router.push('/login')
 }
@@ -408,7 +399,6 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
           <div class="mobile-brand-copy">
             <div class="mobile-title-row">
               <strong>{{ brandName }}</strong>
-              <span class="mobile-version-badge">{{ appVersion }}</span>
             </div>
             <span>{{ accountText }} · {{ roleText }}</span>
           </div>
@@ -503,25 +493,6 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
   font-size: 14px;
   font-weight: 600;
   line-height: 1.2;
-}
-
-.mobile-version-badge {
-  display: inline-flex;
-  align-items: center;
-  flex: 0 0 auto;
-  max-width: 72px;
-  height: 18px;
-  padding: 0 6px;
-  border: 1px solid var(--cpa-border);
-  border-radius: 999px;
-  overflow: hidden;
-  color: var(--cpa-text-muted);
-  background: var(--cpa-surface-raised);
-  font-size: 11px;
-  font-weight: 750;
-  line-height: 1;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .brand-copy > span {
@@ -668,13 +639,6 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
   color: var(--cpa-text-strong);
   font-size: 14px;
   font-weight: 760;
-}
-
-.mobile-version-badge {
-  max-width: 58px;
-  height: 16px;
-  padding: 0 5px;
-  font-size: 10px;
 }
 
 .mobile-brand-copy > span {

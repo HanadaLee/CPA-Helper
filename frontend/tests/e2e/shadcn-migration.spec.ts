@@ -650,7 +650,7 @@ test('theme and mobile navigation survive the migration', async ({ page }) => {
   await expect(page.locator('[data-slot="sidebar"][data-variant="inset"]')).toBeVisible()
   await expect.poll(() =>
     page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--cpa-primary').trim()),
-  ).toBe('oklch(0.55 0.19 257)')
+  ).toMatch(/^oklch\((?:0\.55|55%) (?:0\.19|\.19) 257\)$/)
   await expect(page.locator('[data-slot="sidebar-container"]')).toHaveCSS('border-right-width', '0px')
   await expect(page.locator('[data-slot="sidebar-container"]')).toHaveCSS('width', '256px')
   const usageMenuButton = page.getByRole('button', { name: /用量分析|Usage Analytics/ })
@@ -699,7 +699,7 @@ test('theme and mobile navigation survive the migration', async ({ page }) => {
   await expect(page.locator('html')).toHaveClass(/dark/)
   await expect.poll(() =>
     page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--cpa-primary').trim()),
-  ).toBe('oklch(0.68 0.16 257)')
+  ).toMatch(/^oklch\((?:0\.68|68%) (?:0\.16|\.16) 257\)$/)
   await expect(page.locator('[data-slot="sidebar-container"]')).toHaveCSS('border-right-width', '0px')
 
   await page.setViewportSize({ width: 390, height: 844 })
@@ -707,7 +707,8 @@ test('theme and mobile navigation survive the migration', async ({ page }) => {
   await page.getByRole('button', { name: /打开导航|Open navigation/ }).click()
   await expect(page.locator('[data-mobile="true"]')).toHaveCSS('border-right-color', 'oklch(1 0 0 / 0.1)')
   await expect(page.locator('[data-mobile="true"]')).toHaveCSS('width', '288px')
-  await expect(page.getByText('CPA-Helper', { exact: false }).last()).toBeVisible()
+  await expect(page.locator('.mobile-brand-copy strong')).toBeVisible()
+  await expect(page.locator('.mobile-version-badge')).toHaveCount(0)
   await expect(page.getByRole('button', { name: /用量分析|Usage Analytics/ }).first()).toBeVisible()
   const mobileUserMenuButton = page.getByRole('button', { name: /admin.*管理员|admin.*Admin/i })
   await expect(mobileUserMenuButton.locator('.lucide-ellipsis-vertical')).toBeVisible()

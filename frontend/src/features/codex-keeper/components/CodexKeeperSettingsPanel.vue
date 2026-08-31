@@ -526,9 +526,9 @@ onBeforeUnmount(() => {
 <style scoped>
 .keeper-settings-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.55fr) minmax(20rem, .8fr);
+  grid-template-columns: minmax(0, 1.5fr) minmax(320px, .82fr);
   align-items: start;
-  gap: 1rem;
+  gap: 16px;
   min-width: 0;
 }
 

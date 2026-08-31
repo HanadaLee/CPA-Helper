@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { EyeIcon, EyeOffIcon, TriangleAlertIcon } from '@lucide/vue'
+import { EyeIcon, EyeOffIcon, LogInIcon, TriangleAlertIcon } from '@lucide/vue'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
@@ -22,6 +22,7 @@ const { errorText, t } = useI18n()
 const isLoading = ref(false)
 const isSetupLoading = ref(true)
 const setupRequired = ref(false)
+const casEnabled = ref(false)
 const showPassword = ref(false)
 const errorMessage = ref<string | null>(null)
 const form = reactive({
@@ -34,11 +35,18 @@ const headingSubtitle = computed(() =>
   setupRequired.value ? t('首次使用前需要先录入管理员账号', 'Create an admin account before first use') : t('本地 AI 用量管理控制台', 'Local AI usage management console'),
 )
 const submitText = computed(() => (setupRequired.value ? t('创建并登录', 'Create and sign in') : t('登录', 'Sign in')))
+const casLoginHref = computed(() => {
+  const redirect = typeof route.query.redirect === 'string' && route.query.redirect.startsWith('/')
+    ? route.query.redirect
+    : '/'
+  return `/cas/login?returnTo=${encodeURIComponent(redirect)}`
+})
 
 onMounted(async () => {
   try {
     const state = await getSetupState()
     setupRequired.value = state.setup_required
+    casEnabled.value = state.cas_enabled
   } catch (error) {
     errorMessage.value = errorText(error, '初始化状态加载失败', 'Failed to load setup state')
   } finally {
@@ -145,7 +153,40 @@ async function handleSubmit() {
             </Button>
           </FieldGroup>
         </form>
+
+        <div v-if="casEnabled && !setupRequired" class="cas-login-section">
+          <div class="cas-login-divider">
+            <span>{{ t('或', 'OR') }}</span>
+          </div>
+          <Button as="a" class="w-full" variant="outline" :href="casLoginHref">
+            <LogInIcon data-icon="inline-start" />
+            {{ t('使用 CAS 登录', 'Sign in with CAS') }}
+          </Button>
+        </div>
       </CardContent>
     </Card>
   </AuthShell>
 </template>
+
+<style scoped>
+.cas-login-section {
+  display: grid;
+  gap: 1rem;
+}
+
+.cas-login-divider {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  color: var(--muted-foreground);
+  font-size: .75rem;
+}
+
+.cas-login-divider::before,
+.cas-login-divider::after {
+  height: 1px;
+  flex: 1;
+  background: var(--border);
+  content: '';
+}
+</style>

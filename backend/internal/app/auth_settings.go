@@ -75,7 +75,15 @@ func (a *App) handleAuth(w http.ResponseWriter, r *http.Request) error {
 			return err
 		}
 		clearSessionCookie(w)
-		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+		cfg, err := a.loadConfig(r.Context())
+		if err != nil {
+			return err
+		}
+		response := map[string]any{"ok": true}
+		if cfg.CAS.Enabled {
+			response["cas_logout_url"] = "/cas/logout"
+		}
+		writeJSON(w, http.StatusOK, response)
 		return nil
 	default:
 		return notFoundError("Not Found")
@@ -126,7 +134,14 @@ func (a *App) handleSetupState(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"setup_required": count == 0})
+	cfg, err := a.loadConfig(r.Context())
+	if err != nil {
+		return err
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{
+		"setup_required": count == 0,
+		"cas_enabled":    cfg.CAS.Enabled,
+	})
 	return nil
 }
 
@@ -282,6 +297,12 @@ type settingsUpdateRequest struct {
 	AllowUserAccountStatus     *bool                        `json:"allow_user_account_status"`
 	AllowUserUsageHistory      *bool                        `json:"allow_user_usage_history"`
 	UsageDetailRetentionDays   *int                         `json:"usage_detail_retention_days"`
+	CASEnabled                 *bool                        `json:"cas_enabled"`
+	CASBaseURL                 *string                      `json:"cas_base_url"`
+	CASValidationURL           *string                      `json:"cas_validation_url"`
+	CASValidationHost          *string                      `json:"cas_validation_host"`
+	CASPublicURL               *string                      `json:"cas_public_url"`
+	CASAutoCreateUsers         *bool                        `json:"cas_auto_create_users"`
 }
 
 func normalizeBrandingText(value, label string, maxLength int) (string, error) {
@@ -293,6 +314,49 @@ func normalizeBrandingText(value, label string, maxLength int) (string, error) {
 		return "", validationError(fmt.Sprintf("%s不能超过 %d 个字符", label, maxLength))
 	}
 	return normalized, nil
+}
+
+func normalizeCASURL(value, label string) (string, error) {
+	normalized := strings.TrimSpace(value)
+	if normalized == "" {
+		return "", nil
+	}
+	parsed, err := url.Parse(normalized)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.User != nil {
+		return "", validationError(label + "必须是有效的 http:// 或 https:// 地址")
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return "", validationError(label + "必须使用 http:// 或 https://")
+	}
+	if parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", validationError(label + "不能包含查询参数或锚点")
+	}
+	parsed.Path = strings.TrimRight(parsed.Path, "/")
+	return strings.TrimRight(parsed.String(), "/"), nil
+}
+
+func normalizeCASConfig(cfg CASConfig) (CASConfig, error) {
+	var err error
+	if cfg.BaseURL, err = normalizeCASURL(cfg.BaseURL, "CAS 服务地址"); err != nil {
+		return CASConfig{}, err
+	}
+	if cfg.ValidationURL, err = normalizeCASURL(cfg.ValidationURL, "CAS 验证地址"); err != nil {
+		return CASConfig{}, err
+	}
+	if cfg.PublicURL, err = normalizeCASURL(cfg.PublicURL, "CAS 公网地址"); err != nil {
+		return CASConfig{}, err
+	}
+	cfg.ValidationHost = strings.TrimSpace(cfg.ValidationHost)
+	if len(cfg.ValidationHost) > 255 || strings.ContainsAny(cfg.ValidationHost, "\r\n\t /?#") {
+		return CASConfig{}, validationError("CAS 验证 Host 无效")
+	}
+	if cfg.Enabled && cfg.BaseURL == "" {
+		return CASConfig{}, validationError("启用 CAS 时必须填写 CAS 服务地址")
+	}
+	if cfg.Enabled && cfg.PublicURL == "" {
+		return CASConfig{}, validationError("启用 CAS 时必须填写 CPA-Helper 公网地址")
+	}
+	return cfg, nil
 }
 
 func (a *App) handleBranding(w http.ResponseWriter, r *http.Request) error {
@@ -443,6 +507,28 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) error {
 			}
 			cfg.UsageDetailRetentionDays = *payload.UsageDetailRetentionDays
 		}
+		if payload.CASEnabled != nil {
+			cfg.CAS.Enabled = *payload.CASEnabled
+		}
+		if payload.CASBaseURL != nil {
+			cfg.CAS.BaseURL = *payload.CASBaseURL
+		}
+		if payload.CASValidationURL != nil {
+			cfg.CAS.ValidationURL = *payload.CASValidationURL
+		}
+		if payload.CASValidationHost != nil {
+			cfg.CAS.ValidationHost = *payload.CASValidationHost
+		}
+		if payload.CASPublicURL != nil {
+			cfg.CAS.PublicURL = *payload.CASPublicURL
+		}
+		if payload.CASAutoCreateUsers != nil {
+			cfg.CAS.AutoCreateUsers = *payload.CASAutoCreateUsers
+		}
+		cfg.CAS, err = normalizeCASConfig(cfg.CAS)
+		if err != nil {
+			return err
+		}
 		if err := a.saveConfig(r.Context(), cfg); err != nil {
 			return err
 		}
@@ -474,6 +560,12 @@ func settingsResponse(cfg AppConfig) map[string]any {
 		"allow_user_account_status":     cfg.AllowUserAccountStatus,
 		"allow_user_usage_history":      cfg.AllowUserUsageHistory,
 		"usage_detail_retention_days":   cfg.UsageDetailRetentionDays,
+		"cas_enabled":                   cfg.CAS.Enabled,
+		"cas_base_url":                  cfg.CAS.BaseURL,
+		"cas_validation_url":            cfg.CAS.ValidationURL,
+		"cas_validation_host":           cfg.CAS.ValidationHost,
+		"cas_public_url":                cfg.CAS.PublicURL,
+		"cas_auto_create_users":         cfg.CAS.AutoCreateUsers,
 	}
 }
 

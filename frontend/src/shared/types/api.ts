@@ -21,6 +21,7 @@ export interface ChangeCredentialsPayload {
 
 export interface SetupState {
   setup_required: boolean
+  cas_enabled: boolean
 }
 
 export interface FirstAdminSetupPayload {
@@ -56,6 +57,12 @@ export interface SettingsResponse extends BrandingResponse {
   allow_user_account_status: boolean
   allow_user_usage_history: boolean
   usage_detail_retention_days: number
+  cas_enabled: boolean
+  cas_base_url: string
+  cas_validation_url: string
+  cas_validation_host: string
+  cas_public_url: string
+  cas_auto_create_users: boolean
 }
 
 export interface SettingsUpdatePayload {
@@ -76,6 +83,12 @@ export interface SettingsUpdatePayload {
   allow_user_account_status?: boolean
   allow_user_usage_history?: boolean
   usage_detail_retention_days?: number
+  cas_enabled?: boolean
+  cas_base_url?: string
+  cas_validation_url?: string
+  cas_validation_host?: string
+  cas_public_url?: string
+  cas_auto_create_users?: boolean
 }
 
 export interface ModelRequestGuide {

@@ -902,14 +902,16 @@ onMounted(refresh)
                         <Eye v-if="isApiKeyVisible(row)" />
                         <EyeOff v-else />
                       </Button>
-                      <button
+                      <Button
                         class="api-key-copy-button"
                         type="button"
+                        size="sm"
+                        variant="ghost"
                         :title="row.api_key ? t('点击复制完整密钥', 'Click to copy full key') : t('无完整密钥可复制', 'No full key available to copy')"
                         @click="copyApiKey(row)"
                       >
                         <code class="api-key-mask-text">{{ displayedApiKey(row) }}</code>
-                      </button>
+                      </Button>
                     </div>
                   </TableCell>
                   <TableCell>

@@ -895,13 +895,15 @@ function telegramHref(value: string | null | undefined): string | null {
           <span>{{ t('已选条件:', 'Selected filters:') }}</span>
           <Badge v-for="term in searchTerms" :key="term" variant="secondary" class="selected-term-badge">
             <span class="truncate">{{ term }}</span>
-            <button
+            <Button
               type="button"
+              size="icon-xs"
+              variant="ghost"
               :aria-label="t(`移除 ${term}`, `Remove ${term}`)"
               @click="removeSearchTerm(term)"
             >
               <X />
-            </button>
+            </Button>
           </Badge>
           <Button size="sm" variant="ghost" @click="clearSearchFilters">
             {{ t('清空', 'Clear') }}
@@ -1106,16 +1108,18 @@ function telegramHref(value: string | null | undefined): string | null {
               @dragover.prevent="dragOverTag(index, $event)"
               @drop.prevent="dropTag"
             >
-              <button
+              <Button
                 type="button"
                 class="quick-tag-drag-handle"
+                size="icon"
+                variant="ghost"
                 draggable="true"
                 :aria-label="t('拖动排序', 'Drag to reorder')"
                 @dragstart="startTagDrag(index, $event)"
                 @dragend="endTagDrag"
               >
                 <GripVertical class="size-4" />
-              </button>
+              </Button>
               <Input
                 :model-value="tag"
                 :maxlength="MAX_QUICK_TAG_LENGTH"

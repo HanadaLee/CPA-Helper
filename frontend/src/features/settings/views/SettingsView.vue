@@ -9,6 +9,7 @@ import {
   RefreshCwIcon,
   SaveIcon,
   Server,
+  ShieldCheckIcon,
   Trash2Icon,
   TriangleAlertIcon,
 } from '@lucide/vue'
@@ -68,6 +69,12 @@ const settingsForm = reactive({
   allow_user_account_status: false,
   allow_user_usage_history: false,
   usage_detail_retention_days: 90,
+  cas_enabled: false,
+  cas_base_url: '',
+  cas_validation_url: '',
+  cas_validation_host: '',
+  cas_public_url: '',
+  cas_auto_create_users: true,
 })
 
 const remoteStatusType = computed(() => {
@@ -134,6 +141,12 @@ async function refresh() {
     settingsForm.allow_user_account_status = settings.allow_user_account_status
     settingsForm.allow_user_usage_history = settings.allow_user_usage_history
     settingsForm.usage_detail_retention_days = settings.usage_detail_retention_days
+    settingsForm.cas_enabled = settings.cas_enabled
+    settingsForm.cas_base_url = settings.cas_base_url
+    settingsForm.cas_validation_url = settings.cas_validation_url
+    settingsForm.cas_validation_host = settings.cas_validation_host
+    settingsForm.cas_public_url = settings.cas_public_url
+    settingsForm.cas_auto_create_users = settings.cas_auto_create_users
     collectorStatus.value = status
   } catch (error) {
     message.error(errorText(error, '加载设置失败', 'Failed to load settings'))
@@ -168,6 +181,12 @@ async function saveSettings() {
       allow_user_account_status: settingsForm.allow_user_account_status,
       allow_user_usage_history: settingsForm.allow_user_usage_history,
       usage_detail_retention_days: settingsForm.usage_detail_retention_days,
+      cas_enabled: settingsForm.cas_enabled,
+      cas_base_url: settingsForm.cas_base_url,
+      cas_validation_url: settingsForm.cas_validation_url,
+      cas_validation_host: settingsForm.cas_validation_host,
+      cas_public_url: settingsForm.cas_public_url,
+      cas_auto_create_users: settingsForm.cas_auto_create_users,
     }
     const [saved] = await Promise.all([
       updateSettings(payload),
@@ -258,7 +277,7 @@ onMounted(refresh)
     <div class="grid-two">
       <Card>
         <CardHeader>
-          <CardTitle>{{ t('系统配置', 'System Settings') }}</CardTitle>
+          <CardTitle>{{ t('通用配置', 'General Settings') }}</CardTitle>
           <CardDescription>{{ t('管理界面品牌、连接入口、访问权限以及采集保留参数。', 'Manage interface branding, endpoints, access, and collection retention settings.') }}</CardDescription>
         </CardHeader>
         <CardContent>
@@ -468,6 +487,58 @@ onMounted(refresh)
         </CardContent>
       </Card>
     </div>
+
+    <Card>
+      <CardHeader>
+        <CardTitle class="flex items-center gap-2">
+          <ShieldCheckIcon class="size-4 text-muted-foreground" />
+          {{ t('CAS 单点登录', 'CAS single sign-on') }}
+        </CardTitle>
+        <CardDescription>{{ t('由 CPA-Helper 直接完成 CAS 登录、用户映射和本地会话签发；默认关闭。', 'Let CPA-Helper handle CAS login, user mapping, and local sessions directly. Disabled by default.') }}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <FieldGroup class="settings-form">
+          <Field orientation="horizontal" class="settings-switch">
+            <FieldContent>
+              <FieldTitle>{{ t('启用 CAS 登录', 'Enable CAS login') }}</FieldTitle>
+              <FieldDescription>{{ t('启用后登录页会提供 CAS 入口，退出登录时也会同步退出 CAS。', 'Adds CAS to the sign-in page and signs out from CAS when the local session ends.') }}</FieldDescription>
+            </FieldContent>
+            <Switch v-model="settingsForm.cas_enabled" />
+          </Field>
+
+          <FieldGroup class="form-grid">
+            <Field>
+              <FieldLabel for="cas-base-url">{{ t('CAS 服务地址', 'CAS server URL') }}</FieldLabel>
+              <Input id="cas-base-url" v-model="settingsForm.cas_base_url" placeholder="https://cas.example.com/cas/app" />
+              <FieldDescription>{{ t('CPA-Helper 会在此地址下调用 login、logout 和 serviceValidate。', 'CPA-Helper calls login, logout, and serviceValidate under this URL.') }}</FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel for="cas-public-url">{{ t('CPA-Helper 公网地址', 'CPA-Helper public URL') }}</FieldLabel>
+              <Input id="cas-public-url" v-model="settingsForm.cas_public_url" placeholder="https://gateway.example.com" />
+              <FieldDescription>{{ t('用于生成 CAS 回调 service，必须与浏览器实际访问地址一致。', 'Used to build the CAS callback service and must match the browser-facing URL.') }}</FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel for="cas-validation-url">{{ t('CAS 验证地址（可选）', 'CAS validation URL (optional)') }}</FieldLabel>
+              <Input id="cas-validation-url" v-model="settingsForm.cas_validation_url" placeholder="http://127.0.0.1:8080/cas/app" />
+              <FieldDescription>{{ t('仅服务端验证 Ticket 时使用；留空则使用 CAS 服务地址。', 'Used only for server-side ticket validation. Leave blank to use the CAS server URL.') }}</FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel for="cas-validation-host">{{ t('CAS 验证 Host（可选）', 'CAS validation Host (optional)') }}</FieldLabel>
+              <Input id="cas-validation-host" v-model="settingsForm.cas_validation_host" placeholder="cas.example.com" />
+              <FieldDescription>{{ t('内网验证地址需要指定原始 Host 时填写。', 'Set this when an internal validation URL requires the original Host header.') }}</FieldDescription>
+            </Field>
+          </FieldGroup>
+
+          <Field orientation="horizontal" class="settings-switch">
+            <FieldContent>
+              <FieldTitle>{{ t('自动创建普通用户', 'Automatically create standard users') }}</FieldTitle>
+              <FieldDescription>{{ t('CAS 用户首次登录时自动创建只含本地会话、没有密码的普通用户；已有用户继续沿用原角色。', 'Create passwordless standard users on first CAS sign-in; existing users keep their current roles.') }}</FieldDescription>
+            </FieldContent>
+            <Switch v-model="settingsForm.cas_auto_create_users" />
+          </Field>
+        </FieldGroup>
+      </CardContent>
+    </Card>
 
     <CodexKeeperSettingsPanel ref="keeperSettingsPanel" />
   </section>

@@ -271,6 +271,7 @@ func (a *App) Routes() http.Handler {
 	}))
 
 	mux.HandleFunc("/api/auth/", a.wrap(a.handleAuth))
+	mux.HandleFunc("/cas/", a.wrap(a.handleCAS))
 	mux.HandleFunc("/api/branding", a.wrap(a.handleBranding))
 	mux.HandleFunc("/api/settings", a.wrap(a.handleSettings))
 	mux.HandleFunc("/api/collector/status", a.wrap(a.handleCollectorStatus))
@@ -510,6 +511,15 @@ type ModelRequestExtraEndpoint struct {
 	Description string `json:"description"`
 }
 
+type CASConfig struct {
+	Enabled         bool   `json:"enabled"`
+	BaseURL         string `json:"base_url"`
+	ValidationURL   string `json:"validation_url"`
+	ValidationHost  string `json:"validation_host"`
+	PublicURL       string `json:"public_url"`
+	AutoCreateUsers bool   `json:"auto_create_users"`
+}
+
 type AppConfig struct {
 	Collector                  CollectorConfig             `json:"collector"`
 	CodexKeeper                KeeperConfig                `json:"codex_keeper"`
@@ -525,6 +535,7 @@ type AppConfig struct {
 	AllowUserAccountStatus     bool                        `json:"allow_user_account_status"`
 	AllowUserUsageHistory      bool                        `json:"allow_user_usage_history"`
 	UsageDetailRetentionDays   int                         `json:"usage_detail_retention_days"`
+	CAS                        CASConfig                   `json:"cas"`
 	SessionSecret              string                      `json:"session_secret"`
 }
 
@@ -569,7 +580,11 @@ func defaultConfig() (AppConfig, error) {
 		BrandSubtitleZH:            defaultBrandSubtitleZH,
 		BrandSubtitleEN:            defaultBrandSubtitleEN,
 		UsageDetailRetentionDays:   defaultUsageRetentionDays,
-		SessionSecret:              secret,
+		CAS: CASConfig{
+			Enabled:         false,
+			AutoCreateUsers: true,
+		},
+		SessionSecret: secret,
 	}, nil
 }
 
@@ -590,14 +605,18 @@ func (a *App) loadConfig(ctx context.Context) (AppConfig, error) {
 		       codex_keeper_priority_rules, litellm_proxy_enabled, litellm_proxy_url,
 		       model_request_url, model_request_extra_endpoints, cpamc_url,
 		       brand_name_zh, brand_name_en, brand_subtitle_zh, brand_subtitle_en, allow_user_account_status,
-		       allow_user_usage_history, usage_detail_retention_days, session_secret
+		       allow_user_usage_history, usage_detail_retention_days,
+		       cas_enabled, cas_base_url, cas_validation_url, cas_validation_host, cas_public_url,
+		       cas_auto_create_users, session_secret
 		FROM app_settings WHERE id = 1
 	`)
 	var collectorEnabled, litellmProxyEnabled, allowUserAccountStatus, allowUserUsageHistory bool
+	var casEnabled, casAutoCreateUsers bool
 	var cliaproxyURL, managementKey, queueName, keeperJSON, rulesJSON, litellmProxyURL, modelRequestURL, modelRequestExtraEndpointsJSON, cpamcURL, brandNameZH, brandNameEN, brandSubtitleZH, brandSubtitleEN, sessionSecret string
+	var casBaseURL, casValidationURL, casValidationHost, casPublicURL string
 	var batchSize, usageDetailRetentionDays int
 	var pollInterval, retryInterval float64
-	if err := row.Scan(&collectorEnabled, &cliaproxyURL, &managementKey, &queueName, &batchSize, &pollInterval, &retryInterval, &keeperJSON, &rulesJSON, &litellmProxyEnabled, &litellmProxyURL, &modelRequestURL, &modelRequestExtraEndpointsJSON, &cpamcURL, &brandNameZH, &brandNameEN, &brandSubtitleZH, &brandSubtitleEN, &allowUserAccountStatus, &allowUserUsageHistory, &usageDetailRetentionDays, &sessionSecret); err != nil {
+	if err := row.Scan(&collectorEnabled, &cliaproxyURL, &managementKey, &queueName, &batchSize, &pollInterval, &retryInterval, &keeperJSON, &rulesJSON, &litellmProxyEnabled, &litellmProxyURL, &modelRequestURL, &modelRequestExtraEndpointsJSON, &cpamcURL, &brandNameZH, &brandNameEN, &brandSubtitleZH, &brandSubtitleEN, &allowUserAccountStatus, &allowUserUsageHistory, &usageDetailRetentionDays, &casEnabled, &casBaseURL, &casValidationURL, &casValidationHost, &casPublicURL, &casAutoCreateUsers, &sessionSecret); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return AppConfig{}, fmt.Errorf("%w: app_settings id=1 is missing; run `cpa-helper migrate`", ErrAppSettingsMissing)
 		}
@@ -650,6 +669,14 @@ func (a *App) loadConfig(ctx context.Context) (AppConfig, error) {
 	cfg.AllowUserAccountStatus = allowUserAccountStatus
 	cfg.AllowUserUsageHistory = allowUserUsageHistory
 	cfg.UsageDetailRetentionDays = maxInt(usageDetailRetentionDays, minimumUsageRetentionDays, defaultUsageRetentionDays)
+	cfg.CAS = CASConfig{
+		Enabled:         casEnabled,
+		BaseURL:         strings.TrimSpace(casBaseURL),
+		ValidationURL:   strings.TrimSpace(casValidationURL),
+		ValidationHost:  strings.TrimSpace(casValidationHost),
+		PublicURL:       strings.TrimSpace(casPublicURL),
+		AutoCreateUsers: casAutoCreateUsers,
+	}
 	return cfg, nil
 }
 
@@ -714,9 +741,11 @@ func (a *App) saveConfig(ctx context.Context, cfg AppConfig) error {
 		    litellm_proxy_enabled = ?, litellm_proxy_url = ?,
 		    model_request_url = ?, model_request_extra_endpoints = ?, cpamc_url = ?,
 		    brand_name_zh = ?, brand_name_en = ?, brand_subtitle_zh = ?, brand_subtitle_en = ?, allow_user_account_status = ?,
-		    allow_user_usage_history = ?, usage_detail_retention_days = ?, session_secret = ?, updated_at = ?
+		    allow_user_usage_history = ?, usage_detail_retention_days = ?,
+		    cas_enabled = ?, cas_base_url = ?, cas_validation_url = ?, cas_validation_host = ?,
+		    cas_public_url = ?, cas_auto_create_users = ?, session_secret = ?, updated_at = ?
 		WHERE id = 1
-	`, cfg.Collector.Enabled, strings.TrimRight(strings.TrimSpace(cfg.Collector.CLIProxyURL), "/"), strings.TrimSpace(cfg.Collector.ManagementKey), strings.TrimSpace(cfg.Collector.QueueName), cfg.Collector.BatchSize, cfg.Collector.PollIntervalSeconds, cfg.Collector.RetryIntervalSeconds, string(keeperBytes), string(rulesBytes), cfg.LiteLLMProxy.Enabled, strings.TrimSpace(cfg.LiteLLMProxy.ProxyURL), strings.TrimRight(strings.TrimSpace(cfg.ModelRequestURL), "/"), string(extraEndpointBytes), strings.TrimSpace(cfg.CPAMCURL), nonBlank(strings.TrimSpace(cfg.BrandNameZH), defaultBrandNameZH), nonBlank(strings.TrimSpace(cfg.BrandNameEN), defaultBrandNameEN), nonBlank(strings.TrimSpace(cfg.BrandSubtitleZH), defaultBrandSubtitleZH), nonBlank(strings.TrimSpace(cfg.BrandSubtitleEN), defaultBrandSubtitleEN), cfg.AllowUserAccountStatus, cfg.AllowUserUsageHistory, cfg.UsageDetailRetentionDays, cfg.SessionSecret, dbTime(time.Now()))
+	`, cfg.Collector.Enabled, strings.TrimRight(strings.TrimSpace(cfg.Collector.CLIProxyURL), "/"), strings.TrimSpace(cfg.Collector.ManagementKey), strings.TrimSpace(cfg.Collector.QueueName), cfg.Collector.BatchSize, cfg.Collector.PollIntervalSeconds, cfg.Collector.RetryIntervalSeconds, string(keeperBytes), string(rulesBytes), cfg.LiteLLMProxy.Enabled, strings.TrimSpace(cfg.LiteLLMProxy.ProxyURL), strings.TrimRight(strings.TrimSpace(cfg.ModelRequestURL), "/"), string(extraEndpointBytes), strings.TrimSpace(cfg.CPAMCURL), nonBlank(strings.TrimSpace(cfg.BrandNameZH), defaultBrandNameZH), nonBlank(strings.TrimSpace(cfg.BrandNameEN), defaultBrandNameEN), nonBlank(strings.TrimSpace(cfg.BrandSubtitleZH), defaultBrandSubtitleZH), nonBlank(strings.TrimSpace(cfg.BrandSubtitleEN), defaultBrandSubtitleEN), cfg.AllowUserAccountStatus, cfg.AllowUserUsageHistory, cfg.UsageDetailRetentionDays, cfg.CAS.Enabled, strings.TrimSpace(cfg.CAS.BaseURL), strings.TrimSpace(cfg.CAS.ValidationURL), strings.TrimSpace(cfg.CAS.ValidationHost), strings.TrimSpace(cfg.CAS.PublicURL), cfg.CAS.AutoCreateUsers, cfg.SessionSecret, dbTime(time.Now()))
 	return err
 }
 
