@@ -1397,7 +1397,7 @@ onBeforeUnmount(() => {
             @update:model-value="handleQuickRangeChange"
           >
             <TabsList
-              class="quick-range-options grid h-10 w-full grid-cols-5 p-1"
+              class="quick-range-options grid h-8 w-full grid-cols-5"
               :aria-label="t('快捷时间范围', 'Quick time ranges')"
             >
               <TabsTrigger

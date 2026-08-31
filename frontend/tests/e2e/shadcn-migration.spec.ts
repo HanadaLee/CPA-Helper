@@ -111,6 +111,42 @@ test('initial navigation uses shell and dashboard skeletons instead of a blank s
   await expect(page.locator('.dashboard-metric-grid')).toBeVisible()
 })
 
+test('sidebar navigation switches immediately and lets the destination render its loading state', async ({ page }) => {
+  await setupOrLogin(page)
+  await page.goto('/admin/usage')
+  await expect(page.locator('[data-page-title]')).toContainText(/用量分析|Usage Analytics/i)
+
+  let releaseUpstreamRequest!: () => void
+  const upstreamRequestGate = new Promise<void>((resolve) => {
+    releaseUpstreamRequest = resolve
+  })
+  let releaseAuthRequest!: () => void
+  const authRequestGate = new Promise<void>((resolve) => {
+    releaseAuthRequest = resolve
+  })
+  let authRequests = 0
+  await page.route('**/api/auth/me', async (route) => {
+    authRequests += 1
+    await authRequestGate
+    await route.continue()
+  })
+  await page.route('**/api/upstreams', async (route) => {
+    await upstreamRequestGate
+    await route.continue()
+  })
+
+  await page.getByRole('button', { name: /上游管理|Upstreams/ }).click()
+  await expect(page).toHaveURL(/\/admin\/upstreams/)
+  await expect(page.locator('[data-page-title]')).toContainText(/上游管理|Upstream Management/i)
+  await expect(page.locator('[data-page-title]').filter({ hasText: /用量分析|Usage Analytics/i })).toHaveCount(0)
+  await expect(page.locator('.provider-table-shell [data-slot="skeleton"]').first()).toBeVisible()
+  await expect.poll(() => authRequests).toBeGreaterThan(0)
+
+  releaseAuthRequest()
+  releaseUpstreamRequest()
+  await expect(page.locator('.provider-table-shell [data-slot="skeleton"]')).toHaveCount(0)
+})
+
 test('all migrated routes render and core controls remain interactive', async ({ page }) => {
   const consoleErrors: string[] = []
   page.on('console', (message) => {
@@ -146,6 +182,9 @@ test('all migrated routes render and core controls remain interactive', async ({
   const analyticsRangeTrigger = page.locator('[data-slot="date-time-range-trigger"]')
   const analyticsRangeBox = await analyticsRangeTrigger.boundingBox()
   expect(analyticsRangeBox?.width ?? 0).toBeGreaterThanOrEqual(420)
+  expect(analyticsRangeBox?.height).toBe(32)
+  await expect(analyticsQuickRangeTabs.getByRole('tablist')).toHaveCSS('height', '32px')
+  await expect(analyticsRangeTrigger).toHaveCSS('font-size', '14px')
   expect(await analyticsRangeTrigger.locator('[data-slot="date-time-range-start"], [data-slot="date-time-range-end"]').evaluateAll(
     (elements) => elements.every((element) => element.scrollWidth <= element.clientWidth),
   )).toBe(true)
@@ -165,6 +204,8 @@ test('all migrated routes render and core controls remain interactive', async ({
   expect(Math.abs(analyticsFilterLayout.rightInset)).toBeLessThanOrEqual(1)
   const analyticsSearchableFilter = analyticsFilterRow.locator('.filter-combobox-trigger').first()
   await expect(analyticsSearchableFilter).toHaveCSS('font-weight', '400')
+  await expect(analyticsSearchableFilter).toHaveCSS('height', '32px')
+  await expect(analyticsSearchableFilter).toHaveCSS('font-size', '14px')
   await analyticsSearchableFilter.click()
   await expect(page.getByPlaceholder(/搜索用户|Search users/)).toBeVisible()
   await page.keyboard.press('Escape')
@@ -267,6 +308,9 @@ test('all migrated routes render and core controls remain interactive', async ({
   await authFileDialog.locator('[data-slot="dialog-footer"]').getByRole('button', { name: /关闭|Close/ }).click()
 
   await page.goto('/admin/pricing')
+  const priceMetricCards = page.locator('.price-metric-card')
+  await expect(priceMetricCards.first()).toHaveCSS('border-left-width', '1px')
+  await expect(priceMetricCards.last()).toHaveCSS('border-right-width', '1px')
   const statusFilter = page.getByRole('combobox').nth(1)
   await expect(statusFilter).toHaveAccessibleName(/全部状态|All statuses/)
   await statusFilter.click()
@@ -289,6 +333,10 @@ test('all migrated routes render and core controls remain interactive', async ({
   await priceCancelButton.click()
 
   await page.goto('/admin/upstreams')
+  await expect(page.getByText(/上游配置|Upstream configuration/, { exact: true })).toHaveCount(0)
+  await expect(page.getByText(/按提供商类型管理 API 密钥、路由和模型映射。|Manage API keys, routes, and model mappings by provider family\./, { exact: true })).toHaveCount(0)
+  await expect(page.locator('.provider-nav__item')).toHaveCount(6)
+  await expect(page.locator('.provider-nav__copy')).toHaveCount(0)
   const upstreamSearch = page.getByPlaceholder(/搜索密钥、地址或前缀|Search keys, URLs, or prefixes/)
   await expect(upstreamSearch.locator('..')).toHaveAttribute('data-slot', 'input-group')
   await expect(upstreamSearch.locator('..').locator('svg.lucide-search')).toBeVisible()
@@ -307,6 +355,7 @@ test('all migrated routes render and core controls remain interactive', async ({
   expect(upstreamAlignment).not.toBeNull()
   expect(upstreamAlignment?.yDifference).toBeLessThanOrEqual(1)
   expect(upstreamAlignment?.heightDifference).toBeLessThanOrEqual(1)
+  await expect(upstreamCreateButton).toHaveCSS('height', '32px')
   await expect(upstreamCreateButton).toHaveCSS('cursor', 'pointer')
   await upstreamCreateButton.click()
   const upstreamDrawer = page.locator('[data-slot="sheet-content"]')
@@ -570,7 +619,7 @@ test('theme and mobile navigation survive the migration', async ({ page }) => {
   await expect(page.locator('[data-slot="sidebar"][data-variant="inset"]')).toBeVisible()
   await expect.poll(() =>
     page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--cpa-primary').trim()),
-  ).toBe('oklch(55% .19 257)')
+  ).toBe('oklch(0.55 0.19 257)')
   await expect(page.locator('[data-slot="sidebar-container"]')).toHaveCSS('border-right-width', '0px')
   await expect(page.locator('[data-slot="sidebar-container"]')).toHaveCSS('width', '256px')
   const usageMenuButton = page.getByRole('button', { name: /用量分析|Usage Analytics/ })
@@ -619,7 +668,7 @@ test('theme and mobile navigation survive the migration', async ({ page }) => {
   await expect(page.locator('html')).toHaveClass(/dark/)
   await expect.poll(() =>
     page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--cpa-primary').trim()),
-  ).toBe('oklch(68% .16 257)')
+  ).toBe('oklch(0.68 0.16 257)')
   await expect(page.locator('[data-slot="sidebar-container"]')).toHaveCSS('border-right-width', '0px')
 
   await page.setViewportSize({ width: 390, height: 844 })

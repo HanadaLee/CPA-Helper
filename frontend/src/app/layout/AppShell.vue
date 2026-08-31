@@ -55,6 +55,7 @@ import { useThemePreference } from '@/shared/composables/useThemePreference'
 import { useI18n } from '@/shared/i18n'
 import type { BrandingResponse } from '@/shared/types/api'
 import { logoUrl } from '@/shared/utils/assets'
+import RouteContentSkeleton from './RouteContentSkeleton.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -215,6 +216,9 @@ const currentNavigationLabel = computed(
   () => leafMenuOptions.value.find((item) => item.key === selectedKey.value)?.label ?? brandName.value,
 )
 const isMenuNavigationPending = computed(() => navigationTarget.value !== null)
+const isAwaitingRouteCommit = computed(
+  () => navigationTarget.value !== null && route.path !== navigationTarget.value,
+)
 const recordsRoutePaths = ['/admin/records', '/account/records'] as const
 const isRecordsScrollMode = computed(
   () =>
@@ -430,7 +434,8 @@ const themeAriaLabel = computed(() => t('切换主题', 'Switch theme'))
       >
         <div v-if="isMenuNavigationPending" class="route-progress" aria-hidden="true" />
         <div class="content-scroll">
-          <RouterView v-slot="{ Component: RouteComponent, route: activeRoute }">
+          <RouteContentSkeleton v-if="isAwaitingRouteCommit" />
+          <RouterView v-else v-slot="{ Component: RouteComponent, route: activeRoute }">
             <Transition
               name="route-fade"
               mode="out-in"

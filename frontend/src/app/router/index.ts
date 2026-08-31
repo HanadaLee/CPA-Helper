@@ -1,8 +1,10 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
 import { getMe } from '@/features/auth/api/authApi'
-import { setCurrentUser } from '@/features/auth/state/currentUser'
+import { getCurrentUser, setCurrentUser } from '@/features/auth/state/currentUser'
 import type { AuthUser } from '@/shared/types/api'
+
+let skipNextBackgroundAuthRefresh = false
 
 function homePath(user: AuthUser): string {
   return user.is_admin ? '/admin/usage' : '/account/usage'
@@ -166,8 +168,12 @@ router.beforeEach(async (to) => {
     return true
   }
   try {
-    const user = await getMe()
-    setCurrentUser(user)
+    let user = getCurrentUser()
+    if (!user) {
+      user = await getMe()
+      setCurrentUser(user)
+      skipNextBackgroundAuthRefresh = true
+    }
     if (user.must_change_password && to.name !== 'change-credentials') {
       return { name: 'change-credentials' }
     }
@@ -192,4 +198,45 @@ router.beforeEach(async (to) => {
     setCurrentUser(null)
     return { name: 'login', query: { redirect: to.fullPath } }
   }
+})
+
+router.afterEach((to) => {
+  if (to.name === 'login' || to.meta.public) {
+    return
+  }
+  if (skipNextBackgroundAuthRefresh) {
+    skipNextBackgroundAuthRefresh = false
+    return
+  }
+
+  void getMe().then((user) => {
+    setCurrentUser(user)
+    if (router.currentRoute.value.fullPath !== to.fullPath) {
+      return
+    }
+    if (user.must_change_password && to.name !== 'change-credentials') {
+      void router.replace({ name: 'change-credentials' })
+      return
+    }
+    if (!user.must_change_password && to.name === 'change-credentials') {
+      void router.replace(homePath(user))
+      return
+    }
+    if (to.meta.requiresAdmin && !user.is_admin) {
+      void router.replace('/account/usage')
+      return
+    }
+    if (to.meta.requiresAccountStatus && !user.can_view_account_status) {
+      void router.replace('/account/usage')
+      return
+    }
+    if (to.meta.requiresUsageHistory && !user.can_view_usage_history) {
+      void router.replace('/account/usage')
+    }
+  }).catch(() => {
+    setCurrentUser(null)
+    if (router.currentRoute.value.fullPath === to.fullPath) {
+      void router.replace({ name: 'login', query: { redirect: to.fullPath } })
+    }
+  })
 })

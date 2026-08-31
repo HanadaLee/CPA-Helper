@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { Component } from 'vue'
 import { computed, reactive, ref } from 'vue'
 import { toast } from 'vue-sonner'
 import { useConfirmDialog } from '@/shared/ui/confirm-dialog'
@@ -61,15 +62,19 @@ import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import {
   Activity,
+  Bot,
+  Cloud,
   Clock3,
+  Code2,
   Eye,
+  KeyRound,
   MoreHorizontal,
   Network,
   Pencil,
   Plus,
   RefreshCw,
   Search,
-  ServerCog,
+  Sparkles,
   Trash2,
   X,
 } from '@lucide/vue'
@@ -87,6 +92,7 @@ interface SectionDefinition {
   name: UpstreamSection
   label: string
   description: string
+  icon: Component
 }
 
 interface UpstreamTableRow {
@@ -161,15 +167,16 @@ const sections = reactive<Record<UpstreamSection, UpstreamItem[]>>({
 const form = reactive<UpstreamForm>(emptyForm())
 
 const sectionDefinitions = computed<SectionDefinition[]>(() => [
-  { name: 'gemini-api-key', label: 'Gemini', description: t('Gemini API 密钥', 'Gemini API keys') },
-  { name: 'codex-api-key', label: 'Codex', description: t('Codex 上游', 'Codex upstreams') },
-  { name: 'xai-api-key', label: 'xAI', description: t('xAI 上游', 'xAI upstreams') },
-  { name: 'claude-api-key', label: 'Claude', description: t('Claude API 密钥', 'Claude API keys') },
-  { name: 'vertex-api-key', label: 'Vertex', description: t('Vertex API 密钥', 'Vertex API keys') },
+  { name: 'gemini-api-key', label: 'Gemini', description: t('Gemini API 密钥', 'Gemini API keys'), icon: Sparkles },
+  { name: 'codex-api-key', label: 'Codex', description: t('Codex 上游', 'Codex upstreams'), icon: Code2 },
+  { name: 'xai-api-key', label: 'xAI', description: t('xAI 上游', 'xAI upstreams'), icon: KeyRound },
+  { name: 'claude-api-key', label: 'Claude', description: t('Claude API 密钥', 'Claude API keys'), icon: Bot },
+  { name: 'vertex-api-key', label: 'Vertex', description: t('Vertex API 密钥', 'Vertex API keys'), icon: Cloud },
   {
     name: 'openai-compatibility',
     label: t('OpenAI 兼容', 'OpenAI Compatible'),
     description: t('OpenAI 兼容提供商', 'OpenAI-compatible providers'),
+    icon: Network,
   },
 ])
 
@@ -654,16 +661,13 @@ void loadUpstreams()
     </Alert>
 
     <Card class="upstream-workbench">
-      <CardHeader class="workbench-heading">
-        <CardTitle>{{ t('上游配置', 'Upstream configuration') }}</CardTitle>
-        <CardDescription>
-          {{ t('按提供商类型管理 API 密钥、路由和模型映射。', 'Manage API keys, routes, and model mappings by provider family.') }}
-        </CardDescription>
-      </CardHeader>
       <CardContent class="min-h-0 p-0">
         <div class="workbench-layout">
           <aside class="provider-nav">
-            <p class="provider-nav__title">{{ t('提供商', 'Providers') }}</p>
+            <div class="provider-nav__heading">
+              <span>{{ t('提供商', 'Providers') }}</span>
+              <Badge variant="secondary">{{ configuredFamilies }}/{{ upstreamSectionNames.length }}</Badge>
+            </div>
             <Button
               v-for="definition in sectionDefinitions"
               :key="definition.name"
@@ -672,29 +676,23 @@ void loadUpstreams()
               class="provider-nav__item"
               @click="selectSection(definition.name)"
             >
-              <span class="provider-nav__copy">
-                <strong>{{ definition.label }}</strong>
-                <small>{{ definition.description }}</small>
-              </span>
-              <Badge variant="outline">
-                {{ sections[definition.name].filter((item) => !upstreamDisabled(definition.name, item)).length }}/{{ sections[definition.name].length }}
+              <component :is="definition.icon" data-icon="inline-start" />
+              <span class="provider-nav__label">{{ definition.label }}</span>
+              <Badge variant="outline" class="provider-nav__count tabular-nums">
+                {{ sections[definition.name].length }}
               </Badge>
             </Button>
           </aside>
 
           <div class="provider-panel">
-            <div class="provider-panel__header">
-              <div class="provider-panel__title">
-                <ServerCog class="size-5 text-primary" />
-                <div>
-                  <h2>{{ activeDefinition?.label }}</h2>
-                  <p>{{ activeDefinition?.description }}</p>
-                </div>
-              </div>
-              <Badge variant="secondary">{{ sections[activeSection].length }}</Badge>
-            </div>
-
             <div class="provider-panel__toolbar">
+              <div class="provider-panel__context">
+                <component :is="activeDefinition?.icon" aria-hidden="true" />
+                <strong>{{ activeDefinition?.label }}</strong>
+                <Badge variant="secondary">
+                  {{ filteredRows.length }}/{{ sections[activeSection].length }}
+                </Badge>
+              </div>
               <InputGroup class="provider-search">
                 <InputGroupAddon>
                   <Search aria-hidden="true" />
@@ -713,9 +711,6 @@ void loadUpstreams()
                   </InputGroupButton>
                 </InputGroupAddon>
               </InputGroup>
-              <span class="provider-result-count">
-                {{ t(`显示 ${filteredRows.length} 项`, `${filteredRows.length} shown`) }}
-              </span>
               <Button class="provider-create-button" :disabled="isLoading" @click="openEditor()">
                 <Plus data-icon="inline-start" />
                 {{ t('新建', 'New') }}
@@ -1168,136 +1163,95 @@ void loadUpstreams()
   overflow: hidden;
 }
 
-.workbench-heading {
-  border-bottom: 1px solid var(--border);
-}
-
 .workbench-layout {
   display: grid;
-  grid-template-columns: 236px minmax(0, 1fr);
-  min-height: 520px;
+  grid-template-columns: 208px minmax(0, 1fr);
+  min-height: 480px;
 }
 
 .provider-nav {
+  display: flex;
   min-width: 0;
-  padding: 1rem .75rem;
+  flex-direction: column;
+  gap: .25rem;
+  padding: .75rem;
   border-right: 1px solid var(--border);
-  background: color-mix(in srgb, var(--muted) 38%, transparent);
+  background: color-mix(in srgb, var(--muted) 24%, transparent);
 }
 
-.provider-nav__title {
-  margin: 0 .625rem .625rem;
+.provider-nav__heading {
+  display: flex;
+  min-height: 2rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  padding: 0 .5rem .375rem;
   color: var(--muted-foreground);
-  font-size: .6875rem;
-  font-weight: 700;
-  letter-spacing: .08em;
-  text-transform: uppercase;
+  font-size: .75rem;
+  font-weight: 600;
 }
 
 .provider-nav__item {
   width: 100%;
-  height: auto;
-  justify-content: space-between;
-  gap: .5rem;
-  margin: .1875rem 0;
-  padding: .625rem;
+  height: 2.25rem;
+  justify-content: flex-start;
+  padding-inline: .625rem;
   text-align: left;
-  white-space: normal;
 }
 
-.provider-nav__copy {
-  display: flex;
+.provider-nav__label {
   min-width: 0;
-  flex: 1;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: .125rem;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.provider-nav__copy strong {
-  max-width: 100%;
-  overflow: hidden;
-  font-size: .8125rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.provider-nav__copy small {
-  max-width: 100%;
-  overflow: hidden;
-  color: var(--muted-foreground);
-  font-size: .6875rem;
-  font-weight: 400;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.provider-nav__count {
+  margin-left: auto;
+  min-width: 1.5rem;
 }
 
 .provider-panel {
   display: grid;
   min-width: 0;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
-.provider-panel__header {
+.provider-panel__toolbar {
   display: flex;
-  min-height: 4.5rem;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: .875rem 1.125rem;
-  border-bottom: 1px solid var(--border);
-}
-
-.provider-panel__title {
-  display: flex;
+  min-height: 3.5rem;
   min-width: 0;
   align-items: center;
   gap: .625rem;
+  padding: .75rem;
+  border-bottom: 1px solid var(--border);
 }
 
-.provider-panel__title > div {
-  min-width: 0;
+.provider-panel__context {
+  display: flex;
+  min-width: 8.5rem;
+  align-items: center;
+  gap: .5rem;
 }
 
-.provider-panel__title h2 {
-  margin: 0;
+.provider-panel__context > svg {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+  color: var(--primary);
+}
+
+.provider-panel__context strong {
   overflow: hidden;
-  font-size: 1rem;
+  font-size: .875rem;
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.provider-panel__title p {
-  margin: .125rem 0 0;
-  overflow: hidden;
-  color: var(--muted-foreground);
-  font-size: .75rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.provider-panel__toolbar {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: .625rem;
-  padding: .75rem 1rem;
-  border-bottom: 1px solid var(--border);
-  background: color-mix(in srgb, var(--muted) 24%, transparent);
-}
-
 .provider-search {
-  width: min(100%, 32.5rem);
-  min-width: 16.25rem;
-}
-
-.provider-result-count {
-  display: inline-flex;
-  align-items: center;
-  color: var(--muted-foreground);
-  font-size: .75rem;
-  white-space: nowrap;
+  width: min(100%, 30rem);
+  min-width: 13rem;
 }
 
 .provider-create-button {
@@ -1307,12 +1261,11 @@ void loadUpstreams()
 .provider-table-shell {
   min-width: 0;
   overflow-x: auto;
-  padding: 1rem;
+  padding: 0;
 }
 
 .provider-table-shell :deep(table) {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border: 0;
 }
 
 .identity-cell {
@@ -1468,12 +1421,12 @@ void loadUpstreams()
     border-bottom: 1px solid var(--border);
   }
 
-  .provider-nav__title {
+  .provider-nav__heading {
     display: none;
   }
 
   .provider-nav__item {
-    min-width: 9.75rem;
+    min-width: 8.5rem;
   }
 
   .metric-grid {
@@ -1482,13 +1435,12 @@ void loadUpstreams()
 }
 
 @media (max-width: 700px) {
-  .provider-panel__header {
-    min-height: 4rem;
-    padding: .75rem 1rem;
-  }
-
   .provider-panel__toolbar {
     flex-wrap: wrap;
+  }
+
+  .provider-panel__context {
+    min-width: 0;
   }
 
   .provider-search {
@@ -1496,16 +1448,12 @@ void loadUpstreams()
     min-width: 0;
   }
 
-  .provider-result-count {
+  .provider-create-button {
     order: 2;
   }
 
-  .provider-create-button {
-    order: 3;
-  }
-
   .provider-table-shell {
-    padding: .75rem;
+    padding: 0;
   }
 
   .detail-row,

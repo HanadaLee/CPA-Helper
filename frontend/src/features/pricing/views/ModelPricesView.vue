@@ -683,7 +683,7 @@ onMounted(() => {
     </div>
 
     <div class="metric-grid price-metrics">
-      <Card v-for="metric in priceMetrics" :key="metric.key" class="price-metric-card">
+      <Card v-for="metric in priceMetrics" :key="metric.key" class="price-metric-card border border-border ring-0">
         <CardHeader class="flex flex-row items-start justify-between gap-3">
           <div class="flex min-w-0 flex-col gap-1">
             <CardDescription>{{ metric.label }}</CardDescription>
