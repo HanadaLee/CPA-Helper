@@ -1875,7 +1875,6 @@ onBeforeUnmount(() => {
 .dashboard-layout {
   display: grid;
   gap: 16px;
-  margin-top: 16px;
   min-width: 0;
 }
 
