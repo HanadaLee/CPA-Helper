@@ -978,19 +978,19 @@ onBeforeUnmount(() => {
         <Table :class="recordsTableClass">
           <TableHeader class="sticky top-0 bg-card">
             <TableRow>
-              <TableHead class="w-[138px]">{{ t('时间', 'Time') }}</TableHead>
-              <TableHead v-if="!isAccountScope" class="w-[118px]">{{ t('用户昵称', 'User nickname') }}</TableHead>
+              <TableHead class="w-[164px]">{{ t('时间', 'Time') }}</TableHead>
+              <TableHead v-if="!isAccountScope" class="w-[106px]">{{ t('用户昵称', 'User nickname') }}</TableHead>
               <TableHead class="w-[110px]">{{ t('KEY 描述', 'Key description') }}</TableHead>
-              <TableHead class="w-[152px]">{{ t('模型', 'Model') }}</TableHead>
+              <TableHead class="w-[144px]">{{ t('模型', 'Model') }}</TableHead>
               <TableHead class="w-[72px]">{{ t('结果', 'Result') }}</TableHead>
               <TableHead class="w-[92px] text-right">{{ t('首字耗时', 'TTFT') }}</TableHead>
               <TableHead class="w-[92px] text-right">{{ t('总耗时', 'Latency') }}</TableHead>
               <TableHead class="w-[86px] text-right">{{ t('输入', 'Input') }}</TableHead>
-              <TableHead class="w-[132px] text-right">{{ t('输出', 'Output') }}</TableHead>
+              <TableHead class="w-[124px] text-right">{{ t('输出', 'Output') }}</TableHead>
               <TableHead class="w-[106px] text-right">{{ t('缓存', 'Cache') }}</TableHead>
               <TableHead class="w-[108px] text-right">{{ t('总 Token', 'Total tokens') }}</TableHead>
               <TableHead class="w-[100px]">{{ t('服务商', 'Provider') }}</TableHead>
-              <TableHead class="w-[132px]">{{ t('请求 ID', 'Request ID') }}</TableHead>
+              <TableHead class="w-[122px]">{{ t('请求 ID', 'Request ID') }}</TableHead>
               <TableHead class="w-[72px]"><span class="sr-only">{{ t('操作', 'Actions') }}</span></TableHead>
             </TableRow>
           </TableHeader>

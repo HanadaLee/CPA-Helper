@@ -44,7 +44,7 @@ const calendarRange = shallowRef<DateRange | null>(null)
 const locale = computed(() => currentLanguage.value === 'zh' ? 'zh-CN' : 'en-US')
 
 function formatDateTimeLocal(timestamp: number): string {
-  return formatDateTime(timestamp).replace(' ', 'T')
+  return formatDateTime(timestamp).replace(' ', 'T').slice(0, 16)
 }
 
 function parseDateTimeLocal(value: string): number | null {
@@ -66,7 +66,7 @@ function dateValueToInputDate(value: { year: number, month: number, day: number 
 }
 
 function formatRangePart(timestamp: number): string {
-  return formatDateTime(timestamp)
+  return formatDateTime(timestamp).slice(0, 16)
 }
 
 const startText = computed(() => props.modelValue ? formatRangePart(props.modelValue[0]) : '')
@@ -101,11 +101,11 @@ function handleOpenChange(value: boolean) {
 function updateCalendarRange(value: DateRange) {
   calendarRange.value = value
   if (value.start) {
-    const time = draftStart.value.slice(11, 19) || '00:00:00'
+    const time = draftStart.value.slice(11, 16) || '00:00'
     draftStart.value = `${dateValueToInputDate(value.start)}T${time}`
   }
   if (value.end) {
-    const time = draftEnd.value.slice(11, 19) || '23:59:59'
+    const time = draftEnd.value.slice(11, 16) || '23:59'
     draftEnd.value = `${dateValueToInputDate(value.end)}T${time}`
   }
 }
@@ -200,8 +200,8 @@ function cancel() {
             <Input
               :id="`${fieldId}-start`"
               type="time"
-              :model-value="draftStart.slice(11, 19)"
-              step="1"
+              :model-value="draftStart.slice(11, 16)"
+              step="60"
               :disabled="!calendarRange?.start"
               @update:model-value="updateTime('start', $event)"
             />
@@ -211,8 +211,8 @@ function cancel() {
             <Input
               :id="`${fieldId}-end`"
               type="time"
-              :model-value="draftEnd.slice(11, 19)"
-              step="1"
+              :model-value="draftEnd.slice(11, 16)"
+              step="60"
               :disabled="!calendarRange?.end"
               @update:model-value="updateTime('end', $event)"
             />

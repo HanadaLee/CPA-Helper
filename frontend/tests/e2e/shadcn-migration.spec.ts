@@ -230,6 +230,7 @@ test('all migrated routes render and core controls remain interactive', async ({
   const analyticsRangeBox = await analyticsRangeTrigger.boundingBox()
   expect(analyticsRangeBox?.width ?? 0).toBeGreaterThanOrEqual(420)
   expect(analyticsRangeBox?.height).toBe(32)
+  expect(await analyticsRangeTrigger.innerText()).not.toMatch(/\d{2}:\d{2}:\d{2}/)
   await expect(analyticsQuickRangeTabs.getByRole('tablist')).toHaveCSS('height', '32px')
   await expect(analyticsRangeTrigger).toHaveCSS('font-size', '14px')
   expect(await analyticsRangeTrigger.locator('[data-slot="date-time-range-start"], [data-slot="date-time-range-end"]').evaluateAll(
@@ -373,6 +374,14 @@ test('all migrated routes render and core controls remain interactive', async ({
   await expect(pricePagination.locator('[data-slot="pagination-last"]')).toBeVisible()
   await page.getByRole('button', { name: /新增价格|Add price/ }).click()
   const priceDialog = page.getByRole('dialog', { name: /新增价格|Add price/ })
+  const fastMultiplierInput = priceDialog.locator('#price-fast-multiplier')
+  await fastMultiplierInput.fill('2')
+  await expect(fastMultiplierInput).toHaveValue('2')
+  await expect(fastMultiplierInput).toHaveAttribute('step', '0.01')
+  expect(await fastMultiplierInput.evaluate((input: HTMLInputElement) => ({
+    valid: input.validity.valid,
+    stepMismatch: input.validity.stepMismatch,
+  }))).toEqual({ valid: true, stepMismatch: false })
   const priceCancelButton = priceDialog.getByRole('button', { name: /取消|Cancel/ })
   await expect(priceCancelButton).toHaveCSS('cursor', 'pointer')
   await expect(priceCancelButton).toHaveCSS('border-top-width', '1px')
@@ -503,6 +512,7 @@ test('all migrated routes render and core controls remain interactive', async ({
   const recordsRangeTrigger = page.locator('[data-slot="date-time-range-trigger"]')
   const recordsRangeBox = await recordsRangeTrigger.boundingBox()
   expect(recordsRangeBox?.width ?? 0).toBeGreaterThanOrEqual(420)
+  expect(await recordsRangeTrigger.innerText()).not.toMatch(/\d{2}:\d{2}:\d{2}/)
   expect(await recordsRangeTrigger.locator('[data-slot="date-time-range-start"], [data-slot="date-time-range-end"]').evaluateAll(
     (elements) => elements.every((element) => element.scrollWidth <= element.clientWidth),
   )).toBe(true)
@@ -520,8 +530,19 @@ test('all migrated routes render and core controls remain interactive', async ({
   expect(Math.abs(recordsFilterLayout.rightInset)).toBeLessThanOrEqual(1)
   await page.locator('[data-slot="date-time-range-trigger"]').click()
   await expect(page.locator('[data-slot="range-calendar"]')).toBeVisible()
+  const rangeTimeInputs = page.locator('input[type="time"]')
+  await expect(rangeTimeInputs).toHaveCount(2)
+  await expect(rangeTimeInputs.nth(0)).toHaveAttribute('step', '60')
+  await expect(rangeTimeInputs.nth(1)).toHaveAttribute('step', '60')
+  expect(await rangeTimeInputs.evaluateAll((inputs: HTMLInputElement[]) =>
+    inputs.every((input) => /^\d{2}:\d{2}$/.test(input.value)),
+  )).toBe(true)
   await page.keyboard.press('Escape')
   await expect(page.locator('table')).toBeVisible()
+  const adminTimeHeaderBox = await page.getByRole('columnheader', { name: /^(时间|Time)$/ }).boundingBox()
+  const adminNicknameHeaderBox = await page.getByRole('columnheader', { name: /^(用户昵称|User nickname)$/ }).boundingBox()
+  expect(adminTimeHeaderBox?.width ?? 0).toBeGreaterThanOrEqual(160)
+  expect(adminNicknameHeaderBox?.width ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(110)
   await expect(page.getByRole('columnheader', { name: /^(来源|Source)$/ })).toHaveCount(0)
   await expect(page.getByRole('columnheader', { name: /^(思考|Reasoning)$/ })).toHaveCount(0)
   await expect(page.getByRole('columnheader', { name: /^(接口|Endpoint)$/ })).toHaveCount(0)
@@ -540,6 +561,11 @@ test('all migrated routes render and core controls remain interactive', async ({
   await expect(requestDetailSheet).toHaveCSS('border-left-width', '0px')
   await expect(requestDetailSheet.locator('.mono-json')).toHaveCSS('overflow-x', 'auto')
   await requestDetailSheet.getByRole('button', { name: /Close/ }).click()
+
+  await page.goto('/account/records')
+  const accountTimeHeaderBox = await page.getByRole('columnheader', { name: /^(时间|Time)$/ }).boundingBox()
+  expect(accountTimeHeaderBox?.width ?? 0).toBeGreaterThanOrEqual(160)
+  await expect(page.getByRole('columnheader', { name: /^(用户昵称|User nickname)$/ })).toHaveCount(0)
 
   await page.goto('/admin/settings')
   const brandingSection = page.locator('.settings-section').filter({ hasText: /界面品牌|Interface branding/ })

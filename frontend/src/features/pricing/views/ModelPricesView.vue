@@ -949,7 +949,7 @@ onMounted(() => {
                 id="price-fast-multiplier"
                 type="number"
                 min="0.01"
-                step="0.1"
+                step="0.01"
                 :model-value="form.fast_multiplier"
                 @update:model-value="setPriceNumber('fast_multiplier', $event)"
               />
