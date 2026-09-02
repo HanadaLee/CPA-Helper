@@ -3394,8 +3394,8 @@ onBeforeUnmount(() => {
 
 .account-section {
   display: grid;
-  gap: 12px;
-  padding: 16px 16px 0;
+  gap: 8px;
+  padding: 8px 16px 0;
 }
 
 .account-section-actions-row {
