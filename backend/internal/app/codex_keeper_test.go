@@ -34,21 +34,29 @@ type keeperSettingsResponse struct {
 
 type keeperAccountsResponse struct {
 	Items []struct {
-		Name           string  `json:"name"`
-		AccountType    *string `json:"account_type"`
-		Disabled       bool    `json:"disabled"`
-		Priority       *int    `json:"priority"`
-		PrimaryResetAt *string `json:"primary_reset_at"`
-		LastStatusCode *int    `json:"last_status_code"`
-		LastError      *string `json:"last_error"`
-		LatestAction   *string `json:"latest_action"`
-		LastCheckedAt  *string `json:"last_checked_at"`
-		LastHealthyAt  *string `json:"last_healthy_at"`
+		Name           string                      `json:"name"`
+		AccountType    *string                     `json:"account_type"`
+		Disabled       bool                        `json:"disabled"`
+		Priority       *int                        `json:"priority"`
+		PrimaryResetAt *string                     `json:"primary_reset_at"`
+		LastStatusCode *int                        `json:"last_status_code"`
+		LastError      *string                     `json:"last_error"`
+		LatestAction   *string                     `json:"latest_action"`
+		LastCheckedAt  *string                     `json:"last_checked_at"`
+		LastHealthyAt  *string                     `json:"last_healthy_at"`
+		ResetCredits   *keeperResetCreditsResponse `json:"reset_credits"`
 	} `json:"items"`
 	PriorityRules []struct {
 		AccountType string `json:"account_type"`
 		Priority    int    `json:"priority"`
 	} `json:"priority_rules"`
+}
+
+type keeperResetCreditsResponse struct {
+	AvailableCount   int     `json:"available_count"`
+	TotalEarnedCount *int    `json:"total_earned_count"`
+	EarliestExpires  *string `json:"earliest_expires_at"`
+	CachedAt         string  `json:"cached_at"`
 }
 
 type keeperOAuthStartResponse struct {
@@ -275,10 +283,194 @@ func TestKeeperAccountStatusCanBeSharedReadOnly(t *testing.T) {
 	}, memberCookies, http.StatusForbidden)
 	requestJSONExpectStatus(t, handler, http.MethodPost, "/api/codex-keeper/accounts/sync", nil, memberCookies, http.StatusForbidden)
 	requestJSONExpectStatus(t, handler, http.MethodPost, "/api/codex-keeper/accounts/member.json/disable", nil, memberCookies, http.StatusForbidden)
+	requestJSONExpectStatus(t, handler, http.MethodPost, "/api/codex-keeper/accounts/member.json/reset-credits/query", nil, memberCookies, http.StatusForbidden)
+	requestJSONExpectStatus(t, handler, http.MethodPost, "/api/codex-keeper/accounts/member.json/reset-credits/consume", nil, memberCookies, http.StatusForbidden)
 	requestJSONExpectStatus(t, handler, http.MethodPatch, "/api/codex-keeper/accounts/member.json/priority", map[string]any{
 		"priority": 10,
 	}, memberCookies, http.StatusForbidden)
 	requestJSONExpectStatus(t, handler, http.MethodDelete, "/api/codex-keeper/accounts/member.json", nil, memberCookies, http.StatusForbidden)
+}
+
+func TestKeeperResetCreditsQueryCachesAndConsumeRefreshes(t *testing.T) {
+	t.Setenv("CPA_HELPER_DATA_DIR", t.TempDir())
+
+	const authName = "reset-credit.json"
+	var mu sync.Mutex
+	availableCount := 2
+	queryCalls := 0
+	consumeCalls := 0
+	invalidRequest := ""
+	cpa := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Header.Get("Authorization") != "Bearer test-management-key" {
+			http.Error(w, "missing management authorization", http.StatusUnauthorized)
+			return
+		}
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v0/management/auth-files":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"files": []map[string]any{{"name": authName, "type": "codex"}},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v0/management/auth-files/download":
+			if r.URL.Query().Get("name") != authName {
+				http.NotFound(w, r)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"name": authName, "type": "codex", "email": "reset@example.com",
+				"auth_index": authName, "account_id": "account-reset", "access_token": "test-token",
+				"account_type": "plus", "priority": 4,
+			})
+		case r.Method == http.MethodPost && r.URL.Path == "/v0/management/api-call":
+			var payload struct {
+				AuthIndex string            `json:"auth_index"`
+				Method    string            `json:"method"`
+				URL       string            `json:"url"`
+				Header    map[string]string `json:"header"`
+				Data      string            `json:"data"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if payload.AuthIndex != authName || payload.Header["Chatgpt-Account-Id"] != "account-reset" {
+				mu.Lock()
+				invalidRequest = "missing account routing fields"
+				mu.Unlock()
+			}
+			switch {
+			case strings.HasSuffix(payload.URL, "/wham/usage"):
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"status_code": http.StatusOK,
+					"body": map[string]any{
+						"plan_type": "plus",
+						"rate_limit_reset_credits": map[string]any{
+							"available_count":    2,
+							"total_earned_count": 3,
+							"credits": []map[string]any{
+								{"id": "embedded", "status": "available", "expires_at": "2026-09-06T00:00:00Z"},
+							},
+						},
+						"rate_limit": map[string]any{
+							"primary_window":   map[string]any{"used_percent": 25, "reset_after_seconds": 3600},
+							"secondary_window": map[string]any{"used_percent": 10, "reset_after_seconds": 86400},
+						},
+					},
+				})
+			case strings.HasSuffix(payload.URL, "/rate-limit-reset-credits") && payload.Method == http.MethodGet:
+				mu.Lock()
+				queryCalls++
+				count := availableCount
+				mu.Unlock()
+				credits := []map[string]any{}
+				if count > 0 {
+					credits = append(credits, map[string]any{"id": "later", "status": "available", "expires_at": "2026-09-10T00:00:00Z"})
+				}
+				if count > 1 {
+					credits = append(credits, map[string]any{"id": "earlier", "status": "available", "expires_at": "2026-09-05T00:00:00Z"})
+				}
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"status_code": http.StatusOK,
+					"body":        map[string]any{"available_count": count, "total_earned_count": 3, "credits": credits},
+				})
+			case strings.HasSuffix(payload.URL, "/rate-limit-reset-credits/consume") && payload.Method == http.MethodPost:
+				var data struct {
+					RedeemRequestID string `json:"redeem_request_id"`
+				}
+				if err := json.Unmarshal([]byte(payload.Data), &data); err != nil || !regexp.MustCompile(`^[0-9a-f-]{36}$`).MatchString(data.RedeemRequestID) {
+					mu.Lock()
+					invalidRequest = "invalid redeem_request_id"
+					mu.Unlock()
+				}
+				mu.Lock()
+				consumeCalls++
+				if availableCount > 0 {
+					availableCount--
+				}
+				mu.Unlock()
+				_ = json.NewEncoder(w).Encode(map[string]any{"status_code": http.StatusOK, "body": map[string]any{"status": "ok"}})
+			default:
+				http.Error(w, "unexpected api-call target", http.StatusBadRequest)
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer cpa.Close()
+
+	app, err := backendApp.New()
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	defer app.Close()
+	handler := app.Routes()
+	cookies := requestJSON(t, handler, http.MethodPost, "/api/auth/setup", map[string]any{
+		"username": "admin", "password": "test-password", "nickname": "Admin",
+	}, nil, nil)
+	requestJSON(t, handler, http.MethodPut, "/api/settings", map[string]any{
+		"cliaproxy_url": cpa.URL, "management_key": "test-management-key", "collector_enabled": false,
+	}, cookies, nil)
+	requestJSON(t, handler, http.MethodPut, "/api/codex-keeper/settings", map[string]any{
+		"schedule_cron": "0 0 29 2 *", "dry_run": true, "worker_threads": 1,
+		"cpa_timeout_seconds": 1, "usage_timeout_seconds": 1,
+	}, cookies, nil)
+	requestJSON(t, handler, http.MethodPost, "/api/codex-keeper/accounts/refresh", map[string]any{
+		"auth_names": []string{authName},
+	}, cookies, nil)
+	waitForKeeperAccounts(t, handler, cookies, 1)
+
+	accountsBefore := keeperAccountsResponse{}
+	requestJSON(t, handler, http.MethodGet, "/api/codex-keeper/accounts", nil, cookies, &accountsBefore)
+	if accountsBefore.Items[0].ResetCredits == nil || accountsBefore.Items[0].ResetCredits.AvailableCount != 2 {
+		t.Fatalf("embedded reset_credits = %+v, want available=2", accountsBefore.Items[0].ResetCredits)
+	}
+	mu.Lock()
+	if queryCalls != 0 {
+		t.Fatalf("standalone reset-credit query calls after embedded usage = %d, want 0", queryCalls)
+	}
+	mu.Unlock()
+	if accountsBefore.Items[0].ResetCredits.EarliestExpires == nil || !strings.HasPrefix(*accountsBefore.Items[0].ResetCredits.EarliestExpires, "2026-09-06T08:00:00") {
+		t.Fatalf("embedded reset-credit expiry = %v", accountsBefore.Items[0].ResetCredits.EarliestExpires)
+	}
+
+	first := keeperResetCreditsResponse{}
+	requestJSON(t, handler, http.MethodPost, "/api/codex-keeper/accounts/reset-credit.json/reset-credits/query", nil, cookies, &first)
+	if first.AvailableCount != 2 || first.TotalEarnedCount == nil || *first.TotalEarnedCount != 3 {
+		t.Fatalf("first reset credits = %+v, want available=2 total=3", first)
+	}
+	if first.EarliestExpires == nil || !strings.HasPrefix(*first.EarliestExpires, "2026-09-05T08:00:00") {
+		t.Fatalf("earliest expiry = %v, want 2026-09-05 in app timezone", first.EarliestExpires)
+	}
+
+	accountsAfter := keeperAccountsResponse{}
+	requestJSON(t, handler, http.MethodGet, "/api/codex-keeper/accounts", nil, cookies, &accountsAfter)
+	if accountsAfter.Items[0].ResetCredits == nil || accountsAfter.Items[0].ResetCredits.AvailableCount != 2 {
+		t.Fatalf("cached reset credits in account response = %+v, want available=2", accountsAfter.Items[0].ResetCredits)
+	}
+	mu.Lock()
+	if queryCalls != 1 {
+		t.Fatalf("query calls after cached account reload = %d, want 1", queryCalls)
+	}
+	mu.Unlock()
+
+	second := keeperResetCreditsResponse{}
+	requestJSON(t, handler, http.MethodPost, "/api/codex-keeper/accounts/reset-credit.json/reset-credits/query", nil, cookies, &second)
+	consumed := keeperResetCreditsResponse{}
+	requestJSON(t, handler, http.MethodPost, "/api/codex-keeper/accounts/reset-credit.json/reset-credits/consume", nil, cookies, &consumed)
+	if consumed.AvailableCount != 1 {
+		t.Fatalf("available after consume = %d, want 1", consumed.AvailableCount)
+	}
+	mu.Lock()
+	finalQueryCalls := queryCalls
+	finalConsumeCalls := consumeCalls
+	finalInvalidRequest := invalidRequest
+	mu.Unlock()
+	if finalQueryCalls != 3 || finalConsumeCalls != 1 {
+		t.Fatalf("query calls = %d, consume calls = %d, want 3 and 1", finalQueryCalls, finalConsumeCalls)
+	}
+	if finalInvalidRequest != "" {
+		t.Fatal(finalInvalidRequest)
+	}
 }
 
 func TestKeeperOAuthProxyUsesManagementAuthAndCodexProvider(t *testing.T) {

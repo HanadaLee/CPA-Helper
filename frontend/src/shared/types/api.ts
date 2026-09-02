@@ -278,6 +278,13 @@ export interface CodexKeeperQuotaWindowUsage {
   window_source: string
 }
 
+export interface CodexKeeperResetCredits {
+  available_count: number
+  total_earned_count: number | null
+  earliest_expires_at: string | null
+  cached_at: string
+}
+
 export interface CodexKeeperAccount {
   name: string
   email: string | null
@@ -298,6 +305,7 @@ export interface CodexKeeperAccount {
   latest_action: string | null
   last_checked_at: string | null
   last_healthy_at: string | null
+  reset_credits: CodexKeeperResetCredits | null
 }
 
 export interface CodexKeeperAuthFileFields {

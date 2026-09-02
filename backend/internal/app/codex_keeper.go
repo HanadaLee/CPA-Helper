@@ -24,10 +24,14 @@ import (
 	"sync"
 	"time"
 	"unicode"
+
+	"github.com/google/uuid"
 )
 
 const (
 	keeperUsageURL                 = "https://chatgpt.com/backend-api/wham/usage"
+	keeperResetCreditsURL          = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits"
+	keeperResetCreditsConsumeURL   = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume"
 	keeperLogFilePrefix            = "codex-keeper-"
 	keeperLogComponent             = "codex_keeper"
 	keeperLogRetainedFiles         = 3
@@ -173,6 +177,7 @@ type keeperAccountResponse struct {
 	LatestAction           *string                         `json:"latest_action"`
 	LastCheckedAt          *string                         `json:"last_checked_at"`
 	LastHealthyAt          *string                         `json:"last_healthy_at"`
+	ResetCredits           *keeperResetCreditsResponse     `json:"reset_credits"`
 }
 
 type keeperQuotaWindowUsageResponse struct {
@@ -223,6 +228,18 @@ type keeperWindowUsageCache struct {
 	key       string
 	expiresAt time.Time
 	usages    map[string]keeperQuotaWindowUsagePair
+}
+
+type keeperResetCreditsResponse struct {
+	AvailableCount   int     `json:"available_count"`
+	TotalEarnedCount *int    `json:"total_earned_count"`
+	EarliestExpires  *string `json:"earliest_expires_at"`
+	CachedAt         string  `json:"cached_at"`
+}
+
+type keeperResetCreditCache struct {
+	mu    sync.RWMutex
+	items map[string]keeperResetCreditsResponse
 }
 
 type keeperAuthState struct {
@@ -935,7 +952,7 @@ func (a *App) handleCodexKeeper(w http.ResponseWriter, r *http.Request) error {
 			return err
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"items":          keeperAccountResponses(accounts, windowUsages),
+			"items":          a.keeperAccountResponses(accounts, windowUsages),
 			"priority_rules": sortedPriorityRules(cfg.CodexKeeperPriorityRule),
 		})
 		return nil
@@ -1101,9 +1118,45 @@ func (a *App) handleCodexKeeper(w http.ResponseWriter, r *http.Request) error {
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
 		return nil
+	case len(parts) == 4 && parts[0] == "accounts" && parts[2] == "reset-credits" && parts[3] == "query":
+		if err := requireMethod(r, http.MethodPost); err != nil {
+			return err
+		}
+		authName, err := keeperAccountNameFromPath(parts[1])
+		if err != nil {
+			return err
+		}
+		result, err := a.queryKeeperResetCredits(r.Context(), authName)
+		if err != nil {
+			return err
+		}
+		writeJSON(w, http.StatusOK, result)
+		return nil
+	case len(parts) == 4 && parts[0] == "accounts" && parts[2] == "reset-credits" && parts[3] == "consume":
+		if err := requireMethod(r, http.MethodPost); err != nil {
+			return err
+		}
+		authName, err := keeperAccountNameFromPath(parts[1])
+		if err != nil {
+			return err
+		}
+		result, err := a.consumeKeeperResetCredit(r.Context(), authName)
+		if err != nil {
+			return err
+		}
+		writeJSON(w, http.StatusOK, result)
+		return nil
 	default:
 		return notFoundError("Not Found")
 	}
+}
+
+func keeperAccountNameFromPath(value string) (string, error) {
+	authName, err := url.PathUnescape(value)
+	if err != nil || strings.TrimSpace(authName) == "" || strings.ContainsAny(authName, `/\\`) {
+		return "", validationError("账号名称无效")
+	}
+	return authName, nil
 }
 
 func keeperSettingsResponse(cfg AppConfig) map[string]any {
@@ -1131,7 +1184,7 @@ func keeperSettingsResponse(cfg AppConfig) map[string]any {
 	}
 }
 
-func keeperAccountResponses(accounts []keeperAccount, windowUsages map[string]keeperQuotaWindowUsagePair) []keeperAccountResponse {
+func (a *App) keeperAccountResponses(accounts []keeperAccount, windowUsages map[string]keeperQuotaWindowUsagePair) []keeperAccountResponse {
 	responses := make([]keeperAccountResponse, 0, len(accounts))
 	for _, account := range accounts {
 		usage := windowUsages[account.Name]
@@ -1155,6 +1208,7 @@ func keeperAccountResponses(accounts []keeperAccount, windowUsages map[string]ke
 			LatestAction:           account.LatestAction,
 			LastCheckedAt:          apiDateTimePtr(account.LastCheckedAt),
 			LastHealthyAt:          apiDateTimePtr(account.LastHealthyAt),
+			ResetCredits:           a.cachedKeeperResetCredits(account.Name),
 		})
 	}
 	return responses
@@ -1182,6 +1236,32 @@ func keeperQuotaWindowUsageResponseFrom(usage *keeperQuotaWindowUsage) *keeperQu
 		Stale:            usage.Stale,
 		WindowSource:     usage.WindowSource,
 	}
+}
+
+func (a *App) cachedKeeperResetCredits(authName string) *keeperResetCreditsResponse {
+	a.keeperResetCache.mu.RLock()
+	defer a.keeperResetCache.mu.RUnlock()
+	result, ok := a.keeperResetCache.items[authName]
+	if !ok {
+		return nil
+	}
+	copy := result
+	return &copy
+}
+
+func (a *App) storeKeeperResetCredits(authName string, result keeperResetCreditsResponse) {
+	a.keeperResetCache.mu.Lock()
+	defer a.keeperResetCache.mu.Unlock()
+	if a.keeperResetCache.items == nil {
+		a.keeperResetCache.items = map[string]keeperResetCreditsResponse{}
+	}
+	a.keeperResetCache.items[authName] = result
+}
+
+func (a *App) deleteCachedKeeperResetCredits(authName string) {
+	a.keeperResetCache.mu.Lock()
+	defer a.keeperResetCache.mu.Unlock()
+	delete(a.keeperResetCache.items, authName)
 }
 
 func (a *App) keeperQuotaWindowUsages(ctx context.Context, accounts []keeperAccount) (map[string]keeperQuotaWindowUsagePair, error) {
@@ -2548,6 +2628,9 @@ func (a *App) processKeeperAuth(ctx context.Context, cfg AppConfig, authInfo map
 		_ = a.upsertKeeperState(ctx, result)
 		return result
 	}
+	if resetCredits := keeperEmbeddedResetCredits(usageResult.JSONData); resetCredits != nil {
+		a.storeKeeperResetCredits(name, keeperResetCreditsResponseFromBody(resetCredits, time.Now()))
+	}
 	usage := parseKeeperUsageInfo(usageResult.JSONData)
 	result.AccountType = accountTypeFromKeeperDetail(merged, &usage)
 	result.PrimaryUsedPercent = &usage.PrimaryUsedPercent
@@ -3646,6 +3729,219 @@ func keeperShouldRetryRequest(ctx context.Context, attempt, attempts int, respon
 	return response != nil && response.StatusCode >= 500
 }
 
+func (a *App) queryKeeperResetCredits(ctx context.Context, authName string) (*keeperResetCreditsResponse, error) {
+	cfg, detail, err := a.keeperResetCreditsAccount(ctx, authName)
+	if err != nil {
+		return nil, err
+	}
+	result, err := a.fetchKeeperResetCredits(ctx, cfg, detail)
+	if err != nil {
+		return nil, err
+	}
+	a.storeKeeperResetCredits(authName, *result)
+	return result, nil
+}
+
+func (a *App) consumeKeeperResetCredit(ctx context.Context, authName string) (*keeperResetCreditsResponse, error) {
+	cfg, detail, err := a.keeperResetCreditsAccount(ctx, authName)
+	if err != nil {
+		return nil, err
+	}
+	body, err := json.Marshal(map[string]string{"redeem_request_id": uuid.NewString()})
+	if err != nil {
+		return nil, err
+	}
+	if _, err := a.keeperResetCreditsAPICall(ctx, cfg, detail, http.MethodPost, keeperResetCreditsConsumeURL, string(body), "使用重置次数"); err != nil {
+		return nil, err
+	}
+
+	// A successful redemption changes the upstream value, so an older cached
+	// count must never be returned if the follow-up query fails.
+	a.deleteCachedKeeperResetCredits(authName)
+	result, err := a.fetchKeeperResetCredits(ctx, cfg, detail)
+	if err != nil {
+		return nil, validationError("已使用重置次数，但重新查询剩余次数失败：" + err.Error())
+	}
+	a.storeKeeperResetCredits(authName, *result)
+	if a.keeper != nil {
+		if err := a.keeper.StartAccounts([]string{authName}); err != nil {
+			slog.Warn("start account inspection after reset credit consumption", "auth_name", authName, "error", err)
+		}
+	}
+	return result, nil
+}
+
+func (a *App) keeperResetCreditsAccount(ctx context.Context, authName string) (AppConfig, map[string]any, error) {
+	cfg, err := a.loadConfig(ctx)
+	if err != nil {
+		return AppConfig{}, nil, err
+	}
+	state, err := a.getKeeperState(ctx, authName)
+	if err != nil {
+		return AppConfig{}, nil, err
+	}
+	detail, err := a.getKeeperRemoteAuthFile(ctx, cfg, state.Name)
+	if err != nil {
+		return AppConfig{}, nil, err
+	}
+	if detail == nil {
+		return AppConfig{}, nil, notFoundError("认证文件不存在")
+	}
+	if keeperRemoteAuthIndex(detail) == nil && state.AuthIndex != nil {
+		detail["auth_index"] = *state.AuthIndex
+	}
+	if keeperRemoteAuthIndex(detail) == nil {
+		return AppConfig{}, nil, validationError("认证文件缺少 auth_index，无法查询重置次数")
+	}
+	return cfg, detail, nil
+}
+
+func (a *App) fetchKeeperResetCredits(ctx context.Context, cfg AppConfig, detail map[string]any) (*keeperResetCreditsResponse, error) {
+	body, err := a.keeperResetCreditsAPICall(ctx, cfg, detail, http.MethodGet, keeperResetCreditsURL, "", "查询重置次数")
+	if err != nil {
+		return nil, err
+	}
+	result := keeperResetCreditsResponseFromBody(body, time.Now())
+	return &result, nil
+}
+
+func keeperResetCreditsResponseFromBody(body map[string]any, cachedAt time.Time) keeperResetCreditsResponse {
+	return keeperResetCreditsResponse{
+		AvailableCount:   keeperResetCreditsAvailableCount(body),
+		TotalEarnedCount: keeperIntPtr(body["total_earned_count"], body["totalEarnedCount"]),
+		EarliestExpires:  keeperResetCreditsEarliestExpiry(body),
+		CachedAt:         apiDateTime(cachedAt),
+	}
+}
+
+func keeperEmbeddedResetCredits(body map[string]any) map[string]any {
+	if body == nil {
+		return nil
+	}
+	for _, key := range []string{"rate_limit_reset_credits", "rateLimitResetCredits"} {
+		if object, ok := body[key].(map[string]any); ok {
+			return object
+		}
+	}
+	return nil
+}
+
+func (a *App) keeperResetCreditsAPICall(
+	ctx context.Context,
+	cfg AppConfig,
+	detail map[string]any,
+	method string,
+	targetURL string,
+	data string,
+	action string,
+) (map[string]any, error) {
+	header := map[string]string{
+		"Authorization": "Bearer $TOKEN$",
+		"Accept":        "application/json",
+		"Content-Type":  "application/json",
+		"OpenAI-Beta":   "codex-1",
+		"Originator":    "Codex Desktop",
+		"User-Agent":    "codex_cli_rs/0.76.0",
+	}
+	if accountID := keeperStringPtr(detail["account_id"], detail["accountId"]); accountID != nil {
+		header["Chatgpt-Account-Id"] = *accountID
+	}
+	requestBody := map[string]any{
+		"auth_index": keeperAuthIndex(detail),
+		"method":     method,
+		"url":        targetURL,
+		"header":     header,
+		"data":       data,
+	}
+	_, payload, err := a.keeperRequest(
+		ctx,
+		cfg,
+		http.MethodPost,
+		"/v0/management/api-call",
+		nil,
+		requestBody,
+		time.Duration(cfg.CodexKeeper.UsageTimeoutSeconds)*time.Second,
+	)
+	if err != nil {
+		return nil, validationError(action + "失败：" + err.Error())
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(payload, &raw); err != nil {
+		return nil, validationError(action + "失败：api-call 响应不是有效 JSON")
+	}
+	statusCode := keeperIntPtr(raw["status_code"], raw["statusCode"])
+	if statusCode == nil {
+		return nil, validationError(action + "失败：api-call 响应缺少 status_code")
+	}
+	if *statusCode < http.StatusOK || *statusCode >= http.StatusMultipleChoices {
+		brief := briefAny(raw["body"])
+		if brief != "" {
+			return nil, validationError(fmt.Sprintf("%s失败：上游 HTTP %d：%s", action, *statusCode, brief))
+		}
+		return nil, validationError(fmt.Sprintf("%s失败：上游 HTTP %d", action, *statusCode))
+	}
+	if method == http.MethodPost {
+		return map[string]any{}, nil
+	}
+	bodyJSON := keeperBodyJSON(raw["body"])
+	if bodyJSON == nil {
+		return nil, validationError(action + "失败：上游响应不是有效 JSON")
+	}
+	return bodyJSON, nil
+}
+
+func keeperResetCreditsAvailableCount(body map[string]any) int {
+	if count := keeperIntPtr(body["available_count"], body["availableCount"]); count != nil {
+		return max(0, *count)
+	}
+	count := 0
+	for _, credit := range keeperResetCreditObjects(body) {
+		status := strings.ToLower(keeperString(credit["status"]))
+		if status == "" || status == "available" {
+			count++
+		}
+	}
+	return count
+}
+
+func keeperResetCreditsEarliestExpiry(body map[string]any) *string {
+	var earliest *time.Time
+	for _, credit := range keeperResetCreditObjects(body) {
+		status := strings.ToLower(keeperString(credit["status"]))
+		if status != "" && status != "available" {
+			continue
+		}
+		expiresAt := keeperTimeValue(firstKeeperValue(credit["expires_at"], credit["expiresAt"]))
+		if expiresAt != nil && (earliest == nil || expiresAt.Before(*earliest)) {
+			earliest = expiresAt
+		}
+	}
+	return apiDateTimePtr(earliest)
+}
+
+func keeperResetCreditObjects(body map[string]any) []map[string]any {
+	values, ok := body["credits"].([]any)
+	if !ok {
+		return nil
+	}
+	result := make([]map[string]any, 0, len(values))
+	for _, value := range values {
+		if object, ok := value.(map[string]any); ok {
+			result = append(result, object)
+		}
+	}
+	return result
+}
+
+func firstKeeperValue(values ...any) any {
+	for _, value := range values {
+		if value != nil {
+			return value
+		}
+	}
+	return nil
+}
+
 func (a *App) checkKeeperUsage(ctx context.Context, cfg AppConfig, detail map[string]any) keeperHTTPResult {
 	authIndex := keeperAuthIndex(detail)
 	header := map[string]string{
@@ -4004,6 +4300,9 @@ func (a *App) deleteKeeperAccount(ctx context.Context, authName string) error {
 		return err
 	}
 	_, err = a.db.ExecContext(ctx, `DELETE FROM codex_keeper_auth_states WHERE auth_name = ?`, state.Name)
+	if err == nil {
+		a.deleteCachedKeeperResetCredits(state.Name)
+	}
 	return err
 }
 

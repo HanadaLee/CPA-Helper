@@ -65,6 +65,7 @@ type App struct {
 	keeper           *KeeperRunner
 	usageMaintenance *UsageMaintenanceRunner
 	keeperUsageCache keeperWindowUsageCache
+	keeperResetCache keeperResetCreditCache
 	usageCache       usageQueryCache
 }
 

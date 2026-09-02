@@ -55,6 +55,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Separator } from '@/components/ui/separator'
 import {
   Sheet,
   SheetContent,
@@ -99,6 +100,7 @@ import {
 
 import {
   bulkDeleteCodexKeeperAccounts,
+  consumeCodexKeeperResetCredit,
   deleteCodexKeeperAccount,
   disableCodexKeeperAccount,
   enableCodexKeeperAccount,
@@ -106,6 +108,7 @@ import {
   getCodexKeeperOAuthStatus,
   getCodexKeeperStatus,
   listCodexKeeperAccounts,
+  queryCodexKeeperResetCredits,
   refreshCodexKeeperAccounts,
   runCodexKeeperOnce,
   startCodexKeeperOAuth,
@@ -122,6 +125,7 @@ import type {
   CodexKeeperAuthFileFields,
   CodexKeeperPriorityRule,
   CodexKeeperQuotaWindowUsage,
+  CodexKeeperResetCredits,
   CodexKeeperStatus,
 } from '@/shared/types/api'
 import { useI18n } from '@/shared/i18n'
@@ -143,7 +147,7 @@ type AccountDisplaySize = 50 | 100 | 150 | 200
 type AccountSortKey = 'quotaDay' | 'quotaWeek' | 'accountType' | 'status' | 'priority' | 'lastCheckedAt'
 type SortDirection = 'asc' | 'desc'
 type PriorityMode = 'low' | 'high' | 'default'
-type AccountAction = 'toggle' | 'priority' | 'delete' | 'refresh'
+type AccountAction = 'toggle' | 'priority' | 'delete' | 'refresh' | 'reset-query' | 'reset-consume'
 type AccountConfirmType = 'default' | 'warning' | 'error' | 'primary'
 type OAuthDialogStatus = 'idle' | 'waiting' | 'success' | 'error'
 type KeeperPollMode = 'once' | 'accounts'
@@ -173,7 +177,6 @@ type AuthFileEditorState = {
   json: Record<string, unknown> | null
   prefix: string
   proxyUrl: string
-  priority: string
   websockets: boolean
   websocketsTouched: boolean
   note: string
@@ -188,8 +191,8 @@ const AUTH_FILE_MAX_SIZE = 10 * 1024 * 1024
 const CODEX_FIVE_HOUR_WINDOW_SECONDS = 5 * 60 * 60
 const CODEX_WEEK_WINDOW_SECONDS = 7 * 24 * 60 * 60
 const CODEX_MONTH_WINDOW_SECONDS = 30 * 24 * 60 * 60
-const accountManageTableScrollX = 1496
-const accountReadOnlyTableScrollX = 1468
+const accountManageTableScrollX = 1546
+const accountReadOnlyTableScrollX = 1518
 const KEEPER_STATUS_POLL_INTERVAL_MS = 3000
 const REFRESH_STATUS_POLL_INTERVAL_MS = 1500
 const OAUTH_STATUS_POLL_INTERVAL_MS = 3000
@@ -982,41 +985,6 @@ function formatQuotaResetTime(value: string | null): string | null {
   return formatted === '-' ? null : formatted
 }
 
-function quotaText(account: CodexKeeperAccount): string {
-  const items = quotaWindowItems(account)
-  if (items.length === 0) {
-    return '-'
-  }
-  return items
-    .map((item) => {
-      const resetTime = formatQuotaResetTime(item.resetAt)
-      const usageText = quotaWindowUsageText(item)
-      return resetTime
-        ? t(
-            `${item.label}剩余 ${item.remainingPercent}%，刷新 ${resetTime}，${usageText}`,
-            `${item.label} ${item.remainingPercent}% remaining, refreshes ${resetTime}, ${usageText}`,
-          )
-        : t(
-            `${item.label}剩余 ${item.remainingPercent}%，${usageText}`,
-            `${item.label} ${item.remainingPercent}% remaining, ${usageText}`,
-          )
-    })
-    .join(' / ')
-}
-
-function quotaWindowUsageText(item: QuotaWindowItem): string {
-  if (!item.resetAt || item.usage?.stale === true) {
-    return t('额度数据需刷新', 'Quota data needs refresh')
-  }
-  if (!item.usage) {
-    return t('本窗口暂无用量', 'No usage in this window')
-  }
-  return t(
-    `${formatInteger(item.usage.records)} 次 / ${formatCompact(item.usage.total_tokens)} Tokens / ${formatUsd(item.usage.estimated_cost_usd)}`,
-    `${formatInteger(item.usage.records)} requests / ${formatCompact(item.usage.total_tokens)} Tokens / ${formatUsd(item.usage.estimated_cost_usd)}`,
-  )
-}
-
 function quotaWindowUsageTags(item: QuotaWindowItem): QuotaUsageTag[] {
   if (!item.resetAt || item.usage?.stale === true) {
     return [{ label: t('状态', 'Status'), value: t('需刷新', 'Needs refresh'), tone: 'stale' }]
@@ -1193,16 +1161,6 @@ function authFileBooleanField(value: unknown): boolean {
   return false
 }
 
-function authFilePriorityField(value: unknown): string {
-  if (typeof value === 'number' && Number.isFinite(value) && Number.isInteger(value)) {
-    return String(value)
-  }
-  if (typeof value === 'string' && /^[-+]?\d+$/.test(value.trim())) {
-    return value.trim()
-  }
-  return ''
-}
-
 function authFileHeadersField(value: unknown): Record<string, string> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return {}
@@ -1243,21 +1201,6 @@ function buildAuthFileEditorFields(editor: AuthFileEditorState): CodexKeeperAuth
   }
   if (editor.proxyUrl.trim() !== authFileStringField(original.proxy_url).trim()) {
     fields.proxy_url = editor.proxyUrl.trim()
-  }
-  const originalPriority = authFilePriorityField(original.priority)
-  const nextPriority = editor.priority.trim()
-  if (nextPriority !== originalPriority) {
-    if (nextPriority === '') {
-      fields.priority = 0
-    } else if (!/^[-+]?\d+$/.test(nextPriority)) {
-      throw new Error(t('认证文件优先级必须是整数。', 'Auth file priority must be an integer.'))
-    } else {
-      const priority = Number(nextPriority)
-      if (!Number.isSafeInteger(priority)) {
-        throw new Error(t('认证文件优先级必须是安全整数。', 'Auth file priority must be a safe integer.'))
-      }
-      fields.priority = priority
-    }
   }
   if (editor.websocketsTouched && editor.websockets !== authFileBooleanField(original.websockets ?? original.websocket)) {
     fields.websockets = editor.websockets
@@ -1304,13 +1247,6 @@ function buildAuthFileUpdatedText(editor: AuthFileEditorState): string {
       updated.proxy_url = fields.proxy_url
     } else {
       delete updated.proxy_url
-    }
-  }
-  if (fields.priority !== undefined) {
-    if (fields.priority === 0) {
-      delete updated.priority
-    } else {
-      updated.priority = fields.priority
     }
   }
   if (fields.websockets !== undefined) {
@@ -1421,7 +1357,6 @@ async function openAuthFileEditor(account: CodexKeeperAccount) {
     json: null,
     prefix: '',
     proxyUrl: '',
-    priority: '',
     websockets: false,
     websocketsTouched: false,
     note: '',
@@ -1456,7 +1391,6 @@ async function openAuthFileEditor(account: CodexKeeperAccount) {
     const headers = authFileHeadersField(detail.json.headers)
     current.prefix = authFileStringField(detail.json.prefix)
     current.proxyUrl = authFileStringField(detail.json.proxy_url)
-    current.priority = authFilePriorityField(detail.json.priority)
     current.websockets = authFileBooleanField(detail.json.websockets ?? detail.json.websocket)
     current.note = authFileStringField(detail.json.note)
     current.headersText = Object.keys(headers).length > 0 ? JSON.stringify(headers, null, 2) : ''
@@ -1900,6 +1834,64 @@ function openDetail(account: CodexKeeperAccount) {
   detailOpen.value = true
 }
 
+function setAccountResetCredits(accountName: string, resetCredits: CodexKeeperResetCredits) {
+  accounts.value = accounts.value.map((account) =>
+    account.name === accountName ? { ...account, reset_credits: resetCredits } : account,
+  )
+  if (selectedAccount.value?.name === accountName) {
+    selectedAccount.value = { ...selectedAccount.value, reset_credits: resetCredits }
+  }
+}
+
+async function runResetCreditAction(
+  account: CodexKeeperAccount,
+  action: 'reset-query' | 'reset-consume',
+) {
+  const key = accountActionKey(account, action)
+  if (actingActions.value.has(key)) {
+    return
+  }
+  actingActions.value = new Set(actingActions.value).add(key)
+  try {
+    const result = action === 'reset-query'
+      ? await queryCodexKeeperResetCredits(account.name)
+      : await consumeCodexKeeperResetCredit(account.name)
+    setAccountResetCredits(account.name, result)
+    message.success(action === 'reset-query'
+      ? t('重置次数已更新', 'Reset credits updated')
+      : t('已使用一次重置次数', 'One reset credit was used'))
+    if (action === 'reset-consume') {
+      void pollKeeperModeUntilIdle('accounts')
+    }
+  } catch (error) {
+    message.error(errorText(
+      error,
+      action === 'reset-query' ? '查询重置次数失败' : '使用重置次数失败',
+      action === 'reset-query' ? 'Failed to query reset credits' : 'Failed to use reset credit',
+    ))
+  } finally {
+    const nextActions = new Set(actingActions.value)
+    nextActions.delete(key)
+    actingActions.value = nextActions
+  }
+}
+
+function confirmConsumeResetCredit(account: CodexKeeperAccount) {
+  if ((account.reset_credits?.available_count ?? 0) <= 0) {
+    return
+  }
+  openAccountConfirm(
+    t('使用重置次数', 'Use Reset Credit'),
+    t(
+      `确认使用 ${account.email ?? account.name} 的一次重置次数？这会立即重置当前额度窗口，且无法撤销。`,
+      `Use one reset credit for ${account.email ?? account.name}? This immediately resets the current quota window and cannot be undone.`,
+    ),
+    t('确认使用', 'Confirm Use'),
+    'error',
+    () => runResetCreditAction(account, 'reset-consume'),
+  )
+}
+
 function openPriorityDialog(account: CodexKeeperAccount) {
   priorityDialog.account = account
   const priority = accountPriority(account)
@@ -2150,7 +2142,7 @@ function isActionLoading(account: CodexKeeperAccount, action: AccountAction): bo
 }
 
 function isRowActing(account: CodexKeeperAccount): boolean {
-  return (['toggle', 'priority', 'delete', 'refresh'] as const).some((action) =>
+  return (['toggle', 'priority', 'delete', 'refresh', 'reset-query', 'reset-consume'] as const).some((action) =>
     isActionLoading(account, action),
   )
 }
@@ -2532,7 +2524,8 @@ onBeforeUnmount(() => {
                   <TableHead class="w-[220px]">{{ t('账号', 'Account') }}</TableHead>
                   <TableHead class="w-[96px]">{{ t('类型', 'Type') }}</TableHead>
                   <TableHead class="w-[88px]">{{ t('优先级', 'Priority') }}</TableHead>
-                  <TableHead class="w-[270px]">{{ t('额度窗口', 'Quota Window') }}</TableHead>
+                  <TableHead class="w-[168px]">{{ t('额度窗口', 'Quota Window') }}</TableHead>
+                  <TableHead class="w-[152px]">{{ t('重置时间', 'Reset Time') }}</TableHead>
                   <TableHead class="w-[266px]">{{ t('窗口用量', 'Window Usage') }}</TableHead>
                   <TableHead class="w-[116px]">{{ t('窗口预测', 'Window Projection') }}</TableHead>
                   <TableHead class="w-[100px]">{{ t('最近巡检', 'Last Inspection') }}</TableHead>
@@ -2543,12 +2536,12 @@ onBeforeUnmount(() => {
               <TableBody>
                 <template v-if="showListLoadingState">
                   <TableRow v-for="rowIndex in 6" :key="`account-skeleton-${rowIndex}`">
-                    <TableCell v-for="columnIndex in (canManageAccounts ? 10 : 9)" :key="columnIndex">
+                    <TableCell v-for="columnIndex in (canManageAccounts ? 11 : 10)" :key="columnIndex">
                       <Skeleton class="h-4 w-full" />
                     </TableCell>
                   </TableRow>
                 </template>
-                <TableEmpty v-else-if="visibleListAccounts.length === 0" :colspan="canManageAccounts ? 10 : 9">
+                <TableEmpty v-else-if="visibleListAccounts.length === 0" :colspan="canManageAccounts ? 11 : 10">
                   {{ t('当前筛选下暂无账号', 'No accounts match the current filter') }}
                 </TableEmpty>
                 <TableRow v-for="row in visibleListAccounts" v-else :key="row.name">
@@ -2578,15 +2571,20 @@ onBeforeUnmount(() => {
                       <div v-for="item in quotaWindowItems(row)" :key="item.label" class="quota-window-item" :title="quotaWindowTooltip(item)">
                         <div class="quota-window-head">
                           <span class="quota-window-label">{{ item.label }}</span>
-                          <span class="quota-window-meta">
-                            <span class="quota-window-percent">{{ item.remainingPercent }}%</span>
-                            <span v-if="formatQuotaResetTime(item.resetAt)" class="quota-window-reset">{{ formatQuotaResetTime(item.resetAt) }}</span>
-                          </span>
+                          <span class="quota-window-percent">{{ item.remainingPercent }}%</span>
                         </div>
                         <div class="quota-window-track">
                           <div class="quota-window-fill" :class="quotaBarTone(item.remainingPercent)" :style="{ width: `${item.remainingPercent}%` }" />
                         </div>
                       </div>
+                    </div>
+                    <span v-else>-</span>
+                  </TableCell>
+                  <TableCell>
+                    <div v-if="quotaWindowItems(row).length" class="quota-reset-cell">
+                      <span v-for="item in quotaWindowItems(row)" :key="item.label" class="quota-reset-item" :title="quotaWindowTooltip(item)">
+                        {{ formatQuotaResetTime(item.resetAt) ?? '-' }}
+                      </span>
                     </div>
                     <span v-else>-</span>
                   </TableCell>
@@ -2684,7 +2682,7 @@ onBeforeUnmount(() => {
       <SheetContent
         side="right"
         :show-close-button="false"
-        class="overflow-hidden data-[side=right]:w-full data-[side=right]:sm:max-w-[420px]"
+        class="overflow-hidden data-[side=right]:w-full data-[side=right]:sm:max-w-[520px]"
       >
         <SheetHeader>
           <div class="detail-drawer-header">
@@ -2703,18 +2701,123 @@ onBeforeUnmount(() => {
             <div v-if="canManageAccounts" class="detail-row"><dt>{{ t('备注', 'Note') }}</dt><dd>{{ isSelectedAccountNoteLoading ? t('加载中...', 'Loading...') : (selectedAccountNote ?? '-') }}</dd></div>
             <div class="detail-row"><dt>{{ t('账号类型', 'Account Type') }}</dt><dd>{{ accountTypeLabel(selectedAccount.account_type) }}</dd></div>
             <div class="detail-row"><dt>{{ t('启用状态', 'Enabled Status') }}</dt><dd>{{ selectedAccount.disabled ? t('已禁用', 'Disabled') : t('启用中', 'Enabled') }}</dd></div>
-            <div class="detail-row"><dt>{{ t('当前优先级', 'Current Priority') }}</dt><dd>{{ accountPriority(selectedAccount) }}</dd></div>
+            <div class="detail-row">
+              <dt>{{ t('当前优先级', 'Current Priority') }}</dt>
+              <dd class="detail-priority-control">
+                <Button
+                  v-if="canManageAccounts"
+                  size="xs"
+                  variant="outline"
+                  :disabled="isRowActing(selectedAccount) || isBulkOperationRunning"
+                  @click="openPriorityDialog(selectedAccount)"
+                >
+                  <Spinner v-if="isActionLoading(selectedAccount, 'priority')" data-icon="inline-start" />
+                  {{ t('修改优先级', 'Change Priority') }}
+                </Button>
+                <span>{{ accountPriority(selectedAccount) }}</span>
+              </dd>
+            </div>
             <div class="detail-row"><dt>{{ t('类型默认优先级', 'Type Default Priority') }}</dt><dd>{{ defaultPriority(selectedAccount) ?? '-' }}</dd></div>
-            <div v-if="shouldShowQuotaWindow(selectedAccount)" class="detail-row"><dt>{{ t('额度窗口', 'Quota Window') }}</dt><dd>{{ quotaText(selectedAccount) }}</dd></div>
             <div class="detail-row"><dt>{{ t('状态码', 'Status Code') }}</dt><dd>{{ selectedAccount.last_status_code ?? '-' }}</dd></div>
             <div class="detail-row"><dt>{{ t('最近健康', 'Last Healthy') }}</dt><dd>{{ formatDateTime(selectedAccount.last_healthy_at) }}</dd></div>
             <div class="detail-row"><dt>{{ t('最近巡检', 'Last Inspection') }}</dt><dd>{{ formatDateTime(selectedAccount.last_checked_at) }}</dd></div>
             <div class="detail-row"><dt>{{ t('最近操作', 'Latest Action') }}</dt><dd>{{ latestActionText(selectedAccount) }}</dd></div>
           </dl>
+          <section v-if="selectedAccount && shouldShowQuotaWindow(selectedAccount)" class="detail-section">
+            <div class="detail-section-heading">
+              <h3>{{ t('额度窗口', 'Quota Windows') }}</h3>
+              <span>{{ t('用量、重置时间与预测', 'Usage, reset time, and projection') }}</span>
+            </div>
+            <div class="detail-quota-list">
+              <Card v-for="item in quotaWindowItems(selectedAccount)" :key="item.label" class="detail-quota-card">
+                <CardHeader class="detail-quota-card-header">
+                  <CardTitle>{{ item.label }}</CardTitle>
+                  <Badge variant="secondary">{{ t(`剩余 ${item.remainingPercent}%`, `${item.remainingPercent}% remaining`) }}</Badge>
+                </CardHeader>
+                <CardContent class="detail-quota-card-content">
+                  <div class="quota-window-track">
+                    <div class="quota-window-fill" :class="quotaBarTone(item.remainingPercent)" :style="{ width: `${item.remainingPercent}%` }" />
+                  </div>
+                  <div class="detail-quota-metrics">
+                    <div>
+                      <span>{{ t('重置时间', 'Reset Time') }}</span>
+                      <strong>{{ formatQuotaResetTime(item.resetAt) ?? '-' }}</strong>
+                    </div>
+                    <div>
+                      <span>{{ t('窗口预测', 'Window Projection') }}</span>
+                      <strong>{{ !item.resetAt || item.usage?.stale === true
+                        ? t('需刷新', 'Refresh needed')
+                        : quotaWindowProjectedCost(item) === null
+                          ? '-'
+                          : formatUsd(quotaWindowProjectedCost(item) ?? 0) }}</strong>
+                    </div>
+                  </div>
+                  <div class="detail-quota-usage" :title="quotaWindowUsageTitle(item)">
+                    <span v-for="tag in quotaWindowUsageTags(item)" :key="tag.label">
+                      <small>{{ tag.label }}</small>
+                      <strong>{{ tag.value }}</strong>
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </section>
+          <section v-if="selectedAccount && canManageAccounts" class="detail-section">
+            <div class="detail-section-heading">
+              <h3>{{ t('主动重置', 'Manual Reset') }}</h3>
+              <span>{{ t('查询结果会保留到下次查询或使用', 'The result stays cached until the next query or use') }}</span>
+            </div>
+            <Card class="detail-reset-card">
+              <CardContent class="detail-reset-content">
+                <template v-if="selectedAccount.reset_credits">
+                  <div class="detail-reset-summary">
+                    <div>
+                      <span>{{ t('可用次数', 'Available') }}</span>
+                      <strong>{{ formatInteger(selectedAccount.reset_credits.available_count) }}</strong>
+                    </div>
+                    <div>
+                      <span>{{ t('最近过期', 'Earliest Expiry') }}</span>
+                      <strong>{{ formatDateTime(selectedAccount.reset_credits.earliest_expires_at) }}</strong>
+                    </div>
+                  </div>
+                  <p class="detail-reset-cached-at">
+                    {{ t('查询于', 'Queried at') }} {{ formatDateTime(selectedAccount.reset_credits.cached_at) }}
+                  </p>
+                </template>
+                <p v-else class="detail-reset-empty">
+                  {{ t('尚未查询该账号的可用重置次数。', 'Reset credits have not been queried for this account.') }}
+                </p>
+                <div class="detail-reset-actions">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    :disabled="isRowActing(selectedAccount) || isBulkOperationRunning"
+                    @click="runResetCreditAction(selectedAccount, 'reset-query')"
+                  >
+                    <Spinner v-if="isActionLoading(selectedAccount, 'reset-query')" data-icon="inline-start" />
+                    <Search v-else data-icon="inline-start" />
+                    {{ selectedAccount.reset_credits ? t('重新查询', 'Query Again') : t('查询次数', 'Query Credits') }}
+                  </Button>
+                  <Button
+                    v-if="selectedAccount.reset_credits"
+                    size="sm"
+                    variant="destructive"
+                    :disabled="selectedAccount.reset_credits.available_count <= 0 || isRowActing(selectedAccount) || isBulkOperationRunning"
+                    @click="confirmConsumeResetCredit(selectedAccount)"
+                  >
+                    <Spinner v-if="isActionLoading(selectedAccount, 'reset-consume')" data-icon="inline-start" />
+                    <RefreshCw v-else data-icon="inline-start" />
+                    {{ t('使用一次', 'Use Once') }}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </section>
+          <Separator v-if="selectedAccount && canManageAccounts" class="detail-action-separator" />
           <div v-if="selectedAccount && canManageAccounts" class="detail-action-row">
             <Button size="sm" variant="outline" @click="openAuthFileEditor(selectedAccount)">
               <Pencil data-icon="inline-start" />
-              {{ t('认证文件详情 / 编辑', 'Auth File Details / Edit') }}
+              {{ t('认证文件管理', 'Auth File Management') }}
             </Button>
             <Button
               size="sm"
@@ -2745,15 +2848,6 @@ onBeforeUnmount(() => {
             >
               <Spinner v-if="isActionLoading(selectedAccount, 'toggle')" data-icon="inline-start" />
               {{ t('禁用', 'Disable') }}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              :disabled="isRowActing(selectedAccount) || isBulkOperationRunning"
-              @click="openPriorityDialog(selectedAccount)"
-            >
-              <Spinner v-if="isActionLoading(selectedAccount, 'priority')" data-icon="inline-start" />
-              {{ t('修改优先级', 'Change Priority') }}
             </Button>
             <Button
               size="sm"
@@ -2869,11 +2963,11 @@ onBeforeUnmount(() => {
         <DialogHeader>
           <DialogTitle>
             {{ authFileEditor
-              ? t(`认证文件详情 / 编辑 - ${authFileEditor.fileName}`, `Auth File Details / Edit - ${authFileEditor.fileName}`)
-              : t('认证文件详情 / 编辑', 'Auth File Details / Edit') }}
+              ? t(`认证文件管理 - ${authFileEditor.fileName}`, `Auth File Management - ${authFileEditor.fileName}`)
+              : t('认证文件管理', 'Auth File Management') }}
           </DialogTitle>
           <DialogDescription>
-            {{ t('查看 CPA 返回的认证文件内容，并修改支持的配置字段。', 'Review the auth file returned by CPA and edit supported settings.') }}
+            {{ t('查看并管理 CPA 返回的认证文件配置。', 'Review and manage the auth file returned by CPA.') }}
           </DialogDescription>
         </DialogHeader>
         <div v-if="authFileEditor" class="auth-file-editor">
@@ -2919,15 +3013,6 @@ onBeforeUnmount(() => {
                     v-model="authFileEditor.proxyUrl"
                     :placeholder="t('socks5://username:password@proxy_ip:port/', 'socks5://username:password@proxy_ip:port/')"
                   />
-                </Field>
-                <Field>
-                  <FieldLabel>{{ t('优先级（priority）', 'Priority (priority)') }}</FieldLabel>
-                  <Input
-                    v-model="authFileEditor.priority"
-                    inputmode="numeric"
-                    :placeholder="t('例如：10 或 -1', 'For example: 10 or -1')"
-                  />
-                  <FieldDescription>{{ t('仅支持整数；数值越大优先级越高。', 'Integers only; higher values have higher priority.') }}</FieldDescription>
                 </Field>
                 <Field orientation="horizontal" class="auth-file-editor-switch-field">
                   <div>
@@ -3357,9 +3442,11 @@ onBeforeUnmount(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
+  padding-bottom: 4px;
+}
+
+.detail-action-separator {
+  margin: 16px 0;
 }
 
 .detail-drawer-header {
@@ -3415,6 +3502,174 @@ onBeforeUnmount(() => {
   color: var(--foreground);
   font-size: 13px;
   text-align: right;
+}
+
+.detail-list > .detail-row:last-child {
+  border-bottom: 0;
+}
+
+.detail-priority-control {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.detail-section {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.detail-section-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.detail-section-heading h3,
+.detail-section-heading span {
+  margin: 0;
+}
+
+.detail-section-heading h3 {
+  color: var(--foreground);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.detail-section-heading span {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  text-align: right;
+}
+
+.detail-quota-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.detail-quota-card,
+.detail-reset-card {
+  min-width: 0;
+  box-shadow: none;
+}
+
+.detail-quota-card-header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 12px 8px;
+}
+
+.detail-quota-card-header :deep([data-slot='card-title']) {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail-quota-card-content {
+  display: grid;
+  gap: 10px;
+  padding: 0 12px 12px;
+}
+
+.detail-quota-metrics {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 0.65fr);
+  gap: 8px;
+}
+
+.detail-quota-metrics > div,
+.detail-reset-summary > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.detail-quota-metrics span,
+.detail-reset-summary span {
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+
+.detail-quota-metrics strong,
+.detail-reset-summary strong {
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail-quota-usage {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.detail-quota-usage > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 6px;
+  background: var(--muted);
+  border-radius: calc(var(--radius) - 3px);
+}
+
+.detail-quota-usage small,
+.detail-quota-usage strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail-quota-usage small {
+  color: var(--muted-foreground);
+  font-size: 9px;
+}
+
+.detail-quota-usage strong {
+  color: var(--foreground);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.detail-reset-content {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.detail-reset-summary {
+  display: grid;
+  grid-template-columns: minmax(80px, 0.35fr) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.detail-reset-summary > div:first-child strong {
+  color: var(--primary);
+  font-size: 22px;
+  line-height: 1;
+}
+
+.detail-reset-cached-at,
+.detail-reset-empty {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.detail-reset-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .oauth-dialog {
@@ -3542,6 +3797,26 @@ onBeforeUnmount(() => {
   padding: 4px 0;
 }
 
+:global(.quota-reset-cell) {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 4px 0;
+}
+
+:global(.quota-reset-item) {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: 38px;
+  overflow: hidden;
+  color: var(--cpa-text-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 :global(.quota-window-item) {
   display: grid;
   align-content: center;
@@ -3569,26 +3844,10 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
-:global(.quota-window-meta) {
-  display: inline-flex;
-  flex-shrink: 0;
-  align-items: baseline;
-  gap: 6px;
-  min-width: 0;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
 :global(.quota-window-percent) {
   color: var(--cpa-text);
   font-size: 12px;
   font-weight: 700;
-}
-
-:global(.quota-window-reset) {
-  color: var(--cpa-text-muted);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
 }
 
 :global(.quota-window-usage) {
@@ -3901,6 +4160,10 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 560px) {
+  .detail-quota-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .account-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

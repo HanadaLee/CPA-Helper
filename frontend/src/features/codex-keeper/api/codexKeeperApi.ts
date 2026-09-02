@@ -11,6 +11,7 @@ import type {
   CodexKeeperOAuthStartResponse,
   CodexKeeperOAuthStatusResponse,
   CodexKeeperRefreshPayload,
+  CodexKeeperResetCredits,
   CodexKeeperSettings,
   CodexKeeperSettingsUpdatePayload,
   CodexKeeperStatus,
@@ -123,4 +124,16 @@ export function updateCodexKeeperPriority(authName: string, priority: number): P
   return apiClient.patch<void>(`/codex-keeper/accounts/${encodeURIComponent(authName)}/priority`, {
     priority,
   })
+}
+
+export function queryCodexKeeperResetCredits(authName: string): Promise<CodexKeeperResetCredits> {
+  return apiClient.post<CodexKeeperResetCredits>(
+    `/codex-keeper/accounts/${encodeURIComponent(authName)}/reset-credits/query`,
+  )
+}
+
+export function consumeCodexKeeperResetCredit(authName: string): Promise<CodexKeeperResetCredits> {
+  return apiClient.post<CodexKeeperResetCredits>(
+    `/codex-keeper/accounts/${encodeURIComponent(authName)}/reset-credits/consume`,
+  )
 }
