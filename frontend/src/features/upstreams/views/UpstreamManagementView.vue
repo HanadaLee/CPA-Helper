@@ -1140,7 +1140,7 @@ void loadUpstreams()
           </form>
         </div>
 
-        <SheetFooter v-if="drawerMode !== 'detail'" class="flex-row justify-end border-t">
+        <SheetFooter v-if="drawerMode !== 'detail'" class="flex-row justify-end border-0 shadow-none">
           <Button type="button" variant="outline" :disabled="isSaving" @click="drawerOpen = false">
             {{ t('取消', 'Cancel') }}
           </Button>
