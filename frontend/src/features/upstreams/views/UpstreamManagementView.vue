@@ -13,6 +13,15 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -67,6 +76,7 @@ import {
   Cloud,
   Clock3,
   Code2,
+  Download,
   Eye,
   KeyRound,
   MoreHorizontal,
@@ -81,9 +91,11 @@ import {
 } from '@lucide/vue'
 
 import {
+  discoverUpstreamModels,
   listUpstreamSections,
   replaceUpstreamSection,
   upstreamSectionNames,
+  type DiscoveredUpstreamModel,
   type UpstreamItem,
   type UpstreamSection,
 } from '@/features/upstreams/api/upstreamApi'
@@ -158,6 +170,12 @@ const drawerOpen = ref(false)
 const drawerMode = ref<DrawerMode>('detail')
 const editingIndex = ref(-1)
 const selectedItem = ref<UpstreamItem | null>(null)
+const modelDiscoveryOpen = ref(false)
+const isDiscoveringModels = ref(false)
+const modelDiscoveryError = ref('')
+const modelDiscoverySearch = ref('')
+const discoveredModels = ref<DiscoveredUpstreamModel[]>([])
+const selectedDiscoveredModelNames = ref<string[]>([])
 const sections = reactive<Record<UpstreamSection, UpstreamItem[]>>({
   'gemini-api-key': [],
   'codex-api-key': [],
@@ -187,8 +205,29 @@ const activeDefinition = computed(
 )
 const isOpenAISection = computed(() => activeSection.value === 'openai-compatibility')
 const isClaudeSection = computed(() => activeSection.value === 'claude-api-key')
+const canDiscoverModels = computed(() => activeSection.value !== 'vertex-api-key')
 const currentItems = computed(() => sections[activeSection.value])
 const totalResources = computed(() => upstreamSectionNames.reduce((total, name) => total + sections[name].length, 0))
+const existingModelNameSet = computed(() => new Set(
+  form.models.map((model) => model.name.trim().toLowerCase()).filter(Boolean),
+))
+const filteredDiscoveredModels = computed(() => {
+  const query = modelDiscoverySearch.value.trim().toLowerCase()
+  if (!query) return discoveredModels.value
+  return discoveredModels.value.filter((model) => (
+    `${model.name} ${model.alias ?? ''} ${model.display_name ?? ''}`.toLowerCase().includes(query)
+  ))
+})
+const selectableDiscoveredModels = computed(() => filteredDiscoveredModels.value.filter(
+  (model) => !existingModelNameSet.value.has(model.name.trim().toLowerCase()),
+))
+const discoveredSelectionState = computed<boolean | 'indeterminate'>(() => {
+  if (selectableDiscoveredModels.value.length === 0) return false
+  const selected = new Set(selectedDiscoveredModelNames.value)
+  const count = selectableDiscoveredModels.value.filter((model) => selected.has(model.name)).length
+  if (count === 0) return false
+  return count === selectableDiscoveredModels.value.length ? true : 'indeterminate'
+})
 const activeResources = computed(() =>
   upstreamSectionNames.reduce(
     (total, name) => total + sections[name].filter((item) => !upstreamDisabled(name, item)).length,
@@ -388,6 +427,7 @@ function openEditor(row?: UpstreamTableRow) {
   selectedItem.value = row?.item ?? null
   replaceForm(row ? formFromItem(row.item) : emptyForm())
   if (isOpenAISection.value && form.apiKeyEntries.length === 0) addAPIKeyEntry()
+  resetModelDiscovery()
   drawerMode.value = row ? 'edit' : 'create'
   drawerOpen.value = true
 }
@@ -402,6 +442,106 @@ function addModel() {
 
 function addAPIKeyEntry() {
   form.apiKeyEntries.push({ apiKey: '', proxyUrl: '' })
+}
+
+function resetModelDiscovery() {
+  modelDiscoveryOpen.value = false
+  isDiscoveringModels.value = false
+  modelDiscoveryError.value = ''
+  modelDiscoverySearch.value = ''
+  discoveredModels.value = []
+  selectedDiscoveredModelNames.value = []
+}
+
+function modelDiscoveryCredentials(): { apiKey: string, authIndex: string } {
+  if (isOpenAISection.value) {
+    const entry = form.apiKeyEntries.find((candidate) => (
+      candidate.apiKey.trim() || readString(candidate.raw ?? {}, 'auth-index')
+    ))
+    return {
+      apiKey: entry?.apiKey.trim() ?? '',
+      authIndex: readString(entry?.raw ?? {}, 'auth-index'),
+    }
+  }
+  return {
+    apiKey: form.apiKey.trim(),
+    authIndex: readString(selectedItem.value ?? {}, 'auth-index'),
+  }
+}
+
+function modelDiscoveryHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {}
+  for (const row of form.headers) {
+    const name = row.key.trim()
+    if (name) headers[name] = row.value.trim()
+  }
+  return headers
+}
+
+async function loadDiscoveredModels() {
+  if (!canDiscoverModels.value || isDiscoveringModels.value) return
+  isDiscoveringModels.value = true
+  modelDiscoveryError.value = ''
+  try {
+    const credentials = modelDiscoveryCredentials()
+    discoveredModels.value = await discoverUpstreamModels({
+      section: activeSection.value,
+      base_url: form.baseUrl.trim(),
+      api_key: credentials.apiKey || undefined,
+      auth_index: credentials.authIndex || undefined,
+      headers: modelDiscoveryHeaders(),
+    })
+    selectedDiscoveredModelNames.value = []
+  } catch (error) {
+    modelDiscoveryError.value = errorText(error, '获取上游模型失败', 'Failed to fetch upstream models')
+  } finally {
+    isDiscoveringModels.value = false
+  }
+}
+
+async function openModelDiscovery() {
+  modelDiscoveryOpen.value = true
+  modelDiscoverySearch.value = ''
+  discoveredModels.value = []
+  selectedDiscoveredModelNames.value = []
+  await loadDiscoveredModels()
+}
+
+function setDiscoveredModelSelected(name: string, checked: unknown) {
+  const selected = new Set(selectedDiscoveredModelNames.value)
+  if (checked === true) selected.add(name)
+  else selected.delete(name)
+  selectedDiscoveredModelNames.value = [...selected]
+}
+
+function setAllDiscoveredModels(checked: unknown) {
+  const selected = new Set(selectedDiscoveredModelNames.value)
+  for (const model of selectableDiscoveredModels.value) {
+    if (checked === true) selected.add(model.name)
+    else selected.delete(model.name)
+  }
+  selectedDiscoveredModelNames.value = [...selected]
+}
+
+function applyDiscoveredModels() {
+  const selected = new Set(selectedDiscoveredModelNames.value)
+  const existing = new Set(existingModelNameSet.value)
+  let added = 0
+  for (const model of discoveredModels.value) {
+    const name = model.name.trim()
+    const key = name.toLowerCase()
+    if (!name || !selected.has(model.name) || existing.has(key)) continue
+    existing.add(key)
+    form.models.push({
+      name,
+      alias: model.alias?.trim() ?? '',
+      displayName: model.display_name?.trim() ?? '',
+    })
+    added++
+  }
+  if (added === 0) return
+  modelDiscoveryOpen.value = false
+  message.success(t(`已添加 ${added} 个模型`, `${added} models added`))
 }
 
 function setPriority(value: string | number) {
@@ -1040,10 +1180,24 @@ void loadUpstreams()
                     <h3>{{ t('自定义模型', 'Custom models') }}</h3>
                     <p>{{ t('配置上游模型名称、路由别名和显示名称。', 'Configure upstream model names, routing aliases, and display names.') }}</p>
                   </div>
-                  <Button type="button" size="sm" variant="outline" @click="addModel">
-                    <Plus data-icon="inline-start" />
-                    {{ t('添加模型', 'Add model') }}
-                  </Button>
+                  <div class="form-section__actions">
+                    <Button
+                      v-if="canDiscoverModels"
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      :disabled="isSaving || isDiscoveringModels"
+                      @click="openModelDiscovery"
+                    >
+                      <Spinner v-if="isDiscoveringModels" data-icon="inline-start" />
+                      <Download v-else data-icon="inline-start" />
+                      {{ t('获取模型', 'Fetch models') }}
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" @click="addModel">
+                      <Plus data-icon="inline-start" />
+                      {{ t('添加模型', 'Add model') }}
+                    </Button>
+                  </div>
                 </div>
                 <div v-if="form.models.length === 0" class="form-empty">
                   {{ t('未限制自定义模型', 'No custom model list') }}
@@ -1151,6 +1305,101 @@ void loadUpstreams()
         </SheetFooter>
       </SheetContent>
     </Sheet>
+
+    <Dialog v-model:open="modelDiscoveryOpen">
+      <DialogContent class="sm:max-w-[680px]">
+        <DialogHeader>
+          <DialogTitle>{{ t('获取模型', 'Fetch models') }}</DialogTitle>
+          <DialogDescription>
+            {{ t('从当前上游端点读取模型，选择后合并到自定义模型列表。', 'Read models from the current upstream endpoint and merge selected models into the custom list.') }}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div class="model-discovery-toolbar">
+          <InputGroup>
+            <InputGroupAddon><Search aria-hidden="true" /></InputGroupAddon>
+            <InputGroupInput
+              v-model="modelDiscoverySearch"
+              :placeholder="t('搜索模型', 'Search models')"
+            />
+            <InputGroupAddon v-if="modelDiscoverySearch" align="inline-end">
+              <InputGroupButton
+                :aria-label="t('清空搜索', 'Clear search')"
+                @click="modelDiscoverySearch = ''"
+              >
+                <X />
+              </InputGroupButton>
+            </InputGroupAddon>
+          </InputGroup>
+          <Button type="button" size="sm" variant="outline" :disabled="isDiscoveringModels" @click="loadDiscoveredModels">
+            <Spinner v-if="isDiscoveringModels" data-icon="inline-start" />
+            <RefreshCw v-else data-icon="inline-start" />
+            {{ t('重新加载', 'Reload') }}
+          </Button>
+        </div>
+
+        <Alert v-if="modelDiscoveryError" variant="destructive">
+          <AlertTitle>{{ t('获取模型失败', 'Failed to fetch models') }}</AlertTitle>
+          <AlertDescription>{{ modelDiscoveryError }}</AlertDescription>
+        </Alert>
+        <div v-else-if="isDiscoveringModels && discoveredModels.length === 0" class="model-discovery-skeletons">
+          <Skeleton v-for="index in 5" :key="index" class="h-10 w-full" />
+        </div>
+        <div v-else-if="discoveredModels.length === 0" class="model-discovery-empty">
+          {{ t('端点未返回任何模型', 'The endpoint returned no models') }}
+        </div>
+        <template v-else>
+          <div class="model-discovery-batch">
+            <label class="model-discovery-select-all">
+              <Checkbox
+                :model-value="discoveredSelectionState"
+                :disabled="selectableDiscoveredModels.length === 0"
+                @update:model-value="setAllDiscoveredModels"
+              />
+              <span>{{ t('选择当前结果', 'Select current results') }}</span>
+            </label>
+            <span>{{ t(`已选择 ${selectedDiscoveredModelNames.length} 个`, `${selectedDiscoveredModelNames.length} selected`) }}</span>
+          </div>
+          <div class="model-discovery-list" role="list">
+            <label
+              v-for="model in filteredDiscoveredModels"
+              :key="model.name"
+              :class="cn('model-discovery-row', { 'is-existing': existingModelNameSet.has(model.name.trim().toLowerCase()) })"
+              role="listitem"
+            >
+              <Checkbox
+                :model-value="existingModelNameSet.has(model.name.trim().toLowerCase()) || selectedDiscoveredModelNames.includes(model.name)"
+                :disabled="existingModelNameSet.has(model.name.trim().toLowerCase())"
+                @update:model-value="setDiscoveredModelSelected(model.name, $event)"
+              />
+              <span class="model-discovery-copy">
+                <span class="model-discovery-name">{{ model.name }}</span>
+                <span v-if="model.display_name || model.alias" class="model-discovery-meta">
+                  {{ model.display_name || model.alias }}
+                </span>
+              </span>
+              <Badge v-if="existingModelNameSet.has(model.name.trim().toLowerCase())" variant="secondary">
+                {{ t('已添加', 'Added') }}
+              </Badge>
+            </label>
+          </div>
+        </template>
+
+        <DialogFooter class="sm:justify-between">
+          <span class="model-discovery-footer-count">
+            {{ t(`共 ${discoveredModels.length} 个模型`, `${discoveredModels.length} models`) }}
+          </span>
+          <div class="model-discovery-footer-actions">
+            <Button type="button" variant="outline" @click="modelDiscoveryOpen = false">
+              {{ t('关闭', 'Close') }}
+            </Button>
+            <Button type="button" :disabled="selectedDiscoveredModelNames.length === 0" @click="applyDiscoveredModels">
+              {{ t('添加所选模型', 'Add selected models') }}
+            </Button>
+          </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </section>
 </template>
 
@@ -1354,6 +1603,105 @@ void loadUpstreams()
   gap: .75rem;
 }
 
+.form-section__actions,
+.model-discovery-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+
+.model-discovery-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: .5rem;
+}
+
+.model-discovery-skeletons {
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+}
+
+.model-discovery-empty {
+  display: grid;
+  min-height: 10rem;
+  place-items: center;
+  color: var(--muted-foreground);
+}
+
+.model-discovery-batch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  color: var(--muted-foreground);
+  font-size: .75rem;
+}
+
+.model-discovery-select-all,
+.model-discovery-row {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.model-discovery-select-all {
+  gap: .5rem;
+  color: var(--foreground);
+}
+
+.model-discovery-list {
+  max-height: min(44vh, 22rem);
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.model-discovery-row {
+  gap: .75rem;
+  min-height: 2.75rem;
+  padding: .5rem .75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.model-discovery-row:last-child {
+  border-bottom: 0;
+}
+
+.model-discovery-row:hover {
+  background: var(--muted);
+}
+
+.model-discovery-row.is-existing {
+  cursor: default;
+  color: var(--muted-foreground);
+}
+
+.model-discovery-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: .125rem;
+}
+
+.model-discovery-name,
+.model-discovery-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-discovery-name {
+  font-weight: 500;
+}
+
+.model-discovery-meta,
+.model-discovery-footer-count {
+  color: var(--muted-foreground);
+  font-size: .75rem;
+}
+
 .form-section__header h3 {
   margin: 0;
   font-size: .875rem;
@@ -1433,6 +1781,21 @@ void loadUpstreams()
   .form-section__header {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .form-section__actions,
+  .model-discovery-footer-actions,
+  .model-discovery-toolbar {
+    width: 100%;
+  }
+
+  .form-section__actions > *,
+  .model-discovery-footer-actions > * {
+    flex: 1;
+  }
+
+  .model-discovery-toolbar {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 </style>

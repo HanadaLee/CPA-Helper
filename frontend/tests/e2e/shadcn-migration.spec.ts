@@ -170,6 +170,58 @@ test('sidebar navigation switches immediately and lets the destination render it
   await expect(page.locator('.provider-table-shell [data-slot="skeleton"]')).toHaveCount(0)
 })
 
+test('upstream model discovery merges selected models into the editor', async ({ page }) => {
+  await setupOrLogin(page)
+  await page.route('**/api/upstreams', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        sections: {
+          'gemini-api-key': [],
+          'codex-api-key': [],
+          'xai-api-key': [],
+          'claude-api-key': [],
+          'vertex-api-key': [],
+          'openai-compatibility': [],
+        },
+      }),
+    })
+  })
+  let discoveryPayload: Record<string, unknown> | null = null
+  await page.route('**/api/upstreams/models', async (route) => {
+    discoveryPayload = route.request().postDataJSON() as Record<string, unknown>
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        models: [
+          { name: 'gemini-2.5-flash', display_name: 'Gemini 2.5 Flash' },
+          { name: 'gemini-2.5-pro', display_name: 'Gemini 2.5 Pro' },
+        ],
+      }),
+    })
+  })
+
+  await page.goto('/admin/upstreams')
+  await page.getByRole('button', { name: /新建|New/ }).click()
+  const upstreamDrawer = page.locator('[data-slot="sheet-content"]')
+  await upstreamDrawer.locator('#upstream-api-key').fill('gemini-test-key')
+  await upstreamDrawer.getByRole('button', { name: /获取模型|Fetch models/ }).click()
+
+  const discoveryDialog = page.getByRole('dialog', { name: /获取模型|Fetch models/ })
+  await expect(discoveryDialog).toBeVisible()
+  await expect.poll(() => discoveryPayload?.section).toBe('gemini-api-key')
+  await expect.poll(() => discoveryPayload?.api_key).toBe('gemini-test-key')
+  const modelRow = discoveryDialog.locator('.model-discovery-row').filter({ hasText: 'gemini-2.5-pro' })
+  await modelRow.locator('[role="checkbox"]').click()
+  await discoveryDialog.getByRole('button', { name: /添加所选模型|Add selected models/ }).click()
+
+  await expect(discoveryDialog).toBeHidden()
+  await expect(upstreamDrawer.getByPlaceholder(/上游模型名称|Upstream model name/).first()).toHaveValue('gemini-2.5-pro')
+  await expect(upstreamDrawer.getByPlaceholder(/显示名称（可选）|Display name \(optional\)/).first()).toHaveValue('Gemini 2.5 Pro')
+})
+
 test('all migrated routes render and core controls remain interactive', async ({ page }) => {
   const consoleErrors: string[] = []
   page.on('console', (message) => {
