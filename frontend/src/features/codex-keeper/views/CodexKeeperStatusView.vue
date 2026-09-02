@@ -863,6 +863,13 @@ function quotaWindowSecondsFor(account: CodexKeeperAccount, window: 'primary' | 
   return account.secondary_window_seconds ?? account.secondary_window_usage?.window_seconds ?? null
 }
 
+function hasFiveHourQuotaWindow(account: CodexKeeperAccount): boolean {
+  return (
+    quotaWindowSecondsFor(account, 'primary') === CODEX_FIVE_HOUR_WINDOW_SECONDS ||
+    quotaWindowSecondsFor(account, 'secondary') === CODEX_FIVE_HOUR_WINDOW_SECONDS
+  )
+}
+
 function isPaidQuotaWindow(account: CodexKeeperAccount): boolean {
   return (
     isPaidQuotaWindowAccount(account.account_type) ||
@@ -2728,7 +2735,10 @@ onBeforeUnmount(() => {
               <h3>{{ t('额度窗口', 'Quota Windows') }}</h3>
               <span>{{ t('用量、重置时间与预测', 'Usage, reset time, and projection') }}</span>
             </div>
-            <div class="detail-quota-list">
+            <div
+              class="detail-quota-list"
+              :class="{ 'is-expanded': !hasFiveHourQuotaWindow(selectedAccount) }"
+            >
               <Card v-for="item in quotaWindowItems(selectedAccount)" :key="item.label" class="detail-quota-card">
                 <CardHeader class="detail-quota-card-header">
                   <CardTitle>{{ item.label }}</CardTitle>
@@ -3549,6 +3559,10 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+}
+
+.detail-quota-list.is-expanded {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .detail-quota-card,
