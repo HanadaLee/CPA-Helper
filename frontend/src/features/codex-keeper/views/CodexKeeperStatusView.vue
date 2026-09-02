@@ -3214,6 +3214,10 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 
+.account-list-panel {
+  gap: 0;
+}
+
 .account-header-copy {
   flex: 1;
   min-width: 0;
