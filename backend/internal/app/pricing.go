@@ -370,7 +370,7 @@ func (a *App) modelCatalogAPIKeys(ctx context.Context) ([]modelCatalogAPIKey, er
 		       u.username, u.nickname
 		FROM user_api_keys k
 		INNER JOIN users u ON u.id = k.user_id
-		WHERE u.disabled_at IS NULL
+		WHERE u.disabled_at IS NULL AND k.disabled = 0
 		ORDER BY lower(u.username), lower(k.description), k.api_key_hash
 	`)
 	if err != nil {

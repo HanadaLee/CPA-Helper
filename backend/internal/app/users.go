@@ -65,6 +65,7 @@ type UserAPIKey struct {
 	UserID      int
 	APIKey      *string
 	Description string
+	Disabled    bool
 	CreatedAt   *time.Time
 	UpdatedAt   *time.Time
 }
@@ -73,6 +74,7 @@ type UserApiKeySummary struct {
 	APIKeyHash            string     `json:"api_key_hash"`
 	APIKey                *string    `json:"api_key"`
 	Description           string     `json:"description"`
+	Disabled              bool       `json:"disabled"`
 	UserID                *int       `json:"user_id"`
 	UserName              *string    `json:"user_name"`
 	CreatedAt             *time.Time `json:"created_at"`
@@ -304,6 +306,20 @@ func (a *App) handleCurrentUserAPIKeyByHash(w http.ResponseWriter, r *http.Reque
 	if err != nil {
 		return err
 	}
+	parts := splitPath(r.URL.Path, "/api/api-keys/")
+	if len(parts) == 2 && (parts[1] == "disable" || parts[1] == "enable") {
+		if err := requireMethod(r, http.MethodPost); err != nil {
+			return err
+		}
+		apiKeyHash := parts[0]
+		disabled := parts[1] == "disable"
+		summary, err := a.setCurrentUserAPIKeyDisabled(r.Context(), user, apiKeyHash, disabled)
+		if err != nil {
+			return err
+		}
+		writeJSON(w, http.StatusOK, summary)
+		return nil
+	}
 	apiKeyHash := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/api-keys/"), "/")
 	if apiKeyHash == "" {
 		return notFoundError("API KEY 不存在")
@@ -493,13 +509,16 @@ func (a *App) enableUser(ctx context.Context, id int) error {
 		return err
 	}
 	for _, key := range keys {
+		if key.Disabled {
+			continue
+		}
 		if key.APIKey == nil {
 			return conflictError("存在无法恢复的 API KEY，请重新绑定后再启用")
 		}
 	}
 	restored := []string{}
 	for _, key := range keys {
-		if key.APIKey == nil {
+		if key.Disabled || key.APIKey == nil {
 			continue
 		}
 		if err := a.addRemoteAPIKey(ctx, *key.APIKey); err != nil {
@@ -649,6 +668,58 @@ func (a *App) updateCurrentUserAPIKey(ctx context.Context, user *AuthUser, apiKe
 	name := user.Username
 	summary.UserName = &name
 	return summary, nil
+}
+
+func (a *App) setCurrentUserAPIKeyDisabled(ctx context.Context, user *AuthUser, apiKeyHash string, disabled bool) (UserApiKeySummary, error) {
+	key, err := a.getAPIKey(ctx, apiKeyHash)
+	if err != nil {
+		return UserApiKeySummary{}, err
+	}
+	if key.UserID != user.ID {
+		return UserApiKeySummary{}, notFoundError("API KEY 不存在")
+	}
+	if key.Disabled == disabled {
+		return a.keySummaryByHash(ctx, apiKeyHash, nil)
+	}
+
+	if disabled {
+		if err := a.removeRemoteAPIKeyHash(ctx, apiKeyHash); err != nil {
+			return UserApiKeySummary{}, err
+		}
+	} else {
+		if key.APIKey == nil {
+			return UserApiKeySummary{}, conflictError("当前 API KEY 缺少完整密钥，无法启用")
+		}
+		if err := a.addRemoteAPIKey(ctx, *key.APIKey); err != nil {
+			return UserApiKeySummary{}, err
+		}
+	}
+
+	now := dbTime(time.Now())
+	result, err := a.db.ExecContext(ctx, `
+		UPDATE user_api_keys
+		SET disabled = ?, updated_at = ?
+		WHERE user_id = ? AND api_key_hash = ?
+	`, disabled, now, user.ID, apiKeyHash)
+	if err != nil {
+		if disabled && key.APIKey != nil {
+			_ = a.addRemoteAPIKey(ctx, *key.APIKey)
+		} else if !disabled {
+			_ = a.removeRemoteAPIKeyHash(ctx, apiKeyHash)
+		}
+		return UserApiKeySummary{}, err
+	}
+	affected, _ := result.RowsAffected()
+	if affected == 0 {
+		if disabled && key.APIKey != nil {
+			_ = a.addRemoteAPIKey(ctx, *key.APIKey)
+		} else if !disabled {
+			_ = a.removeRemoteAPIKeyHash(ctx, apiKeyHash)
+		}
+		return UserApiKeySummary{}, notFoundError("API KEY 不存在")
+	}
+
+	return a.keySummaryByHash(ctx, apiKeyHash, nil)
 }
 
 func (a *App) deleteCurrentUserAPIKey(ctx context.Context, user *AuthUser, apiKeyHash string) error {
@@ -822,7 +893,7 @@ func (a *App) ensureUsernameAvailable(ctx context.Context, username string, exce
 }
 
 func (a *App) userAPIKeys(ctx context.Context, userID int) ([]UserAPIKey, error) {
-	rows, err := a.db.QueryContext(ctx, `SELECT api_key_hash, user_id, api_key, description, CAST(created_at AS TEXT), CAST(updated_at AS TEXT) FROM user_api_keys WHERE user_id = ? ORDER BY created_at, api_key_hash`, userID)
+	rows, err := a.db.QueryContext(ctx, `SELECT api_key_hash, user_id, api_key, description, disabled, CAST(created_at AS TEXT), CAST(updated_at AS TEXT) FROM user_api_keys WHERE user_id = ? ORDER BY created_at, api_key_hash`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -831,7 +902,7 @@ func (a *App) userAPIKeys(ctx context.Context, userID int) ([]UserAPIKey, error)
 }
 
 func (a *App) getAPIKey(ctx context.Context, apiKeyHash string) (UserAPIKey, error) {
-	rows, err := a.db.QueryContext(ctx, `SELECT api_key_hash, user_id, api_key, description, CAST(created_at AS TEXT), CAST(updated_at AS TEXT) FROM user_api_keys WHERE api_key_hash = ?`, apiKeyHash)
+	rows, err := a.db.QueryContext(ctx, `SELECT api_key_hash, user_id, api_key, description, disabled, CAST(created_at AS TEXT), CAST(updated_at AS TEXT) FROM user_api_keys WHERE api_key_hash = ?`, apiKeyHash)
 	if err != nil {
 		return UserAPIKey{}, err
 	}
@@ -851,7 +922,7 @@ func scanAPIKeys(rows *sql.Rows) ([]UserAPIKey, error) {
 	for rows.Next() {
 		var key UserAPIKey
 		var apiKey, createdAt, updatedAt sql.NullString
-		if err := rows.Scan(&key.APIKeyHash, &key.UserID, &apiKey, &key.Description, &createdAt, &updatedAt); err != nil {
+		if err := rows.Scan(&key.APIKeyHash, &key.UserID, &apiKey, &key.Description, &key.Disabled, &createdAt, &updatedAt); err != nil {
 			return nil, err
 		}
 		key.APIKey = nullableString(apiKey)
@@ -864,7 +935,7 @@ func scanAPIKeys(rows *sql.Rows) ([]UserAPIKey, error) {
 
 func (a *App) keySummaries(ctx context.Context) ([]UserApiKeySummary, error) {
 	rows, err := a.db.QueryContext(ctx, `
-		SELECT k.api_key_hash, k.user_id, k.api_key, k.description, CAST(k.created_at AS TEXT), CAST(k.updated_at AS TEXT),
+		SELECT k.api_key_hash, k.user_id, k.api_key, k.description, k.disabled, CAST(k.created_at AS TEXT), CAST(k.updated_at AS TEXT),
 		       u.nickname, u.username
 		FROM user_api_keys k
 		LEFT JOIN users u ON u.id = k.user_id
@@ -878,7 +949,7 @@ func (a *App) keySummaries(ctx context.Context) ([]UserApiKeySummary, error) {
 		var summary UserApiKeySummary
 		var apiKey, createdAt, updatedAt, nickname, username sql.NullString
 		var userID int
-		if err := rows.Scan(&summary.APIKeyHash, &userID, &apiKey, &summary.Description, &createdAt, &updatedAt, &nickname, &username); err != nil {
+		if err := rows.Scan(&summary.APIKeyHash, &userID, &apiKey, &summary.Description, &summary.Disabled, &createdAt, &updatedAt, &nickname, &username); err != nil {
 			return nil, err
 		}
 		summary.APIKey = nullableString(apiKey)

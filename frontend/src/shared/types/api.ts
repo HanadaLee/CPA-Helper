@@ -587,6 +587,7 @@ export interface UserApiKeySummary {
   api_key_hash: string
   api_key: string | null
   description: string
+  disabled: boolean
   user_id: number | null
   user_name: string | null
   created_at: string | null

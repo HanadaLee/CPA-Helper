@@ -674,6 +674,9 @@ func (a *App) testCurrentUserModelRequest(ctx context.Context, user *AuthUser, p
 	if apiKey.UserID != user.ID {
 		return modelRequestTestResponse{}, notFoundError("API KEY 不存在")
 	}
+	if apiKey.Disabled {
+		return modelRequestTestResponse{}, conflictError("当前 API KEY 已禁用，无法发起测试")
+	}
 	if apiKey.APIKey == nil || strings.TrimSpace(*apiKey.APIKey) == "" {
 		return modelRequestTestResponse{}, conflictError("当前 API KEY 缺少完整密钥，无法发起测试")
 	}

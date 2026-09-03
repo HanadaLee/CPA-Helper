@@ -101,7 +101,7 @@ func (a *App) availableModelsForUser(ctx context.Context, userID int) (Available
 	}
 	queryable := make([]UserAPIKey, 0, len(bindings))
 	for _, binding := range bindings {
-		if binding.APIKey != nil && strings.TrimSpace(*binding.APIKey) != "" {
+		if !binding.Disabled && binding.APIKey != nil && strings.TrimSpace(*binding.APIKey) != "" {
 			queryable = append(queryable, binding)
 		}
 	}

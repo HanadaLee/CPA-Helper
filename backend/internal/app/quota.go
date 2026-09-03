@@ -376,13 +376,16 @@ func (a *App) restoreQuotaPausedUserIfAvailable(ctx context.Context, userID int)
 		return err
 	}
 	for _, key := range keys {
+		if key.Disabled {
+			continue
+		}
 		if key.APIKey == nil {
 			return a.setQuotaSyncMessage(ctx, userID, "存在无法恢复的 API KEY，请重新绑定后再恢复")
 		}
 	}
 	restored := []string{}
 	for _, key := range keys {
-		if key.APIKey == nil {
+		if key.Disabled || key.APIKey == nil {
 			continue
 		}
 		if err := a.addRemoteAPIKey(ctx, *key.APIKey); err != nil {

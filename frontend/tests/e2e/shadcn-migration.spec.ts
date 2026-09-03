@@ -279,6 +279,69 @@ test('standard users open the renamed credential status route in read-only mode'
   await expect(page.getByRole('button', { name: /凭证巡检|Inspect Credentials/ })).toHaveCount(0)
 })
 
+test('API key actions can temporarily disable and re-enable one key', async ({ page }) => {
+  await setupOrLogin(page)
+
+  let disabled = false
+  const keySummary = () => ({
+    api_key_hash: 'fixture-key',
+    api_key: 'sk-fixture-key',
+    description: 'Temporary key',
+    disabled,
+    user_id: 1,
+    user_name: 'admin',
+    created_at: '2026-09-03T00:00:00Z',
+    updated_at: '2026-09-03T00:00:00Z',
+    records: 0,
+    success_records: 0,
+    failed_records: 0,
+    total_tokens: 0,
+    today_records: 0,
+    today_success_records: 0,
+    today_failed_records: 0,
+    today_input_tokens: 0,
+    today_output_tokens: 0,
+    today_cached_tokens: 0,
+    today_reasoning_tokens: 0,
+    today_total_tokens: 0,
+    today_estimated_cost_usd: 0,
+    today_unpriced_records: 0,
+    first_seen_at: null,
+    last_seen_at: null,
+    last_provider: null,
+    last_model: null,
+    providers: [],
+    models: [],
+  })
+
+  await page.route('**/api/api-keys', async (route) => {
+    await route.fulfill({ json: [keySummary()] })
+  })
+  await page.route('**/api/api-keys/fixture-key/disable', async (route) => {
+    disabled = true
+    await route.fulfill({ json: keySummary() })
+  })
+  await page.route('**/api/api-keys/fixture-key/enable', async (route) => {
+    disabled = false
+    await route.fulfill({ json: keySummary() })
+  })
+
+  await page.goto('/account/keys')
+  const actionsButton = page.getByRole('button', { name: /打开 Temporary key 的操作菜单|Open actions for Temporary key/ })
+  await actionsButton.click()
+  await page.getByRole('menuitem', { name: /禁用|Disable/ }).click()
+  const disableDialog = page.getByRole('alertdialog', { name: /禁用 API 密钥|Disable API key/ })
+  await expect(disableDialog).toBeVisible()
+  await disableDialog.getByRole('button', { name: /确认禁用|Confirm disable/ }).click()
+  await expect(page.getByText(/已禁用|Disabled/).last()).toBeVisible()
+
+  await actionsButton.click()
+  await page.getByRole('menuitem', { name: /启用|Enable/ }).click()
+  const enableDialog = page.getByRole('alertdialog', { name: /启用 API 密钥|Enable API key/ })
+  await enableDialog.getByRole('button', { name: /确认启用|Confirm enable/ }).click()
+  await expect(page.getByText(/已禁用|Disabled/)).toHaveCount(0)
+})
+
 test('all migrated routes render and core controls remain interactive', async ({ page }) => {
   const consoleErrors: string[] = []
   page.on('console', (message) => {
@@ -827,7 +890,7 @@ test('theme and mobile navigation survive the migration', async ({ page }) => {
   await expect(usageMenuButton).toHaveCSS('font-size', '14px')
   await expect(usageMenuButton).toHaveCSS('height', '32px')
   await expect(page.locator('a[href*="github.com/walkingddd/CPA-Helper"]')).toHaveCount(0)
-  const desktopUserMenuButton = page.getByRole('button', { name: /admin.*管理员|admin.*Admin/i })
+  const desktopUserMenuButton = page.getByRole('button', { name: /管理员.*admin|Admin.*admin/i })
   await expect(desktopUserMenuButton.locator('.lucide-ellipsis-vertical')).toBeVisible()
   const desktopUserButtonBox = await desktopUserMenuButton.boundingBox()
   await desktopUserMenuButton.click()
@@ -879,7 +942,7 @@ test('theme and mobile navigation survive the migration', async ({ page }) => {
   await expect(page.locator('.mobile-brand-copy strong')).toBeVisible()
   await expect(page.locator('.mobile-version-badge')).toHaveCount(0)
   await expect(page.getByRole('button', { name: /用量分析|Usage Analytics/ }).first()).toBeVisible()
-  const mobileUserMenuButton = page.getByRole('button', { name: /admin.*管理员|admin.*Admin/i })
+  const mobileUserMenuButton = page.getByRole('button', { name: /管理员.*admin|Admin.*admin/i })
   await expect(mobileUserMenuButton.locator('.lucide-ellipsis-vertical')).toBeVisible()
   const mobileUserButtonBox = await mobileUserMenuButton.boundingBox()
   await mobileUserMenuButton.click()

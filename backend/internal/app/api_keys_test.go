@@ -42,6 +42,98 @@ func TestListAPIKeysReturnsEmptyArrayForFreshAccount(t *testing.T) {
 	}
 }
 
+func TestToggleCurrentUserAPIKeyDisabledPreservesLocalKey(t *testing.T) {
+	t.Setenv("CPA_HELPER_DATA_DIR", t.TempDir())
+
+	remoteKeys := []string{}
+	cpa := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.URL.Path == "/v0/management/api-keys" && r.Method == http.MethodGet:
+			_ = json.NewEncoder(w).Encode(remoteKeys)
+		case r.URL.Path == "/v0/management/api-keys" && r.Method == http.MethodPatch:
+			var payload struct {
+				New string `json:"new"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			found := false
+			for _, key := range remoteKeys {
+				if key == payload.New {
+					found = true
+					break
+				}
+			}
+			if !found {
+				remoteKeys = append(remoteKeys, payload.New)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"api-keys": remoteKeys})
+		case r.URL.Path == "/v0/management/api-keys" && r.Method == http.MethodPut:
+			if err := json.NewDecoder(r.Body).Decode(&remoteKeys); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"api-keys": remoteKeys})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer cpa.Close()
+
+	app, err := backendApp.New()
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	defer app.Close()
+
+	handler := app.Routes()
+	cookies := requestJSON(t, handler, http.MethodPost, "/api/auth/setup", map[string]any{
+		"username": "admin",
+		"password": "test-password",
+		"nickname": "Admin",
+	}, nil, nil)
+	requestJSON(t, handler, http.MethodPut, "/api/settings", map[string]any{
+		"cliaproxy_url":     cpa.URL,
+		"model_request_url": cpa.URL,
+		"management_key":    "test-management-key",
+		"collector_enabled": false,
+	}, cookies, nil)
+
+	created := apiKeyCreateResponse{}
+	requestJSON(t, handler, http.MethodPost, "/api/api-keys", map[string]any{
+		"description": "Temporary key",
+	}, cookies, &created)
+	if len(remoteKeys) != 1 || remoteKeys[0] != created.APIKey {
+		t.Fatalf("remote keys after create = %#v, want generated key", remoteKeys)
+	}
+
+	var disabled backendApp.UserApiKeySummary
+	requestJSON(t, handler, http.MethodPost, "/api/api-keys/"+created.APIKeyHash+"/disable", nil, cookies, &disabled)
+	if !disabled.Disabled {
+		t.Fatal("disabled response = false, want true")
+	}
+	if len(remoteKeys) != 0 {
+		t.Fatalf("remote keys after disable = %#v, want empty", remoteKeys)
+	}
+
+	var listed []backendApp.UserApiKeySummary
+	requestJSON(t, handler, http.MethodGet, "/api/api-keys", nil, cookies, &listed)
+	if len(listed) != 1 || !listed[0].Disabled || listed[0].APIKey == nil || *listed[0].APIKey != created.APIKey {
+		t.Fatalf("listed disabled key = %#v, want local key retained and disabled", listed)
+	}
+
+	var enabled backendApp.UserApiKeySummary
+	requestJSON(t, handler, http.MethodPost, "/api/api-keys/"+created.APIKeyHash+"/enable", nil, cookies, &enabled)
+	if enabled.Disabled {
+		t.Fatal("enabled response = true, want false")
+	}
+	if len(remoteKeys) != 1 || remoteKeys[0] != created.APIKey {
+		t.Fatalf("remote keys after enable = %#v, want generated key", remoteKeys)
+	}
+}
+
 func TestAccountModelRequestGuideUsesConfiguredURL(t *testing.T) {
 	t.Setenv("CPA_HELPER_DATA_DIR", t.TempDir())
 

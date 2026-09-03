@@ -27,6 +27,14 @@ export function updateApiKey(
   return apiClient.put<UserApiKeySummary>(`/api-keys/${apiKeyHash}`, payload)
 }
 
+export function disableApiKey(apiKeyHash: string): Promise<UserApiKeySummary> {
+  return apiClient.post<UserApiKeySummary>(`/api-keys/${apiKeyHash}/disable`, {})
+}
+
+export function enableApiKey(apiKeyHash: string): Promise<UserApiKeySummary> {
+  return apiClient.post<UserApiKeySummary>(`/api-keys/${apiKeyHash}/enable`, {})
+}
+
 export function deleteApiKey(apiKeyHash: string): Promise<void> {
   return apiClient.delete(`/api-keys/${apiKeyHash}`)
 }

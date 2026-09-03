@@ -7,6 +7,7 @@ import {
   AlertDescription,
   AlertTitle,
 } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -83,6 +84,8 @@ import {
   Layers3,
   MoreHorizontal,
   Pencil,
+  Power,
+  PowerOff,
   Plus,
   RefreshCw,
   Send,
@@ -92,6 +95,8 @@ import {
 import {
   createApiKey,
   deleteApiKey,
+  disableApiKey,
+  enableApiKey,
   getModelRequestGuide,
   listApiKeys,
   testModelRequest,
@@ -145,6 +150,7 @@ const apiKeyDescription = ref('VSCode')
 const generatedApiKey = ref<string | null>(null)
 const generatedApiKeyHash = ref<string | null>(null)
 const visibleApiKeyHashes = ref<Set<string>>(new Set())
+const apiKeyActionHashes = ref<Set<string>>(new Set())
 const page = ref(1)
 const pageSize = 12
 
@@ -691,6 +697,56 @@ function editApiKey(row: UserApiKeySummary) {
   editorVisible.value = true
 }
 
+function isApiKeyActionLoading(row: UserApiKeySummary): boolean {
+  return apiKeyActionHashes.value.has(row.api_key_hash)
+}
+
+function setApiKeyActionLoading(apiKeyHash: string, loading: boolean) {
+  const next = new Set(apiKeyActionHashes.value)
+  if (loading) {
+    next.add(apiKeyHash)
+  } else {
+    next.delete(apiKeyHash)
+  }
+  apiKeyActionHashes.value = next
+}
+
+function confirmToggleApiKey(row: UserApiKeySummary) {
+  const nextDisabled = row.disabled !== true
+  const label = row.description || t('未命名密钥', 'Unnamed key')
+  dialog.warning({
+    title: nextDisabled ? t('禁用 API 密钥', 'Disable API key') : t('启用 API 密钥', 'Enable API key'),
+    content: nextDisabled
+      ? t(`将暂时禁用“${label}”，并从 CPA 的可用密钥中移除。之后可以再次启用。`, `Temporarily disable “${label}” and remove it from CPA's active keys. You can enable it again later.`)
+      : t(`将重新启用“${label}”，并将其加入 CPA 的可用密钥。`, `Re-enable “${label}” and add it back to CPA's active keys.`),
+    positiveText: nextDisabled ? t('确认禁用', 'Confirm disable') : t('确认启用', 'Confirm enable'),
+    negativeText: t('取消', 'Cancel'),
+    onPositiveClick: async () => {
+      if (isApiKeyActionLoading(row)) {
+        return
+      }
+      setApiKeyActionLoading(row.api_key_hash, true)
+      try {
+        const updated = nextDisabled
+          ? await disableApiKey(row.api_key_hash)
+          : await enableApiKey(row.api_key_hash)
+        apiKeys.value = apiKeys.value.map((item) =>
+          item.api_key_hash === updated.api_key_hash ? updated : item,
+        )
+        message.success(nextDisabled ? t('API 密钥已禁用', 'API key disabled') : t('API 密钥已启用', 'API key enabled'))
+      } catch (error) {
+        message.error(errorText(
+          error,
+          nextDisabled ? '禁用 API 密钥失败' : '启用 API 密钥失败',
+          nextDisabled ? 'Failed to disable API key' : 'Failed to enable API key',
+        ))
+      } finally {
+        setApiKeyActionLoading(row.api_key_hash, false)
+      }
+    },
+  })
+}
+
 async function refresh() {
   isLoading.value = true
   try {
@@ -915,7 +971,12 @@ onMounted(refresh)
                     </div>
                   </TableCell>
                   <TableCell>
-                    <span class="description-cell" :title="row.description || '-'">{{ row.description || '-' }}</span>
+                    <div class="api-key-description-cell">
+                      <span class="description-cell" :title="row.description || '-'">{{ row.description || '-' }}</span>
+                      <Badge v-if="row.disabled" variant="destructive">
+                        {{ t('已禁用', 'Disabled') }}
+                      </Badge>
+                    </div>
                   </TableCell>
                   <TableCell class="whitespace-nowrap text-muted-foreground">
                     {{ formatDateTime(row.created_at) }}
@@ -933,13 +994,18 @@ onMounted(refresh)
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" class="w-40">
                         <DropdownMenuGroup>
-                          <DropdownMenuItem @select="openRequestTest(row)">
+                          <DropdownMenuItem :disabled="row.disabled" @select="openRequestTest(row)">
                             <Send />
                             <span>{{ t('请求测试', 'Request test') }}</span>
                           </DropdownMenuItem>
                           <DropdownMenuItem @select="editApiKey(row)">
                             <Pencil />
                             <span>{{ t('编辑', 'Edit') }}</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem :disabled="isApiKeyActionLoading(row)" @select="confirmToggleApiKey(row)">
+                            <PowerOff v-if="row.disabled" />
+                            <Power v-else />
+                            <span>{{ row.disabled ? t('启用', 'Enable') : t('禁用', 'Disable') }}</span>
                           </DropdownMenuItem>
                         </DropdownMenuGroup>
                         <DropdownMenuSeparator />
@@ -1574,6 +1640,18 @@ onMounted(refresh)
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.api-key-description-cell {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  min-width: 0;
+}
+
+.api-key-description-cell .description-cell {
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .api-key-copy-button:hover,
