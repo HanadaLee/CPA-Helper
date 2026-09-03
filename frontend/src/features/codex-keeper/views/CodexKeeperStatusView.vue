@@ -197,11 +197,11 @@ const KEEPER_STATUS_POLL_INTERVAL_MS = 3000
 const REFRESH_STATUS_POLL_INTERVAL_MS = 1500
 const OAUTH_STATUS_POLL_INTERVAL_MS = 3000
 const message = toast
-const { errorText, keeperStatusText, serverText, t } = useI18n()
+const { credentialServerText, errorText, keeperStatusText, t } = useI18n()
 const { currentUser } = useCurrentUser()
 const canManageAccounts = computed(() => currentUser.value?.is_admin === true)
 const accountPageTitle = computed(() =>
-  canManageAccounts.value ? t('账号管理', 'Account Management') : t('账号状态', 'Account Status'),
+  canManageAccounts.value ? t('凭证管理', 'Credential Management') : t('凭证状态', 'Credential Status'),
 )
 const accountTableScrollX = computed(() =>
   canManageAccounts.value ? accountManageTableScrollX : accountReadOnlyTableScrollX,
@@ -564,11 +564,11 @@ const bulkDeletePreviewNames = computed(() => selectedAccountNames.value.slice(0
 const bulkDeletePreviewOverflow = computed(() =>
   Math.max(0, selectedAccountCount.value - bulkDeletePreviewNames.value.length),
 )
-const bulkDeleteDialogTitle = computed(() => t('批量删除账号', 'Bulk Delete Accounts'))
+const bulkDeleteDialogTitle = computed(() => t('批量删除凭证', 'Bulk Delete Credentials'))
 const bulkDeleteWarningText = computed(() =>
   t(
-    `将删除已选 ${selectedAccountCount.value} 个账号，并从 CPA 删除认证文件。此操作不可恢复。`,
-    `This will delete ${selectedAccountCount.value} selected accounts and remove their auth files from CPA. This cannot be undone.`,
+    `将删除已选 ${selectedAccountCount.value} 份凭证，并从 CPA 删除认证文件。此操作不可恢复。`,
+    `This will delete ${selectedAccountCount.value} selected credentials and remove their auth files from CPA. This cannot be undone.`,
   ),
 )
 const canSubmitPriority = computed(() => {
@@ -592,8 +592,8 @@ const priorityDialogHint = computed(() => {
   const account = priorityDialog.account
   const value = account ? defaultPriority(account) : null
   return value === null
-    ? t('该账号类型没有配置默认优先级，不能使用类型默认值。', 'This account type has no default priority, so the type default cannot be used.')
-    : t(`将优先级设置为当前账号类型默认值 ${value}。`, `Set the priority to the current account type default: ${value}.`)
+    ? t('该凭证类型没有配置默认优先级，不能使用类型默认值。', 'This credential type has no default priority, so the type default cannot be used.')
+    : t(`将优先级设置为当前凭证类型默认值 ${value}。`, `Set the priority to the current credential type default: ${value}.`)
 })
 const priorityModeOptions = computed(() => {
   const defaultValue = priorityDialog.account ? defaultPriority(priorityDialog.account) : null
@@ -1054,7 +1054,7 @@ function quotaWindowPredictionTitle(item: QuotaWindowItem): string {
 
 function latestActionText(account: CodexKeeperAccount): string {
   const text = account.last_error?.trim() || account.latest_action?.trim()
-  return text ? serverText(text, '账号状态', 'Account status') : '-'
+  return text ? credentialServerText(text, '凭证状态', 'Credential status') : '-'
 }
 
 function accountStatusTags(account: CodexKeeperAccount) {
@@ -1104,7 +1104,7 @@ async function loadAccounts() {
     priorityRules.value = accountsResponse.priority_rules
     keeperStatus.value = nextStatus
   } catch (error) {
-    message.error(errorText(error, '加载账号状态失败', 'Failed to load account status'))
+    message.error(errorText(error, '加载凭证状态失败', 'Failed to load credential status'))
   } finally {
     isLoading.value = false
   }
@@ -1330,7 +1330,7 @@ async function reloadAccounts() {
     try {
       await syncCodexKeeperAccountList()
     } catch (error) {
-      message.error(errorText(error, '同步 CPA 账号列表失败', 'Failed to sync the CPA account list'))
+      message.error(errorText(error, '同步 CPA 凭证列表失败', 'Failed to sync the CPA credential list'))
     }
   }
   try {
@@ -1342,7 +1342,7 @@ async function reloadAccounts() {
     priorityRules.value = accountsResponse.priority_rules
     keeperStatus.value = nextStatus
   } catch (error) {
-    message.error(errorText(error, '加载账号状态失败', 'Failed to load account status'))
+    message.error(errorText(error, '加载凭证状态失败', 'Failed to load credential status'))
   } finally {
     isLoading.value = false
   }
@@ -1461,8 +1461,8 @@ async function saveAuthFileEditor() {
     authFileEditor.value = null
     await refreshAccounts([editor.fileName], {
       successMessage: t(
-        `已开始巡检“${editor.fileName}”以同步账号信息`,
-        `Started inspecting “${editor.fileName}” to sync account information`,
+        `已开始巡检“${editor.fileName}”以同步凭证信息`,
+        `Started inspecting “${editor.fileName}” to sync credential information`,
       ),
     })
   } catch (error) {
@@ -1640,12 +1640,12 @@ async function startAccountInspection(): Promise<boolean> {
   isStartingAccountInspection.value = true
   try {
     await runCodexKeeperOnce()
-    message.success(t('已开始账号巡检', 'Account inspection started'))
+    message.success(t('已开始凭证巡检', 'Credential inspection started'))
     await loadKeeperStatus()
     void pollKeeperModeUntilIdle('once')
     return true
   } catch (error) {
-    message.error(errorText(error, '启动账号巡检失败', 'Failed to start account inspection'))
+    message.error(errorText(error, '启动凭证巡检失败', 'Failed to start credential inspection'))
     return false
   } finally {
     isStartingAccountInspection.value = false
@@ -1685,8 +1685,8 @@ async function handleAuthFileUpload(event: Event) {
       message.success(t(`上传成功 ${result.uploaded} 个认证文件`, `Uploaded ${result.uploaded} auth file(s)`))
       await refreshAccounts(result.files, {
         successMessage: t(
-          `已开始巡检 ${result.uploaded} 个新账号`,
-          `Started inspecting ${result.uploaded} new account(s)`,
+          `已开始巡检 ${result.uploaded} 份新凭证`,
+          `Started inspecting ${result.uploaded} new credential(s)`,
         ),
       })
     }
@@ -1724,7 +1724,7 @@ async function submitBulkDelete() {
     } else if (result.failed.length > 0) {
       message.error(t(`批量删除失败：失败 ${result.failed.length} 个`, `Bulk delete failed: ${result.failed.length} failed`))
     } else {
-      message.success(t(`已删除 ${result.deleted.length} 个账号`, `Deleted ${result.deleted.length} accounts`))
+      message.success(t(`已删除 ${result.deleted.length} 份凭证`, `Deleted ${result.deleted.length} credentials`))
     }
     bulkDeleteDialog.show = false
     await loadAccounts()
@@ -1775,8 +1775,8 @@ async function toggleSelectedAccounts(action: 'enable' | 'disable') {
       ))
     } else {
       message.success(t(
-        `已${zhAction} ${succeededNames.size} 个账号`,
-        `${succeededNames.size} accounts ${action === 'enable' ? 'enabled' : 'disabled'}`,
+        `已${zhAction} ${succeededNames.size} 份凭证`,
+        `${succeededNames.size} credentials ${action === 'enable' ? 'enabled' : 'disabled'}`,
       ))
     }
   } finally {
@@ -1793,8 +1793,8 @@ function confirmToggleSelectedAccounts(action: 'enable' | 'disable') {
   }
   if (action === 'enable') {
     openAccountConfirm(
-      t('批量启用账号', 'Bulk Enable Accounts'),
-      t(`确认启用已选的 ${count} 个已禁用账号？`, `Enable the ${count} selected disabled accounts?`),
+      t('批量启用凭证', 'Bulk Enable Credentials'),
+      t(`确认启用已选的 ${count} 份已禁用凭证？`, `Enable the ${count} selected disabled credentials?`),
       t('确认启用', 'Confirm Enable'),
       'primary',
       () => toggleSelectedAccounts('enable'),
@@ -1802,8 +1802,8 @@ function confirmToggleSelectedAccounts(action: 'enable' | 'disable') {
     return
   }
   openAccountConfirm(
-    t('批量禁用账号', 'Bulk Disable Accounts'),
-    t(`确认禁用已选的 ${count} 个正常账号？`, `Disable the ${count} selected enabled accounts?`),
+    t('批量禁用凭证', 'Bulk Disable Credentials'),
+    t(`确认禁用已选的 ${count} 份正常凭证？`, `Disable the ${count} selected enabled credentials?`),
     t('确认禁用', 'Confirm Disable'),
     'warning',
     () => toggleSelectedAccounts('disable'),
@@ -2003,7 +2003,7 @@ async function submitAccountConfirm() {
 
 function confirmEnableAccount(account: CodexKeeperAccount) {
   openAccountConfirm(
-    t('启用账号', 'Enable Account'),
+    t('启用凭证', 'Enable Credential'),
     t(`启用 ${account.name}？`, `Enable ${account.name}?`),
     t('确认启用', 'Confirm Enable'),
     'primary',
@@ -2013,7 +2013,7 @@ function confirmEnableAccount(account: CodexKeeperAccount) {
 
 function confirmDisableAccount(account: CodexKeeperAccount) {
   openAccountConfirm(
-    t('禁用账号', 'Disable Account'),
+    t('禁用凭证', 'Disable Credential'),
     t(`禁用 ${account.name}？`, `Disable ${account.name}?`),
     t('确认禁用', 'Confirm Disable'),
     'warning',
@@ -2023,7 +2023,7 @@ function confirmDisableAccount(account: CodexKeeperAccount) {
 
 function confirmDeleteAccount(account: CodexKeeperAccount) {
   openAccountConfirm(
-    t('删除账号', 'Delete Account'),
+    t('删除凭证', 'Delete Credential'),
     t(`删除 ${account.name}？此操作会从 CPA 删除认证文件。`, `Delete ${account.name}? This will remove the auth file from CPA.`),
     t('确认删除', 'Confirm Delete'),
     'error',
@@ -2036,7 +2036,7 @@ function enableAccount(account: CodexKeeperAccount) {
     account,
     'toggle',
     () => enableCodexKeeperAccount(account.name),
-    t('账号已启用', 'Account enabled'),
+    t('凭证已启用', 'Credential enabled'),
   )
 }
 
@@ -2045,7 +2045,7 @@ function disableAccount(account: CodexKeeperAccount) {
     account,
     'toggle',
     () => disableCodexKeeperAccount(account.name),
-    t('账号已禁用', 'Account disabled'),
+    t('凭证已禁用', 'Credential disabled'),
   )
 }
 
@@ -2054,7 +2054,7 @@ function deleteAccount(account: CodexKeeperAccount) {
     account,
     'delete',
     () => deleteCodexKeeperAccount(account.name),
-    t('账号已删除', 'Account deleted'),
+    t('凭证已删除', 'Credential deleted'),
   )
 }
 
@@ -2121,8 +2121,8 @@ async function refreshAccounts(
   try {
     await refreshCodexKeeperAccounts({ auth_names: authNames })
     message.success(options.successMessage ?? (authNames.length === 1
-      ? t('已开始刷新账号', 'Started refreshing account')
-      : t(`已开始刷新 ${authNames.length} 个账号`, `Started refreshing ${authNames.length} accounts`)))
+      ? t('已开始刷新凭证', 'Started refreshing credential')
+      : t(`已开始刷新 ${authNames.length} 份凭证`, `Started refreshing ${authNames.length} credentials`)))
     if (options.closeDetail) {
       detailOpen.value = false
     }
@@ -2131,7 +2131,7 @@ async function refreshAccounts(
     }
     void pollKeeperModeUntilIdle('accounts')
   } catch (error) {
-    message.error(errorText(error, '刷新账号失败', 'Failed to refresh accounts'))
+    message.error(errorText(error, '刷新凭证失败', 'Failed to refresh credentials'))
   } finally {
     const restActions = new Set(actingActions.value)
     refreshKeys.forEach((key) => restActions.delete(key))
@@ -2175,7 +2175,7 @@ async function runAccountAction(
       detailOpen.value = freshAccount !== null
     }
   } catch (error) {
-    message.error(errorText(error, '账号操作失败', 'Account operation failed'))
+    message.error(errorText(error, '凭证操作失败', 'Credential operation failed'))
   } finally {
     const nextActions = new Set(actingActions.value)
     nextActions.delete(key)
@@ -2248,7 +2248,7 @@ onBeforeUnmount(() => {
         >
           <Spinner v-if="isStartingAccountInspection || isAccountInspectionRunning" data-icon="inline-start" />
           <ShieldCheck v-else data-icon="inline-start" />
-          {{ t('账号巡检', 'Inspect Accounts') }}
+          {{ t('凭证巡检', 'Inspect Credentials') }}
         </Button>
         <Button variant="outline" :disabled="isLoading" @click="reloadAccounts">
           <Spinner v-if="isLoading" data-icon="inline-start" />
@@ -2284,7 +2284,7 @@ onBeforeUnmount(() => {
       <Card size="sm" class="account-metric-card">
         <CardHeader class="account-metric-header">
           <div class="min-w-0">
-            <CardDescription>{{ t('账号总数', 'Total Accounts') }}</CardDescription>
+            <CardDescription>{{ t('凭证总数', 'Total Credentials') }}</CardDescription>
             <CardTitle class="text-2xl tabular-nums">{{ formatInteger(accounts.length) }}</CardTitle>
           </div>
           <div class="account-metric-icon"><Users /></div>
@@ -2323,7 +2323,7 @@ onBeforeUnmount(() => {
           <div><CardDescription>{{ t('已禁用', 'Disabled') }}</CardDescription><CardTitle class="text-2xl tabular-nums">{{ formatInteger(disabledAccountCount) }}</CardTitle></div>
           <div class="account-metric-icon"><PauseCircle /></div>
         </CardHeader>
-        <CardContent class="text-xs text-muted-foreground">{{ t('停用账号', 'Inactive accounts') }}</CardContent>
+        <CardContent class="text-xs text-muted-foreground">{{ t('停用凭证', 'Inactive credentials') }}</CardContent>
       </Card>
       <Card
         size="sm"
@@ -2365,11 +2365,11 @@ onBeforeUnmount(() => {
       <CardHeader class="status-toolbar">
         <div class="toolbar-heading">
           <div>
-            <CardTitle>{{ t('账号列表', 'Account List') }}</CardTitle>
+            <CardTitle>{{ t('凭证列表', 'Credential List') }}</CardTitle>
             <CardDescription class="toolbar-subtitle">
-              {{ t(`正常 ${filteredNormalAccounts.length} / ${enabledAccountCount} 个账号`, `Normal ${filteredNormalAccounts.length} / ${enabledAccountCount} accounts`) }}
+              {{ t(`正常 ${filteredNormalAccounts.length} / ${enabledAccountCount} 份凭证`, `Normal ${filteredNormalAccounts.length} / ${enabledAccountCount} credentials`) }}
               <template v-if="hasDisabledAccounts">
-                {{ t(`，已禁用 ${filteredDisabledAccounts.length} / ${disabledAccountCount} 个账号`, `, disabled ${filteredDisabledAccounts.length} / ${disabledAccountCount} accounts`) }}
+                {{ t(`，已禁用 ${filteredDisabledAccounts.length} / ${disabledAccountCount} 份凭证`, `, disabled ${filteredDisabledAccounts.length} / ${disabledAccountCount} credentials`) }}
               </template>
             </CardDescription>
           </div>
@@ -2380,7 +2380,7 @@ onBeforeUnmount(() => {
         <div class="filter-grid">
           <InputGroup>
             <InputGroupAddon><Search /></InputGroupAddon>
-            <InputGroupInput v-model="filters.keyword" :placeholder="t('搜索账号或邮箱', 'Search account or email')" />
+            <InputGroupInput v-model="filters.keyword" :placeholder="t('搜索凭证或邮箱', 'Search credential or email')" />
           </InputGroup>
           <Combobox
             :model-value="selectedAccountTypeOption"
@@ -2394,15 +2394,15 @@ onBeforeUnmount(() => {
                   class="filter-combobox-trigger"
                   role="combobox"
                   aria-haspopup="listbox"
-                  :aria-label="t('账号类型', 'Account Type')"
+                  :aria-label="t('凭证类型', 'Credential Type')"
                 >
-                  <span class="min-w-0 flex-1 truncate text-left">{{ selectedAccountTypeOption?.label ?? t('账号类型', 'Account Type') }}</span>
+                  <span class="min-w-0 flex-1 truncate text-left">{{ selectedAccountTypeOption?.label ?? t('凭证类型', 'Credential Type') }}</span>
                   <ChevronsUpDown data-icon="inline-end" class="text-muted-foreground" />
                 </Button>
               </ComboboxTrigger>
             </ComboboxAnchor>
             <ComboboxList align="start">
-              <ComboboxInput :placeholder="t('账号类型', 'Account Type')" />
+              <ComboboxInput :placeholder="t('凭证类型', 'Credential Type')" />
               <ComboboxEmpty>{{ t('没有匹配类型', 'No matching type') }}</ComboboxEmpty>
               <ComboboxGroup>
                 <ComboboxItem :value="null">{{ t('全部类型', 'All types') }}</ComboboxItem>
@@ -2429,7 +2429,7 @@ onBeforeUnmount(() => {
       <CardContent class="account-list-content">
         <section class="account-section">
           <div class="account-section-actions-row">
-            <div class="sort-control-row" :aria-label="t('账号排序', 'Account Sorting')">
+            <div class="sort-control-row" :aria-label="t('凭证排序', 'Credential Sorting')">
               <span class="sort-control-label">{{ t('排序', 'Sort') }}</span>
               <DropdownMenu>
                 <DropdownMenuTrigger as-child>
@@ -2524,11 +2524,11 @@ onBeforeUnmount(() => {
                     <Checkbox
                       :model-value="visibleSelectionState"
                       :disabled="selectableVisibleAccounts.length === 0"
-                      :aria-label="t('选择当前页账号', 'Select accounts on this page')"
+                      :aria-label="t('选择当前页凭证', 'Select credentials on this page')"
                       @update:model-value="setAllVisibleAccounts"
                     />
                   </TableHead>
-                  <TableHead class="w-[220px]">{{ t('账号', 'Account') }}</TableHead>
+                  <TableHead class="w-[220px]">{{ t('凭证', 'Credential') }}</TableHead>
                   <TableHead class="w-[96px]">{{ t('类型', 'Type') }}</TableHead>
                   <TableHead class="w-[88px]">{{ t('优先级', 'Priority') }}</TableHead>
                   <TableHead class="w-[168px]">{{ t('额度窗口', 'Quota Window') }}</TableHead>
@@ -2549,7 +2549,7 @@ onBeforeUnmount(() => {
                   </TableRow>
                 </template>
                 <TableEmpty v-else-if="visibleListAccounts.length === 0" :colspan="canManageAccounts ? 11 : 10">
-                  {{ t('当前筛选下暂无账号', 'No accounts match the current filter') }}
+                  {{ t('当前筛选下暂无凭证', 'No credentials match the current filter') }}
                 </TableEmpty>
                 <TableRow v-for="row in visibleListAccounts" v-else :key="row.name">
                   <TableCell v-if="canManageAccounts">
@@ -2697,16 +2697,16 @@ onBeforeUnmount(() => {
               <ArrowLeft data-icon="inline-start" />
               {{ t('返回', 'Back') }}
             </Button>
-            <SheetTitle class="detail-drawer-title">{{ t('账号详情', 'Account Details') }}</SheetTitle>
+            <SheetTitle class="detail-drawer-title">{{ t('凭证详情', 'Credential Details') }}</SheetTitle>
           </div>
           <SheetDescription>{{ selectedAccount?.email ?? selectedAccount?.name ?? '-' }}</SheetDescription>
         </SheetHeader>
         <div class="detail-drawer-body">
           <dl v-if="selectedAccount" class="detail-list">
-            <div class="detail-row"><dt>{{ t('账号', 'Account') }}</dt><dd>{{ selectedAccount.name }}</dd></div>
+            <div class="detail-row"><dt>{{ t('凭证', 'Credential') }}</dt><dd>{{ selectedAccount.name }}</dd></div>
             <div class="detail-row"><dt>{{ t('邮箱', 'Email') }}</dt><dd>{{ selectedAccount.email ?? '-' }}</dd></div>
             <div v-if="canManageAccounts" class="detail-row"><dt>{{ t('备注', 'Note') }}</dt><dd>{{ isSelectedAccountNoteLoading ? t('加载中...', 'Loading...') : (selectedAccountNote ?? '-') }}</dd></div>
-            <div class="detail-row"><dt>{{ t('账号类型', 'Account Type') }}</dt><dd>{{ accountTypeLabel(selectedAccount.account_type) }}</dd></div>
+            <div class="detail-row"><dt>{{ t('凭证类型', 'Credential Type') }}</dt><dd>{{ accountTypeLabel(selectedAccount.account_type) }}</dd></div>
             <div class="detail-row"><dt>{{ t('启用状态', 'Enabled Status') }}</dt><dd>{{ selectedAccount.disabled ? t('已禁用', 'Disabled') : t('启用中', 'Enabled') }}</dd></div>
             <div class="detail-row">
               <dt>{{ t('当前优先级', 'Current Priority') }}</dt>
@@ -2795,7 +2795,7 @@ onBeforeUnmount(() => {
                   </p>
                 </template>
                 <p v-else class="detail-reset-empty">
-                  {{ t('尚未查询该账号的可用重置次数。', 'Reset credits have not been queried for this account.') }}
+                  {{ t('尚未查询该凭证的可用重置次数。', 'Reset credits have not been queried for this credential.') }}
                 </p>
                 <div class="detail-reset-actions">
                   <Button
@@ -2878,7 +2878,7 @@ onBeforeUnmount(() => {
         <DialogHeader>
           <DialogTitle>Codex OAuth</DialogTitle>
           <DialogDescription>
-            {{ t('通过 Codex OAuth 登录，认证成功后生成的认证文件会自动加入账号管理。', 'Sign in with Codex OAuth. The generated auth file will be added to account management automatically.') }}
+            {{ t('通过 Codex OAuth 登录，认证成功后生成的认证文件会自动加入凭证管理。', 'Sign in with Codex OAuth. The generated auth file will be added to credential management automatically.') }}
           </DialogDescription>
         </DialogHeader>
         <div class="oauth-dialog">
@@ -2944,7 +2944,7 @@ onBeforeUnmount(() => {
             @click="startCodexOAuth"
           >
             <Spinner v-if="isStartingOAuth" data-icon="inline-start" />
-            {{ t('登录另一个账号', 'Sign in to another account') }}
+            {{ t('添加另一份凭证', 'Add another credential') }}
           </Button>
         </div>
         <DialogFooter>
@@ -3052,7 +3052,7 @@ onBeforeUnmount(() => {
                   <Textarea
                     v-model="authFileEditor.note"
                     rows="3"
-                    :placeholder="t('输入备注信息，例如：张三的账号', 'Enter a note, for example: account owner')"
+                    :placeholder="t('输入备注信息，例如：张三的凭证', 'Enter a note, for example: credential owner')"
                     @update:model-value="authFileEditor.noteTouched = true"
                   />
                 </Field>

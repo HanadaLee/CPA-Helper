@@ -25,6 +25,9 @@ const exactServerMessages: MessagePair[] = [
   ['请先创建第一个管理员账号', 'Create the first admin account first'],
   ['尚未运行', 'Not run yet'],
   ['正在运行多个 Codex Keeper 任务', 'Multiple Codex Keeper tasks are running'],
+  ['正在刷新 Codex 凭证', 'Refreshing Codex credentials'],
+  ['正在按条件刷新 Codex 凭证', 'Refreshing Codex credentials by condition'],
+  ['正在巡检 Codex 凭证', 'Inspecting Codex credentials'],
   ['正在刷新 Codex 账号', 'Refreshing Codex accounts'],
   ['正在按条件刷新 Codex 账号', 'Refreshing Codex accounts by condition'],
   ['正在巡检 Codex 账号', 'Inspecting Codex accounts'],
@@ -97,6 +100,15 @@ const serverTermTranslations: MessagePair[] = [
   ['远程', 'remote'],
   ['代理地址', 'proxy URL'],
   ['价格数据', 'price data'],
+  ['本地已不存在的 Codex 凭证', 'local Codex credentials that no longer exist'],
+  ['Codex 凭证', 'Codex credentials'],
+  ['凭证管理接口', 'credential management API'],
+  ['凭证名称', 'credential name'],
+  ['凭证类型', 'credential type'],
+  ['凭证状态', 'credential status'],
+  ['凭证巡检', 'credential inspection'],
+  ['巡检凭证历史', 'credential inspection history'],
+  ['凭证刷新', 'credential refresh'],
   ['账号名称', 'account name'],
   ['账号类型', 'account type'],
   ['账号状态', 'account status'],
@@ -249,14 +261,19 @@ const serverMessagePatterns: ServerMessagePattern[] = [
   [/^启用代理时必须填写代理地址$/, () => 'Proxy URL is required when proxy is enabled'],
   [/^Cron 表达式无效，请使用 5 段格式：分 时 日 月 周$/, () => 'Invalid Cron expression. Use the 5-field format: minute hour day month weekday'],
   [/^Cron 表达式无效，请使用 5 段格式$/, () => 'Invalid Cron expression. Use the 5-field format'],
+  [/^开始按条件刷新 (\d+) 份 Codex 凭证$/, ([, count]) => `Started conditional refresh for ${count} Codex credentials`],
+  [/^开始刷新 (\d+) 份 Codex 凭证$/, ([, count]) => `Started refreshing ${count} Codex credentials`],
+  [/^开始 Codex 凭证巡检$/, () => 'Started Codex credential inspection'],
   [/^开始按条件刷新 (\d+) 个 Codex 账号$/, ([, count]) => `Started conditional refresh for ${count} Codex accounts`],
   [/^开始刷新 (\d+) 个 Codex 账号$/, ([, count]) => `Started refreshing ${count} Codex accounts`],
   [/^开始 Codex 账号巡检$/, () => 'Started Codex account inspection'],
   [/^下一轮计划：(.+)$/, ([, time]) => `Next scheduled run: ${time}`],
+  [/^清理本地已不存在的 Codex 凭证 (\d+) 份$/, ([, count]) => `Cleaned up ${count} local Codex credentials that no longer exist`],
   [/^清理本地已不存在的 Codex 账号 (\d+) 个$/, ([, count]) => `Cleaned up ${count} local Codex accounts that no longer exist`],
   [/^巡检完成：网络错误 (\d+)$/, ([, count]) => `Inspection complete: ${count} network errors`],
   [/^条件刷新完成：健康 (\d+)，坏凭证禁用 (\d+)，恢复启用 (\d+)，优先级降级 (\d+)，优先级恢复 (\d+)，网络错误 (\d+)，缓存跳过 (\d+)$/, ([, healthy, disabled, restored, degraded, priorityRestored, networkErrors, skipped]) => `Conditional refresh complete: ${healthy} healthy, ${disabled} bad credentials disabled, ${restored} restored, ${degraded} priorities lowered, ${priorityRestored} priorities restored, ${networkErrors} network errors, ${skipped} skipped by cache`],
   [/^账号刷新完成：健康 (\d+)，凭证异常 (\d+)，恢复启用 (\d+)，优先级降级 (\d+)，优先级恢复 (\d+)，网络错误 (\d+)$/, ([, healthy, credentialErrors, restored, degraded, priorityRestored, networkErrors]) => `Account refresh complete: ${healthy} healthy, ${credentialErrors} credential errors, ${restored} restored, ${degraded} priorities lowered, ${priorityRestored} priorities restored, ${networkErrors} network errors`],
+  [/^凭证刷新完成：健康 (\d+)，凭证异常 (\d+)，恢复启用 (\d+)，优先级降级 (\d+)，优先级恢复 (\d+)，网络错误 (\d+)$/, ([, healthy, credentialErrors, restored, degraded, priorityRestored, networkErrors]) => `Credential refresh complete: ${healthy} healthy, ${credentialErrors} credential errors, ${restored} restored, ${degraded} priorities lowered, ${priorityRestored} priorities restored, ${networkErrors} network errors`],
   [/^巡检完成：健康 (\d+)，坏凭证禁用 (\d+)，恢复启用 (\d+)，优先级降级 (\d+)，网络错误 (\d+)，缓存跳过 (\d+)$/, ([, healthy, disabled, restored, degraded, networkErrors, skipped]) => `Inspection complete: ${healthy} healthy, ${disabled} bad credentials disabled, ${restored} restored, ${degraded} priorities lowered, ${networkErrors} network errors, ${skipped} skipped by cache`],
   [/^(.+): 巡检正常，类型 (.+)$/, ([, name, accountType]) => `${name}: inspection healthy, type ${accountType}`],
   [/^(.+): 正在其他 Keeper 任务处理中，跳过$/, ([, name]) => `${name}: skipped because another Keeper task is processing it`],
@@ -280,6 +297,8 @@ const serverMessagePatterns: ServerMessagePattern[] = [
   [/^(.+): 已启用 WebSocket 传输$/, ([, name]) => `${name}: enabled WebSocket transport`],
   [/^只能设置小于 -1、大于 20，或当前账号类型 (.+) 对应的 priority (-?\d+)$/, ([, accountType, priority]) => `Priority must be less than -1, greater than 20, or the current account type ${accountType} priority ${priority}`],
   [/^该账号类型没有可设置的系统 priority$/, () => 'This account type has no system priority that can be set'],
+  [/^只能设置小于 -1、大于 20，或当前凭证类型 (.+) 对应的 priority (-?\d+)$/, ([, credentialType, priority]) => `Priority must be less than -1, greater than 20, or the current credential type ${credentialType} priority ${priority}`],
+  [/^该凭证类型没有可设置的系统 priority$/, () => 'This credential type has no system priority that can be set'],
   [/^模拟(.+)$/, ([, action]) => `Dry run: ${translateNested(action ?? '')}`],
   [/^(.+?): (.+)$/, ([, prefix, detail]) => `${prefix}: ${translateNested(detail ?? '')}`],
 ]
@@ -320,6 +339,20 @@ function translateKnownServerMessage(message: string): string | null {
   return null
 }
 
+function normalizeCredentialTerminology(message: string): string {
+  return message
+    .replace(/(\d+) 个 Codex 账号/g, '$1 份 Codex 凭证')
+    .replace(/Codex 账号 (\d+) 个/g, 'Codex 凭证 $1 份')
+    .replace(/Codex 账号/g, 'Codex 凭证')
+    .replace(/OpenAI OAuth 账号/g, 'OpenAI OAuth 凭证')
+    .replace(/Sub2API 账号/g, 'Sub2API 凭证')
+    .replace(/巡检账号历史/g, '巡检凭证历史')
+    .replace(/账号刷新/g, '凭证刷新')
+    .replace(/账号类型/g, '凭证类型')
+    .replace(/账号状态/g, '凭证状态')
+    .replace(/账号名称/g, '凭证名称')
+}
+
 export function localizedServerMessage(
   message: string,
   fallbackZh = '请求失败',
@@ -345,6 +378,14 @@ export function localizedServerMessage(
   return `${fallbackEn}: ${message}`
 }
 
+export function localizedCredentialServerMessage(
+  message: string,
+  fallbackZh = '请求失败',
+  fallbackEn = 'Request failed',
+): string {
+  return localizedServerMessage(normalizeCredentialTerminology(message), fallbackZh, fallbackEn)
+}
+
 export function localizedApiErrorMessage(
   code: string | null | undefined,
   message: string | null | undefined,
@@ -367,7 +408,7 @@ export function localizedKeeperStatusDetail(message: string | null | undefined):
   if (!message) {
     return localize('未运行', 'Not running')
   }
-  const normalized = message
+  const normalized = normalizeCredentialTerminology(message)
     .replace(/守护运行中/g, localize('自动巡检运行中', 'Automatic inspection running'))
     .replace(/守护进程/g, localize('后台自动巡检', 'background automatic inspection'))
     .replace(/守护任务/g, localize('自动巡检任务', 'automatic inspection task'))

@@ -400,7 +400,7 @@ onMounted(refresh)
                 <FieldLegend>{{ t('访问配置', 'Access control') }}</FieldLegend>
                 <FieldGroup class="settings-switch-list">
                   <Field orientation="horizontal" class="settings-switch">
-                    <FieldContent><FieldTitle>{{ t('允许普通用户查看账号状态', 'Allow standard users to view account status') }}</FieldTitle><FieldDescription>{{ t('普通用户仅能只读查看账号状态。', 'Standard users receive read-only account status access.') }}</FieldDescription></FieldContent>
+                    <FieldContent><FieldTitle>{{ t('允许普通用户查看凭证状态', 'Allow standard users to view credential status') }}</FieldTitle><FieldDescription>{{ t('普通用户仅能只读查看凭证状态。', 'Standard users receive read-only credential status access.') }}</FieldDescription></FieldContent>
                     <Switch v-model="settingsForm.allow_user_account_status" />
                   </Field>
                   <Field orientation="horizontal" class="settings-switch">

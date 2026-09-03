@@ -153,7 +153,7 @@ const adminMenuItems = computed<NavigationItem[]>(() => [
   { label: t('用户管理', 'Users'), key: '/admin/users', icon: Users },
   { label: t('模型价格', 'Model Prices'), key: '/admin/pricing', icon: DollarSign },
   { label: t('上游管理', 'Upstreams'), key: '/admin/upstreams', icon: Network },
-  { label: t('账号管理', 'Account Management'), key: '/admin/account-mgmt', icon: ListChecks },
+  { label: t('凭证管理', 'Credential Management'), key: '/admin/credential-mgmt', icon: ListChecks },
   { label: 'CPAMC', key: '/admin/cpamc', icon: Monitor },
   { label: t('系统设置', 'System Settings'), key: '/admin/settings', icon: Settings },
 ])
@@ -174,7 +174,7 @@ const accountMenuItems = computed<NavigationItem[]>(() => [
   { label: t('API 密钥', 'API Keys'), key: '/account/keys', icon: KeyRound },
   { label: t('可用模型', 'Available Models'), key: '/account/models', icon: Cpu },
   ...(showAccountStatusForUser.value
-    ? [{ label: t('账号状态', 'Account Status'), key: '/account/status', icon: ListChecks }]
+    ? [{ label: t('凭证状态', 'Credential Status'), key: '/account/credential-status', icon: ListChecks }]
     : []),
 ])
 

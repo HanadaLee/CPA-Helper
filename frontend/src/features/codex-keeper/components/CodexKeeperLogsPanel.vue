@@ -32,7 +32,7 @@ const emit = defineEmits<{
   refresh: []
 }>()
 const message = toast
-const { errorText, serverText, t } = useI18n()
+const { credentialServerText, errorText, t } = useI18n()
 const isClearing = ref(false)
 const logBodyRef = ref<HTMLElement | null>(null)
 const shouldFollowLatestLog = ref(true)
@@ -235,12 +235,12 @@ async function clearLogs() {
             :key="line.key"
             class="log-line"
             :class="`is-${line.tone}`"
-            :title="serverText(line.message, '维护日志', 'Maintenance log')"
+            :title="credentialServerText(line.message, '维护日志', 'Maintenance log')"
           >
             <time class="log-time">{{ line.time }}</time>
             <Badge :variant="logBadgeVariant(line.tone)">{{ line.level }}</Badge>
             <span class="log-component">{{ line.component }}</span>
-            <span class="log-message">{{ serverText(line.message, '维护日志', 'Maintenance log') }}</span>
+            <span class="log-message">{{ credentialServerText(line.message, '维护日志', 'Maintenance log') }}</span>
           </div>
         </div>
       </div>

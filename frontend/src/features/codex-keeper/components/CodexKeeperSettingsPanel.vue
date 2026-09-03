@@ -171,7 +171,7 @@ function normalizedRules(): CodexKeeperPriorityRule[] {
 function settingsPayload(): CodexKeeperSettingsUpdatePayload {
   const rules = normalizedRules()
   if (rules.length !== priorityRules.value.length) {
-    throw new Error(t('账号类型不可为空或重复，优先级必须在 0 ~ 20', 'Account types cannot be empty or duplicated, and priorities must be 0-20'))
+    throw new Error(t('凭证类型不可为空或重复，优先级必须在 0 ~ 20', 'Credential types cannot be empty or duplicated, and priorities must be 0-20'))
   }
 
   return {
@@ -375,7 +375,7 @@ onBeforeUnmount(() => {
               </Select>
             </Field>
             <Field>
-              <FieldLabel for="keeper-refresh-cache">{{ t('账号刷新缓存（分钟）', 'Account Refresh Cache (minutes)') }}</FieldLabel>
+              <FieldLabel for="keeper-refresh-cache">{{ t('凭证刷新缓存（分钟）', 'Credential Refresh Cache (minutes)') }}</FieldLabel>
               <Input
                 id="keeper-refresh-cache"
                 type="number"
@@ -389,10 +389,10 @@ onBeforeUnmount(() => {
 
           <div class="conditional-refresh-help">
             <p>
-              <strong>{{ t('按条件扫描间隔：', 'Conditional scan interval:') }}</strong>{{ t('后台自动巡检开启后，每隔多久检查一次是否有账号需要刷新；会查找缓存时间内有实际请求的账号、额度刷新时间已到的账号、检测异常账号，并同步本地记录与 CPA 当前账号列表的差异。', 'How often automatic inspection checks whether accounts need refreshing after it is enabled. It looks for accounts with actual requests during the cache window, expired quota refresh times, inspection errors, and differences between local records and the current CPA account list.') }}
+              <strong>{{ t('按条件扫描间隔：', 'Conditional scan interval:') }}</strong>{{ t('后台自动巡检开启后，每隔多久检查一次是否有凭证需要刷新；会查找缓存时间内有实际请求的凭证、额度刷新时间已到的凭证、检测异常凭证，并同步本地记录与 CPA 当前凭证列表的差异。', 'How often automatic inspection checks whether credentials need refreshing after it is enabled. It looks for credentials with actual requests during the cache window, expired quota refresh times, inspection errors, and differences between local records and the current CPA credential list.') }}
             </p>
             <p>
-              <strong>{{ t('账号刷新缓存：', 'Account refresh cache:') }}</strong>{{ t('控制自动任务的防重复时间；同一账号在缓存时间内不会被自动巡检或按条件扫描重复刷新，手动刷新会绕过缓存但会更新缓存时间。', 'Controls duplicate prevention for automatic tasks. The same account will not be refreshed repeatedly by automatic inspection or conditional scans during the cache window. Manual refresh bypasses the cache but updates the cache time.') }}
+              <strong>{{ t('凭证刷新缓存：', 'Credential refresh cache:') }}</strong>{{ t('控制自动任务的防重复时间；同一凭证在缓存时间内不会被自动巡检或按条件扫描重复刷新，手动刷新会绕过缓存但会更新缓存时间。', 'Controls duplicate prevention for automatic tasks. The same credential will not be refreshed repeatedly by automatic inspection or conditional scans during the cache window. Manual refresh bypasses the cache but updates the cache time.') }}
             </p>
           </div>
         </section>
@@ -409,7 +409,7 @@ onBeforeUnmount(() => {
               <Input id="keeper-usage-timeout" type="number" min="1" :model-value="form.usage_timeout_seconds" @update:model-value="form.usage_timeout_seconds = numberInput($event, 30)" />
             </Field>
             <Field>
-              <FieldLabel for="keeper-cpa-timeout">{{ t('账号管理接口超时（秒）', 'Account API Timeout (seconds)') }}</FieldLabel>
+              <FieldLabel for="keeper-cpa-timeout">{{ t('凭证管理接口超时（秒）', 'Credential API Timeout (seconds)') }}</FieldLabel>
               <Input id="keeper-cpa-timeout" type="number" min="1" :model-value="form.cpa_timeout_seconds" @update:model-value="form.cpa_timeout_seconds = numberInput($event, 30)" />
             </Field>
             <Field>
@@ -417,7 +417,7 @@ onBeforeUnmount(() => {
               <Input id="keeper-max-retries" type="number" min="0" max="5" :model-value="form.max_retries" @update:model-value="form.max_retries = numberInput($event, 2)" />
             </Field>
             <Field>
-              <FieldLabel for="keeper-workers">{{ t('账号处理并发数', 'Account Processing Concurrency') }}</FieldLabel>
+              <FieldLabel for="keeper-workers">{{ t('凭证处理并发数', 'Credential Processing Concurrency') }}</FieldLabel>
               <Input id="keeper-workers" type="number" min="1" max="64" :model-value="form.worker_threads" @update:model-value="form.worker_threads = numberInput($event, 8)" />
             </Field>
           </FieldGroup>
@@ -426,7 +426,7 @@ onBeforeUnmount(() => {
             <Field orientation="horizontal" class="switch-setting">
               <FieldContent>
                 <FieldTitle>{{ t('只检查不修改', 'Check Only') }}</FieldTitle>
-                <FieldDescription>{{ t('开启后只模拟处理，不会禁用账号或调整优先级。', 'When enabled, processing is simulated and accounts are not disabled or reprioritized.') }}</FieldDescription>
+                <FieldDescription>{{ t('开启后只模拟处理，不会禁用凭证或调整优先级。', 'When enabled, processing is simulated and credentials are not disabled or reprioritized.') }}</FieldDescription>
               </FieldContent>
               <Switch v-model="form.dry_run" />
             </Field>
@@ -440,7 +440,7 @@ onBeforeUnmount(() => {
             <Field orientation="horizontal" class="switch-setting">
               <FieldContent>
                 <FieldTitle>{{ t('启动后自动巡检', 'Auto Inspect on Startup') }}</FieldTitle>
-                <FieldDescription>{{ t('每次 CPA-Helper 启动后，自动按上面的计划检查账号。', 'Automatically inspect accounts using the schedule above whenever CPA-Helper starts.') }}</FieldDescription>
+                <FieldDescription>{{ t('每次 CPA-Helper 启动后，自动按上面的计划检查凭证。', 'Automatically inspect credentials using the schedule above whenever CPA-Helper starts.') }}</FieldDescription>
               </FieldContent>
               <Switch v-model="form.auto_start_daemon" />
             </Field>
@@ -472,9 +472,9 @@ onBeforeUnmount(() => {
     <Card class="priority-rules-panel">
       <CardHeader class="keeper-card-header">
         <div class="min-w-0">
-          <CardTitle>{{ t('账号类型优先级', 'Account Type Priorities') }}</CardTitle>
+          <CardTitle>{{ t('凭证类型优先级', 'Credential Type Priorities') }}</CardTitle>
           <CardDescription>
-            {{ t('账号当前优先级超过 20 时视为手动优先，巡检不会覆盖；0 ~ 20 会按这里的账号类型规则维护。', 'Current account priorities above 20 are treated as manual priority and will not be overwritten. Priorities from 0 to 20 are maintained using the account type rules here.') }}
+            {{ t('凭证当前优先级超过 20 时视为手动优先，巡检不会覆盖；0 ~ 20 会按这里的凭证类型规则维护。', 'Current credential priorities above 20 are treated as manual priority and will not be overwritten. Priorities from 0 to 20 are maintained using the credential type rules here.') }}
           </CardDescription>
         </div>
         <Button size="sm" variant="outline" @click="addRule">
@@ -487,7 +487,7 @@ onBeforeUnmount(() => {
           <Table class="priority-table">
             <TableHeader>
               <TableRow>
-                <TableHead>{{ t('账号类型', 'Account Type') }}</TableHead>
+                <TableHead>{{ t('凭证类型', 'Credential Type') }}</TableHead>
                 <TableHead class="w-28">{{ t('优先级', 'Priority') }}</TableHead>
                 <TableHead class="w-12"><span class="sr-only">{{ t('操作', 'Actions') }}</span></TableHead>
               </TableRow>

@@ -6,7 +6,7 @@ import {
   toggleLanguage,
   useLanguagePreference,
 } from './language'
-import { copiedText, errorText, localizedKeeperStatusDetail, localizedServerMessage } from './messages'
+import { copiedText, errorText, localizedCredentialServerMessage, localizedKeeperStatusDetail, localizedServerMessage } from './messages'
 
 export {
   currentLanguage,
@@ -17,11 +17,12 @@ export {
   useLanguagePreference,
   type AppLanguage,
 } from './language'
-export { copiedText, errorText, localizedApiErrorMessage, localizedKeeperStatusDetail, localizedServerMessage } from './messages'
+export { copiedText, errorText, localizedApiErrorMessage, localizedCredentialServerMessage, localizedKeeperStatusDetail, localizedServerMessage } from './messages'
 
 export function useI18n() {
   return {
     copiedText,
+    credentialServerText: localizedCredentialServerMessage,
     currentLanguage,
     errorText,
     isEnglish,

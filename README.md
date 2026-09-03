@@ -94,7 +94,7 @@ Configure the CLIProxyAPI / CPAMC endpoint, model request URL, management key, l
 
 ![System settings](pictures/系统设置.png)
 
-### Account Inspection
+### Credential Inspection
 
 **Inspection settings**
 
@@ -102,11 +102,11 @@ Configure Codex auth file inspection with Cron schedules, quota thresholds, cond
 
 ![Inspection settings](pictures/巡检设置.png)
 
-**Account status**
+**Credential status**
 
-Review auth file health, quota windows, account types, priorities and the latest inspection actions.
+Review auth file health, quota windows, credential types, priorities and the latest inspection actions.
 
-![Account status](pictures/账号状态.png)
+![Credential status](pictures/账号状态.png)
 
 ### Account Views
 
@@ -366,16 +366,16 @@ $env:CPA_HELPER_DATA_DIR="<your-data-dir>"
 
 Then start the backend service.
 
-### Account Inspection
+### Credential Inspection
 
 The Inspection Settings page manages Codex auth files:
 
 - Cron expressions define the automatic inspection schedule.
-- Quota thresholds decide when account priority should be degraded or restored.
-- Check-only mode records planned actions without disabling accounts or changing priorities.
-- Conditional scanning compares locally recorded accounts with the current CPA account list: accounts missing locally are queried once for quota and recorded, while accounts no longer present in CPA are removed locally.
-- Priority rules define default scheduling weights by account type.
-- The Account Status page shows health, quota, latest inspection, enabled state and manual priority.
+- Quota thresholds decide when credential priority should be degraded or restored.
+- Check-only mode records planned actions without disabling credentials or changing priorities.
+- Conditional scanning compares locally recorded credentials with the current CPA credential list: credentials missing locally are queried once for quota and recorded, while credentials no longer present in CPA are removed locally.
+- Priority rules define default scheduling weights by credential type.
+- The Credential Status page shows health, quota, latest inspection, enabled state and manual priority.
 
 ## Development and Checks
 
@@ -402,7 +402,7 @@ npm run dev -- --host 127.0.0.1 --port 5174 --strictPort
 ```
 
 Automated validation should not use a real CPA URL or real management key by
-default. For account inspection, enable/disable, priority changes, or deletion
+default. For credential inspection, enable/disable, priority changes, or deletion
 flows, use a fake CLIProxyAPI / CPAMC test double and prefer check-only mode;
 connect to real CPA only after the risk is explicitly accepted.
 

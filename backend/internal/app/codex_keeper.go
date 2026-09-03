@@ -650,11 +650,11 @@ func keeperRunningDetail(modes []string) string {
 	}
 	switch modes[0] {
 	case "accounts":
-		return "正在刷新 Codex 账号"
+		return "正在刷新 Codex 凭证"
 	case "conditional":
-		return "正在按条件刷新 Codex 账号"
+		return "正在按条件刷新 Codex 凭证"
 	default:
-		return "正在巡检 Codex 账号"
+		return "正在巡检 Codex 凭证"
 	}
 }
 
@@ -1079,7 +1079,7 @@ func (a *App) handleCodexKeeper(w http.ResponseWriter, r *http.Request) error {
 		}
 		authName, err := url.PathUnescape(parts[1])
 		if err != nil {
-			return validationError("账号名称无效")
+			return validationError("凭证名称无效")
 		}
 		disabled := parts[2] == "disable"
 		if err := a.setKeeperAccountDisabled(r.Context(), authName, disabled); err != nil {
@@ -1094,7 +1094,7 @@ func (a *App) handleCodexKeeper(w http.ResponseWriter, r *http.Request) error {
 	case len(parts) == 2 && parts[0] == "accounts" && r.Method == http.MethodDelete:
 		authName, err := url.PathUnescape(parts[1])
 		if err != nil {
-			return validationError("账号名称无效")
+			return validationError("凭证名称无效")
 		}
 		if err := a.deleteKeeperAccount(r.Context(), authName); err != nil {
 			return err
@@ -1107,7 +1107,7 @@ func (a *App) handleCodexKeeper(w http.ResponseWriter, r *http.Request) error {
 		}
 		authName, err := url.PathUnescape(parts[1])
 		if err != nil {
-			return validationError("账号名称无效")
+			return validationError("凭证名称无效")
 		}
 		var payload keeperPriorityUpdateRequest
 		if err := decodeJSON(r, &payload); err != nil {
@@ -1154,7 +1154,7 @@ func (a *App) handleCodexKeeper(w http.ResponseWriter, r *http.Request) error {
 func keeperAccountNameFromPath(value string) (string, error) {
 	authName, err := url.PathUnescape(value)
 	if err != nil || strings.TrimSpace(authName) == "" || strings.ContainsAny(authName, `/\\`) {
-		return "", validationError("账号名称无效")
+		return "", validationError("凭证名称无效")
 	}
 	return authName, nil
 }
@@ -1670,7 +1670,7 @@ func (a *App) updateKeeperSettings(w http.ResponseWriter, r *http.Request) error
 		for _, item := range payload.PriorityRules {
 			key := strings.ToLower(strings.TrimSpace(item.AccountType))
 			if key == "" {
-				return validationError("账号类型不能为空")
+				return validationError("凭证类型不能为空")
 			}
 			if item.Priority < 0 || item.Priority > 20 {
 				return validationError("priority 超出范围")
@@ -1745,11 +1745,11 @@ func (a *App) executeKeeperRunWithOptions(ctx context.Context, options keeperRun
 		targetSet[name] = true
 	}
 	if options.Mode == "conditional" {
-		logFn(fmt.Sprintf("开始按条件刷新 %d 个 Codex 账号", len(targetSet)))
+		logFn(fmt.Sprintf("开始按条件刷新 %d 份 Codex 凭证", len(targetSet)))
 	} else if len(targetSet) > 0 {
-		logFn(fmt.Sprintf("开始刷新 %d 个 Codex 账号", len(targetSet)))
+		logFn(fmt.Sprintf("开始刷新 %d 份 Codex 凭证", len(targetSet)))
 	} else {
-		logFn("开始 Codex 账号巡检")
+		logFn("开始 Codex 凭证巡检")
 	}
 	stats := keeperStats{}
 	detail := "巡检完成"
@@ -1783,7 +1783,7 @@ func (a *App) executeKeeperRunWithOptions(ctx context.Context, options keeperRun
 			return stats, "", err
 		}
 		if pruned > 0 {
-			logFn(fmt.Sprintf("清理本地已不存在的 Codex 账号 %d 个", pruned))
+			logFn(fmt.Sprintf("清理本地已不存在的 Codex 凭证 %d 份", pruned))
 		}
 	}
 	stats.Total = len(filtered)
@@ -1794,7 +1794,7 @@ func (a *App) executeKeeperRunWithOptions(ctx context.Context, options keeperRun
 			a.mergeKeeperStats(&stats, result)
 			if runID > 0 {
 				if err := a.recordKeeperRunAccount(ctx, runID, result); err != nil {
-					logFn("写入巡检账号历史失败：" + err.Error())
+					logFn("写入巡检凭证历史失败：" + err.Error())
 				}
 			}
 		}
@@ -1876,14 +1876,14 @@ func (a *App) executeKeeperRunWithOptions(ctx context.Context, options keeperRun
 		a.mergeKeeperStats(&stats, result)
 		if runID > 0 {
 			if err := a.recordKeeperRunAccount(ctx, runID, result); err != nil {
-				logFn("写入巡检账号历史失败：" + err.Error())
+				logFn("写入巡检凭证历史失败：" + err.Error())
 			}
 		}
 	}
 	if options.Mode == "conditional" {
 		detail = fmt.Sprintf("条件刷新完成：健康 %d，坏凭证禁用 %d，恢复启用 %d，优先级降级 %d，优先级恢复 %d，网络错误 %d，缓存跳过 %d", stats.Healthy, stats.StatusDisabled, stats.StatusEnabled, stats.PriorityDegraded, stats.PriorityRestored, stats.NetworkError, stats.Skipped)
 	} else if len(targetSet) > 0 {
-		detail = fmt.Sprintf("账号刷新完成：健康 %d，凭证异常 %d，恢复启用 %d，优先级降级 %d，优先级恢复 %d，网络错误 %d", stats.Healthy, stats.StatusDisabled, stats.StatusEnabled, stats.PriorityDegraded, stats.PriorityRestored, stats.NetworkError)
+		detail = fmt.Sprintf("凭证刷新完成：健康 %d，凭证异常 %d，恢复启用 %d，优先级降级 %d，优先级恢复 %d，网络错误 %d", stats.Healthy, stats.StatusDisabled, stats.StatusEnabled, stats.PriorityDegraded, stats.PriorityRestored, stats.NetworkError)
 	} else {
 		detail = fmt.Sprintf("巡检完成：健康 %d，坏凭证禁用 %d，恢复启用 %d，优先级降级 %d，网络错误 %d，缓存跳过 %d", stats.Healthy, stats.StatusDisabled, stats.StatusEnabled, stats.PriorityDegraded, stats.NetworkError, stats.Skipped)
 	}
@@ -3119,14 +3119,14 @@ func keeperAuthFileUploadCandidates(name string, content []byte, now time.Time) 
 		}
 		convertedContent, err := json.MarshalIndent(converted, "", "  ")
 		if err != nil {
-			failures = append(failures, keeperAuthFileUploadFailure{Name: failureName, Error: "转换 Sub2API 账号失败：" + err.Error()})
+			failures = append(failures, keeperAuthFileUploadFailure{Name: failureName, Error: "转换 Sub2API 凭证失败：" + err.Error()})
 			continue
 		}
 		candidateName := keeperSub2APIAccountFileName(account, converted, index, usedNames)
 		candidates = append(candidates, keeperAuthFileUploadCandidate{Name: candidateName, Content: convertedContent})
 	}
 	if matched == 0 {
-		failures = append(failures, keeperAuthFileUploadFailure{Name: name, Error: "Sub2API 文件中没有可转换的 OpenAI OAuth 账号"})
+		failures = append(failures, keeperAuthFileUploadFailure{Name: name, Error: "Sub2API 文件中没有可转换的 OpenAI OAuth 凭证"})
 	}
 	return candidates, failures
 }
@@ -3180,7 +3180,7 @@ func keeperSub2APIAccounts(content []byte) ([]map[string]any, bool, error) {
 func keeperSub2APIAccountToCPA(account map[string]any, now time.Time) (map[string]any, error) {
 	credentials, ok := account["credentials"].(map[string]any)
 	if !ok {
-		return nil, validationError("Sub2API 账号缺少 credentials")
+		return nil, validationError("Sub2API 凭证缺少 credentials")
 	}
 	extra, _ := account["extra"].(map[string]any)
 	accessToken := keeperFirstString(
@@ -3190,7 +3190,7 @@ func keeperSub2APIAccountToCPA(account map[string]any, now time.Time) (map[strin
 		account["accessToken"],
 	)
 	if accessToken == "" {
-		return nil, validationError("Sub2API 账号缺少 access_token")
+		return nil, validationError("Sub2API 凭证缺少 access_token")
 	}
 	refreshToken := keeperFirstString(credentials["refresh_token"], credentials["refreshToken"], account["refresh_token"], account["refreshToken"])
 	idToken := keeperFirstString(credentials["id_token"], credentials["idToken"], account["id_token"], account["idToken"])
@@ -4165,7 +4165,7 @@ func (a *App) getKeeperState(ctx context.Context, name string) (*keeperAuthState
 	}
 	defer rows.Close()
 	if !rows.Next() {
-		return nil, notFoundError("账号状态不存在")
+		return nil, notFoundError("凭证状态不存在")
 	}
 	state, err := scanKeeperState(rows)
 	if err != nil {
@@ -4678,9 +4678,9 @@ func validateKeeperPriority(priority int, accountType *string, rules map[string]
 		return nil
 	}
 	if accountType == nil || expected == nil {
-		return validationError("该账号类型没有可设置的系统 priority")
+		return validationError("该凭证类型没有可设置的系统 priority")
 	}
-	return validationError(fmt.Sprintf("只能设置小于 -1、大于 20，或当前账号类型 %s 对应的 priority %d", *accountType, *expected))
+	return validationError(fmt.Sprintf("只能设置小于 -1、大于 20，或当前凭证类型 %s 对应的 priority %d", *accountType, *expected))
 }
 
 func isBadKeeperCredential(result keeperHTTPResult) bool {
@@ -4840,7 +4840,7 @@ func normalizeKeeperAuthNames(raw []string) ([]string, error) {
 		return nil, err
 	}
 	if len(result) == 0 {
-		return nil, validationError("账号名称不能为空")
+		return nil, validationError("凭证名称不能为空")
 	}
 	return result, nil
 }
@@ -4851,7 +4851,7 @@ func normalizeOptionalKeeperAuthNames(raw []string) ([]string, error) {
 	for _, item := range raw {
 		name := strings.TrimSpace(item)
 		if name == "" {
-			return nil, validationError("账号名称不能为空")
+			return nil, validationError("凭证名称不能为空")
 		}
 		if seen[name] {
 			continue

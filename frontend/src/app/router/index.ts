@@ -74,8 +74,8 @@ export const router = createRouter({
           meta: { requiresAdmin: true },
         },
         {
-          path: 'admin/account-mgmt',
-          name: 'admin-account-mgmt',
+          path: 'admin/credential-mgmt',
+          name: 'admin-credential-mgmt',
           component: () => import('@/features/codex-keeper/views/CodexKeeperStatusView.vue'),
           meta: { requiresAdmin: true },
         },
@@ -127,8 +127,8 @@ export const router = createRouter({
           component: () => import('@/features/models/views/AvailableModelsView.vue'),
         },
         {
-          path: 'account/status',
-          name: 'account-status',
+          path: 'account/credential-status',
+          name: 'account-credential-status',
           component: () => import('@/features/codex-keeper/views/CodexKeeperStatusView.vue'),
           meta: { requiresAccountStatus: true },
         },

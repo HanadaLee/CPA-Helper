@@ -6,7 +6,7 @@ const adminRoutes = [
   ['/admin/users', /用户管理|Users/i],
   ['/admin/pricing', /模型价格|Model Prices/i],
   ['/admin/upstreams', /上游管理|Upstreams/i],
-  ['/admin/account-mgmt', /账号管理|Account Management/i],
+  ['/admin/credential-mgmt', /凭证管理|Credential Management/i],
   ['/admin/cpamc', 'CPAMC'],
   ['/admin/settings', /系统设置|System Settings/i],
 ] as const
@@ -222,6 +222,63 @@ test('upstream model discovery merges selected models into the editor', async ({
   await expect(upstreamDrawer.getByPlaceholder(/显示名称（可选）|Display name \(optional\)/).first()).toHaveValue('Gemini 2.5 Pro')
 })
 
+test('standard users open the renamed credential status route in read-only mode', async ({ page }) => {
+  await page.route('**/api/auth/me', async (route) => {
+    await route.fulfill({
+      json: {
+        id: 2,
+        username: 'member',
+        nickname: 'Member',
+        email: 'member@example.com',
+        avatar: '',
+        created_at: '2026-09-03T00:00:00Z',
+        is_admin: false,
+        cas_bound: false,
+        can_change_password: true,
+        must_change_password: false,
+        can_view_account_status: true,
+        can_view_usage_history: false,
+      },
+    })
+  })
+  await page.route('**/api/codex-keeper/accounts', async (route) => {
+    await route.fulfill({ json: { items: [], priority_rules: [] } })
+  })
+  await page.route('**/api/codex-keeper/status', async (route) => {
+    await route.fulfill({
+      json: {
+        running: false,
+        running_modes: [],
+        daemon_running: false,
+        state: 'idle',
+        detail: '尚未运行',
+        mode: null,
+        last_started_at: null,
+        last_finished_at: null,
+        stats: {
+          total: 0,
+          healthy: 0,
+          status_disabled: 0,
+          status_enabled: 0,
+          priority_degraded: 0,
+          priority_restored: 0,
+          skipped: 0,
+          network_error: 0,
+        },
+        logs: [],
+      },
+    })
+  })
+
+  await page.goto('/account/credential-status')
+
+  await expect(page).toHaveURL(/\/account\/credential-status$/)
+  await expect(page.locator('[data-page-title]')).toHaveText(/凭证状态|Credential Status/)
+  await expect(page.getByRole('button', { name: /凭证状态|Credential Status/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: /上传文件|Upload Files/ })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /凭证巡检|Inspect Credentials/ })).toHaveCount(0)
+})
+
 test('all migrated routes render and core controls remain interactive', async ({ page }) => {
   const consoleErrors: string[] = []
   page.on('console', (message) => {
@@ -355,10 +412,10 @@ test('all migrated routes render and core controls remain interactive', async ({
       },
     })
   })
-  await page.goto('/admin/account-mgmt')
-  const accountTypeFilter = page.getByRole('combobox', { name: /账号类型|Account Type/ })
+  await page.goto('/admin/credential-mgmt')
+  const accountTypeFilter = page.getByRole('combobox', { name: /凭证类型|Credential Type/ })
   await accountTypeFilter.click()
-  const accountTypeSearch = page.getByPlaceholder(/账号类型|Account Type/)
+  const accountTypeSearch = page.getByPlaceholder(/凭证类型|Credential Type/)
   await expect(accountTypeSearch).toBeVisible()
   await accountTypeSearch.fill('missing-account-type')
   await accountTypeSearch.press('Escape')
@@ -396,13 +453,13 @@ test('all migrated routes render and core controls remain interactive', async ({
   await expect(page.getByRole('menuitem', { name: /刷新|Refresh/ })).toBeVisible()
   await expect(page.getByRole('menuitem', { name: /删除|Delete/ })).toBeVisible()
   await page.getByRole('menuitem', { name: /删除|Delete/ }).click()
-  const accountDeleteDialog = page.getByRole('dialog', { name: /删除账号|Delete Account/ })
+  const accountDeleteDialog = page.getByRole('dialog', { name: /删除凭证|Delete Credential/ })
   await expectPlainDialogFooter(accountDeleteDialog)
   await accountDeleteDialog.getByRole('button', { name: /取消|Cancel/ }).click()
   await page.getByRole('button', { name: /打开 .*操作菜单|Open actions for/ }).first().click()
   await page.getByRole('menuitem', { name: /详情|Details/ }).click()
-  await page.getByRole('button', { name: /认证文件详情 \/ 编辑|Auth File Details \/ Edit/ }).click()
-  const authFileDialog = page.getByRole('dialog', { name: /认证文件详情 \/ 编辑|Auth File Details \/ Edit/ })
+  await page.getByRole('button', { name: /认证文件管理|Auth File Management/ }).click()
+  const authFileDialog = page.getByRole('dialog', { name: /认证文件管理|Auth File Management/ })
   await expect(authFileDialog.getByRole('textbox').last()).toHaveValue('E2E auth file note')
   await expectPlainDialogFooter(authFileDialog)
   await authFileDialog.locator('[data-slot="dialog-footer"]').getByRole('button', { name: /关闭|Close/ }).click()
