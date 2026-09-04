@@ -275,6 +275,7 @@ func (a *App) Routes() http.Handler {
 	mux.HandleFunc("/cas/", a.wrap(a.handleCAS))
 	mux.HandleFunc("/api/branding", a.wrap(a.handleBranding))
 	mux.HandleFunc("/api/settings", a.wrap(a.handleSettings))
+	mux.HandleFunc("/api/settings/cpa-config", a.wrap(a.handleCPAConfig))
 	mux.HandleFunc("/api/collector/status", a.wrap(a.handleCollectorStatus))
 	mux.HandleFunc("/api/usage/", a.wrap(a.handleUsage))
 	mux.HandleFunc("/api/model-prices", a.wrap(a.handleModelPrices))

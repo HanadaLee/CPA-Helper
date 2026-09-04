@@ -264,7 +264,7 @@ function updateRulePriority(rule: CodexKeeperPriorityRule, value: string | numbe
   rule.priority = numberInput(value, 0)
 }
 
-defineExpose({ saveSettings, validateSettings })
+defineExpose({ saveSettings, validateSettings, reload: loadAll })
 
 onMounted(() => {
   void loadAll()
