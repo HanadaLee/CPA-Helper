@@ -26,6 +26,7 @@ const isLoading = ref(false)
 const isLoaded = ref(false)
 const loadError = ref('')
 const activeSection = ref('server')
+const editorMode = ref<'visual' | 'source'>('visual')
 const sourceContent = ref('')
 const sourceBaseline = ref('')
 const values = reactive<Record<string, ConfigValue>>({})
@@ -263,7 +264,7 @@ onMounted(loadConfig)
           <Badge v-if="isDirty" variant="secondary">{{ t('未保存', 'Unsaved') }}</Badge>
         </CardTitle>
         <CardDescription>
-          {{ t('直接管理 CPA 的完整 config.yaml；表单覆盖 CPAMC 当前配置项，完整 YAML 会保留未知字段。', 'Manage the complete CPA config.yaml. The form covers current CPAMC settings, while Full YAML preserves unknown fields.') }}
+          {{ t('通过可视化表单或源文件管理 CPA 的完整 config.yaml，未知字段会原样保留。', 'Manage the complete CPA config.yaml visually or as source while preserving unknown fields.') }}
         </CardDescription>
       </div>
       <CardAction>
@@ -288,80 +289,91 @@ onMounted(loadConfig)
       </Alert>
 
       <Tabs v-else-if="isLoaded" v-model="activeSection" class="cpa-config-tabs">
-        <TabsList class="cpa-config-tabs-list">
-          <TabsTrigger v-for="section in cpaConfigSections" :key="section.key" :value="section.key">
-            {{ t(section.labelZH, section.labelEN) }}
-          </TabsTrigger>
-          <TabsTrigger value="source">
-            <FileCode2Icon data-icon="inline-start" />
-            {{ t('完整 YAML', 'Full YAML') }}
-          </TabsTrigger>
-        </TabsList>
+        <div class="cpa-config-toolbar">
+          <TabsList v-if="editorMode === 'visual'" class="cpa-config-tabs-list">
+            <TabsTrigger v-for="section in cpaConfigSections" :key="section.key" :value="section.key">
+              {{ t(section.labelZH, section.labelEN) }}
+            </TabsTrigger>
+          </TabsList>
+          <Select v-model="editorMode">
+            <SelectTrigger class="cpa-config-mode-select" :aria-label="t('配置编辑模式', 'Configuration editor mode')">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent align="end">
+              <SelectGroup>
+                <SelectItem value="visual">{{ t('可视化编辑', 'Visual editor') }}</SelectItem>
+                <SelectItem value="source">{{ t('源文件编辑', 'Source editor') }}</SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </div>
 
-        <TabsContent
-          v-for="section in cpaConfigSections"
-          :key="section.key"
-          :value="section.key"
-          class="cpa-config-tab-content"
-        >
-          <div class="cpa-config-section-heading">
-            <h3>{{ t(section.labelZH, section.labelEN) }}</h3>
-            <p>{{ t(section.descriptionZH, section.descriptionEN) }}</p>
-          </div>
-          <FieldGroup class="cpa-config-grid">
-            <template v-for="field in section.fields" :key="field.key">
-              <Field
-                v-if="field.kind === 'boolean'"
-                orientation="horizontal"
-                class="cpa-config-switch"
-                :class="{ 'cpa-config-wide': field.wide }"
-              >
-                <FieldContent>
-                  <FieldTitle>{{ fieldLabel(field) }}</FieldTitle>
-                  <FieldDescription v-if="fieldDescription(field)">{{ fieldDescription(field) }}</FieldDescription>
-                </FieldContent>
-                <Switch :model-value="booleanValue(field)" @update:model-value="updateBoolean(field, $event)" />
-              </Field>
-
-              <Field v-else :class="{ 'cpa-config-wide': field.wide }">
-                <FieldLabel :for="`cpa-config-${field.key}`">{{ fieldLabel(field) }}</FieldLabel>
-                <Select
-                  v-if="field.kind === 'select'"
-                  :model-value="scalarValue(field)"
-                  @update:model-value="updateScalar(field, $event)"
+        <template v-if="editorMode === 'visual'">
+          <TabsContent
+            v-for="section in cpaConfigSections"
+            :key="section.key"
+            :value="section.key"
+            class="cpa-config-tab-content"
+          >
+            <div class="cpa-config-section-heading">
+              <h3>{{ t(section.labelZH, section.labelEN) }}</h3>
+              <p>{{ t(section.descriptionZH, section.descriptionEN) }}</p>
+            </div>
+            <FieldGroup class="cpa-config-grid">
+              <template v-for="field in section.fields" :key="field.key">
+                <Field
+                  v-if="field.kind === 'boolean'"
+                  orientation="horizontal"
+                  class="cpa-config-switch"
+                  :class="{ 'cpa-config-wide': field.wide }"
                 >
-                  <SelectTrigger :id="`cpa-config-${field.key}`"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      <SelectItem v-for="option in field.options" :key="option.value" :value="option.value">
-                        {{ t(option.labelZH, option.labelEN) }}
-                      </SelectItem>
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-                <Textarea
-                  v-else-if="field.kind === 'string-list' || field.kind === 'integer-list' || field.kind === 'yaml'"
-                  :id="`cpa-config-${field.key}`"
-                  :model-value="scalarValue(field)"
-                  :class="field.kind === 'yaml' ? 'cpa-yaml-fragment' : 'cpa-list-input'"
-                  spellcheck="false"
-                  @update:model-value="updateScalar(field, $event)"
-                />
-                <Input
-                  v-else
-                  :id="`cpa-config-${field.key}`"
-                  :type="field.secret ? 'password' : field.kind === 'number' ? 'number' : 'text'"
-                  :model-value="scalarValue(field)"
-                  :placeholder="field.placeholder"
-                  @update:model-value="updateScalar(field, $event)"
-                />
-                <FieldDescription v-if="fieldDescription(field)">{{ fieldDescription(field) }}</FieldDescription>
-              </Field>
-            </template>
-          </FieldGroup>
-        </TabsContent>
+                  <FieldContent>
+                    <FieldTitle>{{ fieldLabel(field) }}</FieldTitle>
+                    <FieldDescription v-if="fieldDescription(field)">{{ fieldDescription(field) }}</FieldDescription>
+                  </FieldContent>
+                  <Switch :model-value="booleanValue(field)" @update:model-value="updateBoolean(field, $event)" />
+                </Field>
 
-        <TabsContent value="source" class="cpa-config-tab-content">
+                <Field v-else :class="{ 'cpa-config-wide': field.wide }">
+                  <FieldLabel :for="`cpa-config-${field.key}`">{{ fieldLabel(field) }}</FieldLabel>
+                  <Select
+                    v-if="field.kind === 'select'"
+                    :model-value="scalarValue(field)"
+                    @update:model-value="updateScalar(field, $event)"
+                  >
+                    <SelectTrigger :id="`cpa-config-${field.key}`"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        <SelectItem v-for="option in field.options" :key="option.value" :value="option.value">
+                          {{ t(option.labelZH, option.labelEN) }}
+                        </SelectItem>
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                  <Textarea
+                    v-else-if="field.kind === 'string-list' || field.kind === 'integer-list' || field.kind === 'yaml'"
+                    :id="`cpa-config-${field.key}`"
+                    :model-value="scalarValue(field)"
+                    :class="field.kind === 'yaml' ? 'cpa-yaml-fragment' : 'cpa-list-input'"
+                    spellcheck="false"
+                    @update:model-value="updateScalar(field, $event)"
+                  />
+                  <Input
+                    v-else
+                    :id="`cpa-config-${field.key}`"
+                    :type="field.secret ? 'password' : field.kind === 'number' ? 'number' : 'text'"
+                    :model-value="scalarValue(field)"
+                    :placeholder="field.placeholder"
+                    @update:model-value="updateScalar(field, $event)"
+                  />
+                  <FieldDescription v-if="fieldDescription(field)">{{ fieldDescription(field) }}</FieldDescription>
+                </Field>
+              </template>
+            </FieldGroup>
+          </TabsContent>
+        </template>
+
+        <div v-else class="cpa-config-tab-content">
           <Alert class="mb-4">
             <FileCode2Icon />
             <AlertTitle>{{ t('完整配置源码', 'Complete configuration source') }}</AlertTitle>
@@ -375,7 +387,7 @@ onMounted(loadConfig)
             spellcheck="false"
             :aria-label="t('CPA 完整 YAML 配置', 'Complete CPA YAML configuration')"
           />
-        </TabsContent>
+        </div>
       </Tabs>
     </CardContent>
   </Card>
@@ -394,12 +406,25 @@ onMounted(loadConfig)
   gap: 1rem;
 }
 
+.cpa-config-toolbar {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: .75rem;
+}
+
 .cpa-config-tabs-list {
-  width: 100%;
-  max-width: 100%;
+  width: fit-content;
+  max-width: calc(100% - 11rem);
   justify-content: flex-start;
   overflow-x: auto;
   overflow-y: hidden;
+}
+
+.cpa-config-mode-select {
+  width: 10rem;
+  margin-left: auto;
+  flex: 0 0 auto;
 }
 
 .cpa-config-tabs-list :deep([data-slot="tabs-trigger"]) {
@@ -467,6 +492,14 @@ onMounted(loadConfig)
 }
 
 @media (max-width: 800px) {
+  .cpa-config-toolbar {
+    flex-wrap: wrap;
+  }
+
+  .cpa-config-tabs-list {
+    max-width: 100%;
+  }
+
   .cpa-config-grid {
     grid-template-columns: 1fr;
   }
