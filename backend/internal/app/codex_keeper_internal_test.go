@@ -753,6 +753,20 @@ func TestKeeperQuotaWindowUsageInfersAccountWindows(t *testing.T) {
 		t.Fatalf("k12 secondary window = %#v, want inferred weekly", k12Pair.Secondary)
 	}
 
+	proPair := keeperQuotaWindowPairForAccount(keeperAccount{
+		Name:               "pro.json",
+		AccountType:        stringPtr("oauth"),
+		PlanType:           stringPtr("pro_20x"),
+		PrimaryUsedPercent: intPtrValue(8),
+		PrimaryResetAt:     timePtrValue(resetAt),
+	}, now)
+	if proPair.Primary == nil || proPair.Primary.WindowSeconds != keeperWeekWindowSeconds {
+		t.Fatalf("single-window Pro primary = %#v, want inferred weekly", proPair.Primary)
+	}
+	if proPair.Secondary != nil {
+		t.Fatalf("single-window Pro secondary = %#v, want nil", proPair.Secondary)
+	}
+
 	usage := parseKeeperUsageInfo(map[string]any{
 		"plan_type": "plus",
 		"rate_limit": map[string]any{

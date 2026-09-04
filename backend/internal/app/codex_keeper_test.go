@@ -39,6 +39,7 @@ type keeperAccountsResponse struct {
 		Provider       string                      `json:"provider"`
 		AuthIndex      *string                     `json:"auth_index"`
 		AccountType    *string                     `json:"account_type"`
+		PlanType       *string                     `json:"plan_type"`
 		Weight         *int                        `json:"weight"`
 		RequestRetry   *int                        `json:"request_retry"`
 		Success        *int                        `json:"success"`
@@ -1398,7 +1399,7 @@ func TestKeeperSyncAccountListOnlyReconcilesMembership(t *testing.T) {
 			mu.Unlock()
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"files": []map[string]any{
-					{"name": "kept.json", "type": "codex", "disabled": true, "priority": 99},
+					{"name": "kept.json", "type": "codex", "account_type": "oauth", "disabled": true, "priority": 99},
 					{"name": "new.json", "type": "codex", "email": "new@example.com", "account_type": "plus", "disabled": true, "priority": 7},
 					{"name": "ignored.json", "type": "openai", "auth_index": "openai-index", "weight": 3, "request_retry": 2, "success": 8, "failed": 2, "quota": map[string]any{"signals": map[string]string{"remaining": "75%"}}},
 				},
@@ -1445,10 +1446,10 @@ func TestKeeperSyncAccountListOnlyReconcilesMembership(t *testing.T) {
 	now := "2026-08-29 10:00:00"
 	_, err = db.Exec(`
 		INSERT INTO codex_keeper_auth_states (
-			auth_name, email, disabled, priority, last_checked_at, created_at, updated_at
+			auth_name, email, account_type, disabled, priority, last_checked_at, created_at, updated_at
 		) VALUES
-			('kept.json', 'kept@example.com', 0, 11, ?, ?, ?),
-			('stale.json', 'stale@example.com', 0, 3, ?, ?, ?)
+			('kept.json', 'kept@example.com', 'pro_20x', 0, 11, ?, ?, ?),
+			('stale.json', 'stale@example.com', 'plus', 0, 3, ?, ?, ?)
 	`, now, now, now, now, now, now)
 	if err != nil {
 		t.Fatalf("seed keeper account states: %v", err)
@@ -1472,6 +1473,7 @@ func TestKeeperSyncAccountListOnlyReconcilesMembership(t *testing.T) {
 		Provider      string
 		AuthIndex     *string
 		AccountType   *string
+		PlanType      *string
 		Weight        *int
 		RequestRetry  *int
 		Success       *int
@@ -1486,6 +1488,7 @@ func TestKeeperSyncAccountListOnlyReconcilesMembership(t *testing.T) {
 			Provider      string
 			AuthIndex     *string
 			AccountType   *string
+			PlanType      *string
 			Weight        *int
 			RequestRetry  *int
 			Success       *int
@@ -1494,7 +1497,7 @@ func TestKeeperSyncAccountListOnlyReconcilesMembership(t *testing.T) {
 			Disabled      bool
 			Priority      *int
 			LastCheckedAt *string
-		}{item.Provider, item.AuthIndex, item.AccountType, item.Weight, item.RequestRetry, item.Success, item.Failed, item.Quota, item.Disabled, item.Priority, item.LastCheckedAt}
+		}{item.Provider, item.AuthIndex, item.AccountType, item.PlanType, item.Weight, item.RequestRetry, item.Success, item.Failed, item.Quota, item.Disabled, item.Priority, item.LastCheckedAt}
 	}
 	kept, ok := items["kept.json"]
 	if !ok {
@@ -1502,6 +1505,9 @@ func TestKeeperSyncAccountListOnlyReconcilesMembership(t *testing.T) {
 	}
 	if !kept.Disabled || kept.Priority == nil || *kept.Priority != 99 {
 		t.Fatalf("remote account fields not reflected after sync: disabled=%v priority=%v", kept.Disabled, kept.Priority)
+	}
+	if kept.AccountType == nil || *kept.AccountType != "oauth" || kept.PlanType == nil || *kept.PlanType != "pro_20x" {
+		t.Fatalf("kept credential type/plan = account_type %v plan_type %v", kept.AccountType, kept.PlanType)
 	}
 	var storedDisabled bool
 	var storedPriority int

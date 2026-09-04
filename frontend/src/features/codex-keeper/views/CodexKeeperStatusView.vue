@@ -655,7 +655,7 @@ function matchesPriorityFilter(account: CodexKeeperAccount, value: PriorityFilte
   const accountType = priorityTypeFromFilter(value)
   if (accountType !== null) {
     return (
-      account.account_type === accountType &&
+      credentialPlanType(account) === accountType &&
       priority >= 0 &&
       priority <= 20
     )
@@ -754,10 +754,11 @@ function priorityTypeFromFilter(value: PriorityFilter): string | null {
 }
 
 function normalAccountTypePriority(account: CodexKeeperAccount): number {
-  if (!account.account_type) {
+  const planType = credentialPlanType(account)
+  if (!planType) {
     return Number.NEGATIVE_INFINITY
   }
-  return priorityRuleMap.value[account.account_type] ?? Number.NEGATIVE_INFINITY
+  return priorityRuleMap.value[planType] ?? Number.NEGATIVE_INFINITY
 }
 
 function compareNormalAccounts(left: CodexKeeperAccount, right: CodexKeeperAccount): number {
@@ -862,10 +863,11 @@ function compareAccountFileName(left: CodexKeeperAccount, right: CodexKeeperAcco
 }
 
 function defaultPriority(account: CodexKeeperAccount): number | null {
-  if (!isCodexCredential(account) || !account.account_type) {
+  const planType = credentialPlanType(account)
+  if (!isCodexCredential(account) || !planType) {
     return null
   }
-  return priorityRuleMap.value[account.account_type] ?? null
+  return priorityRuleMap.value[planType] ?? null
 }
 
 function credentialActivityAt(account: CodexKeeperAccount): string | null {
@@ -956,7 +958,14 @@ function accountTypeLabel(accountType: string | null): string {
   if (normalized === 'k12') {
     return 'K12'
   }
+  if (normalized === 'oauth') {
+    return 'OAuth'
+  }
   return accountType ?? normalized
+}
+
+function credentialPlanType(account: CodexKeeperAccount): string | null {
+  return account.plan_type ?? (isCodexCredential(account) ? account.account_type : null)
 }
 
 function isPaidQuotaWindowAccount(accountType: string | null): boolean {
@@ -983,18 +992,28 @@ function hasFiveHourQuotaWindow(account: CodexKeeperAccount): boolean {
 }
 
 function isPaidQuotaWindow(account: CodexKeeperAccount): boolean {
+  const planType = credentialPlanType(account)
   return (
-    isPaidQuotaWindowAccount(account.account_type) ||
+    isPaidQuotaWindowAccount(planType) ||
     (quotaWindowSecondsFor(account, 'primary') === CODEX_FIVE_HOUR_WINDOW_SECONDS &&
       quotaWindowSecondsFor(account, 'secondary') === CODEX_WEEK_WINDOW_SECONDS)
   )
 }
 
 function isFreeQuotaWindow(account: CodexKeeperAccount): boolean {
+  const planType = credentialPlanType(account)
   return (
-    isFreeQuotaWindowAccount(account.account_type) ||
+    isFreeQuotaWindowAccount(planType) ||
     (quotaWindowSecondsFor(account, 'primary') === CODEX_MONTH_WINDOW_SECONDS &&
       quotaWindowSecondsFor(account, 'secondary') === null)
+  )
+}
+
+function hasSingleProWeeklyQuotaWindow(account: CodexKeeperAccount): boolean {
+  return (
+    credentialPlanType(account)?.trim().toLowerCase().startsWith('pro') === true &&
+    account.secondary_used_percent === null &&
+    quotaWindowSecondsFor(account, 'secondary') === null
   )
 }
 
@@ -1010,7 +1029,9 @@ function quotaWindowLabels(account: CodexKeeperAccount): { primary: string; seco
     const primaryLabel = quotaWindowLabelForSeconds(quotaWindowSecondsFor(account, 'primary'))
     const secondaryLabel = quotaWindowLabelForSeconds(quotaWindowSecondsFor(account, 'secondary'))
     return {
-      primary: primaryLabel ?? t('5小时限额', '5-Hour Limit'),
+      primary: primaryLabel ?? (hasSingleProWeeklyQuotaWindow(account)
+        ? t('周限额', 'Weekly Limit')
+        : t('5小时限额', '5-Hour Limit')),
       secondary: secondaryLabel ?? t('周限额', 'Weekly Limit'),
     }
   }
@@ -1065,13 +1086,13 @@ function quotaSortRemainingPercent(account: CodexKeeperAccount, key: AccountSort
     return null
   }
   if (key === 'quotaDay') {
-    if (isFreeQuotaWindow(account)) {
+    if (isFreeQuotaWindow(account) || hasSingleProWeeklyQuotaWindow(account)) {
       return null
     }
     return nullableRemainingQuotaPercent(account.primary_used_percent)
   }
   if (key === 'quotaWeek') {
-    if (isFreeQuotaWindow(account)) {
+    if (isFreeQuotaWindow(account) || hasSingleProWeeklyQuotaWindow(account)) {
       return nullableRemainingQuotaPercent(account.primary_used_percent)
     }
     if (isPaidQuotaWindow(account)) {
@@ -1173,31 +1194,29 @@ function accountStatusTags(account: CodexKeeperAccount) {
   const remoteStatus = account.status?.trim().toLowerCase()
   const statusMessage = account.status_message?.trim()
   const healthyStatuses = new Set(['active', 'ok', 'ready', 'healthy', 'success', 'available'])
-  const statusTags = [
+  const unavailableStatuses = new Set(['error', 'failed', 'unavailable'])
+  const issueTag = account.last_status_code === 401
+    ? { label: t('401报错', '401 Error'), tone: 'is-danger' }
+    : isQuotaExhaustedAccount(account)
+      ? { label: t('额度耗尽', 'Quota Exhausted'), tone: 'is-purple' }
+      : account.unavailable || (remoteStatus !== undefined && unavailableStatuses.has(remoteStatus))
+        ? { label: t('不可用', 'Unavailable'), tone: 'is-danger' }
+        : !account.disabled && remoteStatus && !healthyStatuses.has(remoteStatus)
+          ? { label: account.status ?? remoteStatus, tone: 'is-warning' }
+          : !account.disabled && statusMessage && !healthyStatuses.has(statusMessage.toLowerCase())
+            ? { label: t('状态警告', 'Status Warning'), tone: 'is-warning' }
+            : null
+
+  return [
     {
       label: account.disabled ? t('已禁用', 'Disabled') : t('启用中', 'Enabled'),
       tone: account.disabled ? 'is-warning' : 'is-success',
     },
-    account.last_status_code === 401
-      ? { label: t('401报错', '401 Error'), tone: 'is-danger' }
-      : null,
-    isQuotaExhaustedAccount(account)
-      ? { label: t('额度耗尽', 'Quota Exhausted'), tone: 'is-purple' }
-      : null,
-    account.unavailable || remoteStatus === 'error'
-      ? { label: t('不可用', 'Unavailable'), tone: 'is-danger' }
-      : null,
     account.runtime_only
       ? { label: t('运行时', 'Runtime'), tone: 'is-type' }
       : null,
-    !account.disabled && !account.unavailable && remoteStatus && !healthyStatuses.has(remoteStatus)
-      ? { label: account.status ?? remoteStatus, tone: 'is-warning' }
-      : null,
-    !account.disabled && statusMessage && !healthyStatuses.has(statusMessage.toLowerCase())
-      ? { label: t('状态警告', 'Status Warning'), tone: 'is-warning' }
-      : null,
+    issueTag,
   ].filter((item): item is { label: string; tone: string } => item !== null)
-  return statusTags
 }
 
 function accountIdentityTitle(account: CodexKeeperAccount): string {

@@ -153,6 +153,7 @@ type keeperAccount struct {
 	UserID                 *string        `json:"user_id"`
 	AuthIndex              *string        `json:"auth_index"`
 	AccountType            *string        `json:"account_type"`
+	PlanType               *string        `json:"plan_type"`
 	Weight                 *int           `json:"weight"`
 	RequestRetry           *int           `json:"request_retry"`
 	Disabled               bool           `json:"disabled"`
@@ -191,6 +192,7 @@ type keeperAccountResponse struct {
 	UserID                 *string                         `json:"user_id"`
 	AuthIndex              *string                         `json:"auth_index"`
 	AccountType            *string                         `json:"account_type"`
+	PlanType               *string                         `json:"plan_type"`
 	Weight                 *int                            `json:"weight"`
 	RequestRetry           *int                            `json:"request_retry"`
 	Disabled               bool                            `json:"disabled"`
@@ -1259,6 +1261,7 @@ func (a *App) keeperAccountResponses(accounts []keeperAccount, windowUsages map[
 			UserID:                 account.UserID,
 			AuthIndex:              account.AuthIndex,
 			AccountType:            account.AccountType,
+			PlanType:               account.PlanType,
 			Weight:                 account.Weight,
 			RequestRetry:           account.RequestRetry,
 			Disabled:               account.Disabled,
@@ -1496,7 +1499,8 @@ func keeperQuotaWindowPairForAccount(account keeperAccount, now time.Time) keepe
 }
 
 func keeperQuotaWindowForAccount(account keeperAccount, primary bool, now time.Time) *keeperQuotaWindowUsage {
-	if !primary && keeperFreeQuotaWindowAccount(account.AccountType) {
+	planType := keeperQuotaPlanType(account)
+	if !primary && keeperFreeQuotaWindowAccount(planType) {
 		return nil
 	}
 	resetAt := account.PrimaryResetAt
@@ -1508,7 +1512,10 @@ func keeperQuotaWindowForAccount(account keeperAccount, primary bool, now time.T
 	if resetAt == nil {
 		return nil
 	}
-	seconds, source, ok := keeperQuotaWindowSeconds(account.AccountType, windowSeconds, primary)
+	seconds, source, ok := keeperQuotaWindowSeconds(planType, windowSeconds, primary)
+	if primary && windowSeconds == nil && keeperProQuotaWindowAccount(planType) && account.SecondaryUsedPercent == nil {
+		seconds, source, ok = keeperWeekWindowSeconds, "inferred", true
+	}
 	if !ok {
 		return nil
 	}
@@ -1522,6 +1529,13 @@ func keeperQuotaWindowForAccount(account keeperAccount, primary bool, now time.T
 		Stale:         !now.Before(windowEnd),
 		WindowSource:  source,
 	}
+}
+
+func keeperQuotaPlanType(account keeperAccount) *string {
+	if account.PlanType != nil && strings.TrimSpace(*account.PlanType) != "" {
+		return account.PlanType
+	}
+	return account.AccountType
 }
 
 func keeperQuotaWindowSeconds(accountType *string, saved *int, primary bool) (int, string, bool) {
@@ -1547,6 +1561,10 @@ func keeperFreeQuotaWindowAccount(accountType *string) bool {
 func keeperPaidQuotaWindowAccount(accountType *string) bool {
 	normalized := strings.ToLower(strings.TrimSpace(valueOr(accountType, "")))
 	return normalized == "plus" || normalized == "team" || normalized == "k12" || strings.HasPrefix(normalized, "pro")
+}
+
+func keeperProQuotaWindowAccount(accountType *string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(valueOr(accountType, ""))), "pro")
 }
 
 func keeperQuotaWindowBounds(minStart, maxEnd time.Time, usage *keeperQuotaWindowUsage) (time.Time, time.Time) {
@@ -4182,6 +4200,7 @@ func (a *App) listKeeperCredentials(ctx context.Context) ([]keeperAccount, bool,
 		}
 		for index := range accounts {
 			accounts[index].Provider = "codex"
+			accounts[index].PlanType = accounts[index].AccountType
 		}
 		return accounts, true, nil
 	}
@@ -4215,7 +4234,8 @@ func (a *App) listKeeperCredentials(ctx context.Context) ([]keeperAccount, bool,
 			ProjectID:     keeperStringPtr(item["project_id"], item["projectId"]),
 			UserID:        keeperStringPtr(item["user_id"], item["userId"]),
 			AuthIndex:     keeperRemoteAuthIndex(item),
-			AccountType:   keeperStringPtr(item["account_type"], item["accountType"], item["plan_type"], item["planType"]),
+			AccountType:   keeperStringPtr(item["account_type"], item["accountType"]),
+			PlanType:      keeperStringPtr(item["plan_type"], item["planType"]),
 			Weight:        keeperIntPtr(item["weight"]),
 			RequestRetry:  keeperIntPtr(item["request_retry"], item["request-retry"]),
 			Disabled:      keeperBool(item["disabled"]),
@@ -4240,6 +4260,9 @@ func (a *App) listKeeperCredentials(ctx context.Context) ([]keeperAccount, bool,
 			}
 			if account.AccountType == nil {
 				account.AccountType = inspected.AccountType
+			}
+			if account.PlanType == nil {
+				account.PlanType = inspected.AccountType
 			}
 			if !keeperMapHasAnyKey(item, "disabled") {
 				account.Disabled = inspected.Disabled

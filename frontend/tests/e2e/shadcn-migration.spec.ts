@@ -452,21 +452,26 @@ test('all migrated routes render and core controls remain interactive', async ({
             name: 'menu-test.json',
             provider: 'codex',
             email: 'menu-test@example.com',
-            account_type: 'plus',
+            account_type: 'oauth',
+            plan_type: 'pro_20x',
             disabled: false,
-            priority: 0,
+            unavailable: true,
+            runtime_only: false,
+            priority: -1,
             primary_used_percent: 20,
-            secondary_used_percent: 10,
+            secondary_used_percent: null,
             primary_reset_at: null,
             secondary_reset_at: null,
-            primary_window_seconds: 18_000,
-            secondary_window_seconds: 604_800,
+            primary_window_seconds: null,
+            secondary_window_seconds: null,
             primary_window_usage: null,
             secondary_window_usage: null,
             quota_threshold: 90,
             last_status_code: 200,
             last_error: null,
             latest_action: null,
+            status: 'error',
+            status_message: 'quota exhausted',
             last_checked_at: null,
             last_healthy_at: null,
           },
@@ -512,6 +517,14 @@ test('all migrated routes render and core controls remain interactive', async ({
   const credentialTable = page.locator('.account-table')
   await expect(credentialTable.getByText('Codex', { exact: true })).toBeVisible()
   await expect(credentialTable.getByText('Claude', { exact: true })).toBeVisible()
+  const codexCredentialRow = credentialTable.locator('tbody tr').filter({ hasText: 'menu-test.json' })
+  await expect(codexCredentialRow.getByText(/启用中|Enabled/, { exact: true })).toBeVisible()
+  await expect(codexCredentialRow.getByText(/额度耗尽|Quota Exhausted/, { exact: true })).toBeVisible()
+  await expect(codexCredentialRow.getByText(/周限额|Weekly Limit/, { exact: true })).toBeVisible()
+  await expect(codexCredentialRow.getByText('OAuth', { exact: true })).toBeVisible()
+  await expect(codexCredentialRow.getByText(/不可用|Unavailable/, { exact: true })).toHaveCount(0)
+  await expect(codexCredentialRow.getByText('error', { exact: true })).toHaveCount(0)
+  await expect(codexCredentialRow.getByText(/状态警告|Status Warning/, { exact: true })).toHaveCount(0)
   const accountPagination = page.locator('[data-slot="table-pagination-footer"]')
   await expect(accountPagination.locator('[data-slot="pagination"]')).toBeVisible()
   await expect(accountPagination.getByRole('combobox', { name: /每页数量|Rows per page/ })).toBeVisible()

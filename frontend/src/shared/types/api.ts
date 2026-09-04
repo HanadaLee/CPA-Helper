@@ -295,6 +295,7 @@ export interface CodexKeeperAccount {
   user_id: string | null
   auth_index: string | null
   account_type: string | null
+  plan_type: string | null
   weight: number | null
   request_retry: number | null
   disabled: boolean
