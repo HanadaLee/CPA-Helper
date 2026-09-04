@@ -632,6 +632,8 @@ onMounted(() => refresh(false))
 }
 
 .settings-tabs {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   gap: 1rem;
 }

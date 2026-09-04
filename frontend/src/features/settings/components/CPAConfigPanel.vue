@@ -388,6 +388,8 @@ onMounted(loadConfig)
 }
 
 .cpa-config-tabs {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   gap: 1rem;
 }
