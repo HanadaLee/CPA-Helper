@@ -2855,6 +2855,8 @@ onBeforeUnmount(() => {
                     getResetCreditFeedback(selectedAccount.name)?.variant === 'warning' ? 'is-warning' : '',
                   ]"
                 >
+                  <Check v-if="getResetCreditFeedback(selectedAccount.name)?.variant === 'success'" />
+                  <ShieldAlert v-else />
                   <AlertDescription>{{ getResetCreditFeedback(selectedAccount.name)?.text }}</AlertDescription>
                 </Alert>
               </CardContent>
@@ -3497,18 +3499,42 @@ onBeforeUnmount(() => {
 }
 
 .detail-reset-feedback {
-  border-color: color-mix(in oklch, var(--cpa-success) 38%, var(--border));
-  background: color-mix(in oklch, var(--cpa-success) 8%, var(--card));
+  align-items: center;
+  min-height: 0;
+  border: 0;
+  border-inline-start: 3px solid var(--cpa-success);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  background: var(--cpa-success-weak);
+  box-shadow: none;
+}
+
+.detail-reset-feedback :deep([data-slot="alert-description"]) {
+  color: var(--foreground);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .detail-reset-feedback.is-warning {
-  border-color: color-mix(in oklch, var(--cpa-warning) 38%, var(--border));
-  background: color-mix(in oklch, var(--cpa-warning) 8%, var(--card));
+  border-inline-start-color: var(--cpa-warning);
+  background: var(--cpa-warning-weak);
 }
 
 .detail-reset-feedback.is-error {
-  border-color: color-mix(in oklch, var(--destructive) 38%, var(--border));
-  background: color-mix(in oklch, var(--destructive) 8%, var(--card));
+  border-inline-start-color: var(--cpa-danger);
+  background: var(--cpa-danger-weak);
+}
+
+.detail-reset-feedback :deep(svg) {
+  color: var(--cpa-success);
+}
+
+.detail-reset-feedback.is-warning :deep(svg) {
+  color: var(--cpa-warning);
+}
+
+.detail-reset-feedback.is-error :deep(svg) {
+  color: var(--cpa-danger);
 }
 
 .detail-drawer-header {
