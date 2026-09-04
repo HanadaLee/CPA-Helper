@@ -4,17 +4,6 @@ import { useRoute, useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import { Button } from '@/components/ui/button'
 import {
-  Combobox,
-  ComboboxAnchor,
-  ComboboxEmpty,
-  ComboboxGroup,
-  ComboboxInput,
-  ComboboxItem,
-  ComboboxItemIndicator,
-  ComboboxList,
-  ComboboxTrigger,
-} from '@/components/ui/combobox'
-import {
   Select,
   SelectContent,
   SelectGroup,
@@ -26,8 +15,6 @@ import { Spinner } from '@/components/ui/spinner'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Toggle } from '@/components/ui/toggle'
 import {
-  Check,
-  ChevronDown,
   CircleCheck,
   CircleDollarSign,
   ClipboardList,
@@ -70,6 +57,7 @@ import {
 } from '@/shared/utils/format'
 import { useI18n } from '@/shared/i18n'
 import DateTimeRangePicker from '@/shared/ui/DateTimeRangePicker.vue'
+import FilterCombobox from '@/shared/ui/FilterCombobox.vue'
 
 type FailedFilter = 'all' | 'success' | 'failed'
 type QuickRangeKey = 'today' | 'yesterday' | 'last24h' | 'last3d' | 'last7d' | 'last30d'
@@ -350,7 +338,6 @@ const filterForm = reactive({
 })
 
 const failedFilterOptions = computed(() => [
-  { label: t('全部', 'All'), value: 'all' },
   { label: t('成功', 'Success'), value: 'success' },
   { label: t('失败', 'Failed'), value: 'failed' },
 ])
@@ -381,62 +368,47 @@ const rankingTitle = computed(() =>
   isAccountScope.value ? t('KEY 排行', 'Key ranking') : t('用户排行', 'User ranking'),
 )
 
-function selectedFilterOption(
-  filterOptions: UsageFilterOption[],
-  value: string | number | null,
-): UsageFilterOption | null {
-  return filterOptions.find((option) => option.value === value) ?? null
-}
-
-function filterOptionValue(value: unknown): string | number | null {
-  if (typeof value !== 'object' || value === null || !('value' in value)) {
-    return null
-  }
-  const optionValue = value.value
-  return typeof optionValue === 'string' || typeof optionValue === 'number' ? optionValue : null
-}
-
 const filterComboboxes = computed<UsageFilterCombobox[]>(() => {
   const items: UsageFilterCombobox[] = [
     {
       key: 'api-key',
       icon: KeyRound,
-      selected: selectedFilterOption(selectOptions.value.apiKeyDescriptions, filterForm.api_key_description),
+      value: filterForm.api_key_description,
       options: selectOptions.value.apiKeyDescriptions,
       placeholder: t('KEY 描述', 'Key description'),
       searchPlaceholder: t('搜索 KEY 描述', 'Search key descriptions'),
       emptyText: t('没有匹配的 KEY 描述', 'No matching key descriptions'),
-      onChange: (value) => handleApiKeyChange(filterOptionValue(value)),
+      onChange: handleApiKeyChange,
     },
     {
       key: 'provider',
       icon: Server,
-      selected: selectedFilterOption(selectOptions.value.providers, filterForm.provider),
+      value: filterForm.provider,
       options: selectOptions.value.providers,
       placeholder: t('服务商', 'Provider'),
       searchPlaceholder: t('搜索服务商', 'Search providers'),
       emptyText: t('没有匹配的服务商', 'No matching providers'),
-      onChange: (value) => handleProviderChange(filterOptionValue(value)),
+      onChange: handleProviderChange,
     },
     {
       key: 'model',
       icon: Cpu,
-      selected: selectedFilterOption(selectOptions.value.models, filterForm.model),
+      value: filterForm.model,
       options: selectOptions.value.models,
       placeholder: t('模型', 'Model'),
       searchPlaceholder: t('搜索模型', 'Search models'),
       emptyText: t('没有匹配的模型', 'No matching models'),
-      onChange: (value) => handleModelChange(filterOptionValue(value)),
+      onChange: handleModelChange,
     },
     {
       key: 'endpoint',
       icon: Route,
-      selected: selectedFilterOption(selectOptions.value.endpoints, filterForm.endpoint),
+      value: filterForm.endpoint,
       options: selectOptions.value.endpoints,
       placeholder: t('接口', 'Endpoint'),
       searchPlaceholder: t('搜索接口', 'Search endpoints'),
       emptyText: t('没有匹配的接口', 'No matching endpoints'),
-      onChange: (value) => handleEndpointChange(filterOptionValue(value)),
+      onChange: handleEndpointChange,
     },
   ]
 
@@ -444,12 +416,12 @@ const filterComboboxes = computed<UsageFilterCombobox[]>(() => {
     items.unshift({
       key: 'user',
       icon: UserRound,
-      selected: selectedFilterOption(selectOptions.value.users, filterForm.user_id),
+      value: filterForm.user_id,
       options: selectOptions.value.users,
       placeholder: t('用户昵称', 'User nickname'),
       searchPlaceholder: t('搜索用户', 'Search users'),
       emptyText: t('没有匹配的用户', 'No matching users'),
-      onChange: (value) => handleUserChange(filterOptionValue(value)),
+      onChange: handleUserChange,
     })
   }
 
@@ -848,7 +820,7 @@ interface UsageFilterOption {
 interface UsageFilterCombobox {
   key: string
   icon: Component
-  selected: UsageFilterOption | null
+  value: string | number | null
   options: UsageFilterOption[]
   placeholder: string
   searchPlaceholder: string
@@ -1251,63 +1223,28 @@ onBeforeUnmount(() => {
           />
         </div>
         <div class="field-row" :class="{ 'is-account-scope': isAccountScope }">
-          <Combobox
+          <FilterCombobox
             v-for="filter in filterComboboxes"
             :key="filter.key"
             class="filter-combobox"
-            :model-value="filter.selected"
-            by="value"
+            :model-value="filter.value"
+            :options="filter.options"
+            :placeholder="filter.placeholder"
+            :search-placeholder="filter.searchPlaceholder"
+            :empty-text="filter.emptyText"
+            :icon="filter.icon"
             @update:model-value="filter.onChange"
-          >
-            <ComboboxAnchor as-child>
-              <ComboboxTrigger as-child>
-                <Button variant="outline" class="filter-combobox-trigger">
-                  <component :is="filter.icon" data-icon="inline-start" />
-                  <span class="min-w-0 flex-1 truncate text-left">
-                    {{ filter.selected?.label ?? filter.placeholder }}
-                  </span>
-                  <ChevronDown data-icon="inline-end" class="text-muted-foreground" />
-                </Button>
-              </ComboboxTrigger>
-            </ComboboxAnchor>
-            <ComboboxList align="start">
-              <ComboboxInput :placeholder="filter.searchPlaceholder" />
-              <ComboboxEmpty>{{ filter.emptyText }}</ComboboxEmpty>
-              <ComboboxGroup>
-                <ComboboxItem :value="null">
-                  {{ t('清除筛选', 'Clear filter') }}
-                </ComboboxItem>
-                <ComboboxItem
-                  v-for="option in filter.options"
-                  :key="String(option.value)"
-                  :value="option"
-                >
-                  <span class="truncate">{{ option.label }}</span>
-                  <ComboboxItemIndicator>
-                    <Check />
-                  </ComboboxItemIndicator>
-                </ComboboxItem>
-              </ComboboxGroup>
-            </ComboboxList>
-          </Combobox>
+          />
           <div class="status-actions">
-            <Select :model-value="filterForm.failed" @update:model-value="handleFailedChange">
-              <SelectTrigger class="status-select">
-                <CircleCheck />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectItem
-                    v-for="option in failedFilterOptions"
-                    :key="option.value"
-                    :value="option.value"
-                  >
-                    {{ option.label }}
-                  </SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
+            <FilterCombobox
+              class="status-filter"
+              :model-value="filterForm.failed === 'all' ? null : filterForm.failed"
+              :options="failedFilterOptions"
+              :placeholder="t('结果', 'Result')"
+              :icon="CircleCheck"
+              :searchable="false"
+              @update:model-value="handleFailedChange"
+            />
             <Button variant="outline" :disabled="isLoading" @click="refresh()">
               <Spinner v-if="isLoading" data-icon="inline-start" />
               {{ t('筛选', 'Filter') }}
@@ -1773,14 +1710,6 @@ onBeforeUnmount(() => {
   width: 100%;
 }
 
-.filter-combobox-trigger {
-  width: 100%;
-  justify-content: flex-start;
-  border-color: var(--input);
-  font-weight: 400;
-  box-shadow: var(--cpa-shadow-card);
-}
-
 .status-actions {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -1788,7 +1717,7 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 
-.status-select {
+.status-filter {
   min-width: 96px;
 }
 

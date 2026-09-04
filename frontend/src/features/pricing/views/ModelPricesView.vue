@@ -42,14 +42,6 @@ import {
   InputGroupAddon,
   InputGroupInput,
 } from '@/components/ui/input-group'
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
@@ -75,7 +67,6 @@ import {
   Server,
   Settings2,
   Trash2,
-  X,
 } from '@lucide/vue'
 
 import {
@@ -96,6 +87,7 @@ import type {
 } from '@/shared/types/api'
 import { formatDateTime, formatInteger } from '@/shared/utils/format'
 import { useI18n } from '@/shared/i18n'
+import FilterCombobox from '@/shared/ui/FilterCombobox.vue'
 import TablePaginationFooter from '@/shared/ui/TablePaginationFooter.vue'
 
 type PriceRowStatus = 'missing' | 'litellm' | 'manual'
@@ -237,10 +229,6 @@ const pagedPrices = computed(() => {
   const start = (page.value - 1) * pageSize.value
   return filteredPrices.value.slice(start, start + pageSize.value)
 })
-
-const selectedStatusLabel = computed(() =>
-  statusOptions.value.find((option) => option.value === selectedStatus.value)?.label ?? null,
-)
 
 watch([selectedProvider, selectedStatus, searchQuery], () => {
   page.value = 1
@@ -711,71 +699,26 @@ onMounted(() => {
             <div class="price-filters">
               <span class="filter-label">{{ t('筛选', 'Filters') }}</span>
 
-              <div class="filter-control">
-                <Select :model-value="selectedProvider ?? undefined" @update:model-value="handleProviderFilterChange">
-                  <SelectTrigger
-                    class="provider-filter"
-                    :aria-label="selectedProvider || t('全部服务商', 'All providers')"
-                  >
-                    <Server />
-                    <SelectValue :placeholder="t('全部服务商', 'All providers')" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      <SelectItem
-                        v-for="option in providerOptions"
-                        :key="option.value"
-                        :value="option.value"
-                      >
-                        {{ option.label }}
-                      </SelectItem>
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-                <Button
-                  v-if="selectedProvider"
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label="Clear selection"
-                  @click="selectedProvider = null"
-                >
-                  <X />
-                </Button>
-              </div>
+              <FilterCombobox
+                class="provider-filter"
+                :model-value="selectedProvider"
+                :options="providerOptions"
+                :placeholder="t('服务商', 'Provider')"
+                :search-placeholder="t('搜索服务商', 'Search providers')"
+                :empty-text="t('没有匹配的服务商', 'No matching providers')"
+                :icon="Server"
+                @update:model-value="handleProviderFilterChange"
+              />
 
-              <div class="filter-control">
-                <Select :model-value="selectedStatus ?? undefined" @update:model-value="handleStatusFilterChange">
-                  <SelectTrigger
-                    class="status-filter"
-                    :aria-label="selectedStatusLabel || t('全部状态', 'All statuses')"
-                  >
-                    <ListFilter />
-                    <SelectValue :placeholder="t('全部状态', 'All statuses')" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      <SelectItem
-                        v-for="option in statusOptions"
-                        :key="option.value"
-                        :value="option.value"
-                      >
-                        {{ option.label }}
-                      </SelectItem>
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-                <Button
-                  v-if="selectedStatus"
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label="Clear selection"
-                  @click="selectedStatus = null"
-                >
-                  <X />
-                </Button>
-              </div>
+              <FilterCombobox
+                class="status-filter"
+                :model-value="selectedStatus"
+                :options="statusOptions"
+                :placeholder="t('状态', 'Status')"
+                :icon="ListFilter"
+                :searchable="false"
+                @update:model-value="handleStatusFilterChange"
+              />
 
               <InputGroup class="price-search">
                 <InputGroupAddon>
@@ -1141,13 +1084,6 @@ onMounted(() => {
   max-width: 100%;
 }
 
-.filter-control {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  min-width: 0;
-}
-
 .filter-label,
 .result-count {
   color: var(--muted-foreground);
@@ -1313,14 +1249,10 @@ onMounted(() => {
     display: none;
   }
 
-  .filter-control,
+  .provider-filter,
+  .status-filter,
   .price-search {
     width: 100%;
-  }
-
-  .filter-control :deep([data-slot="select-trigger"]) {
-    flex: 1 1 auto;
-    width: auto;
   }
 
   .price-search {

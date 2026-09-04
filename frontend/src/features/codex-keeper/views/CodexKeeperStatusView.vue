@@ -13,17 +13,6 @@ import {
 } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
-  Combobox,
-  ComboboxAnchor,
-  ComboboxEmpty,
-  ComboboxGroup,
-  ComboboxInput,
-  ComboboxItem,
-  ComboboxItemIndicator,
-  ComboboxList,
-  ComboboxTrigger,
-} from '@/components/ui/combobox'
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -80,7 +69,6 @@ import {
   Activity,
   ArrowLeft,
   Check,
-  ChevronsUpDown,
   Copy,
   Eye,
   ExternalLink,
@@ -129,6 +117,7 @@ import type {
   CodexKeeperStatus,
 } from '@/shared/types/api'
 import { useI18n } from '@/shared/i18n'
+import FilterCombobox from '@/shared/ui/FilterCombobox.vue'
 import TablePaginationFooter from '@/shared/ui/TablePaginationFooter.vue'
 import { copyToClipboard } from '@/shared/utils/clipboard'
 import {
@@ -303,7 +292,6 @@ const priorityRuleMap = computed(() =>
   Object.fromEntries(priorityRules.value.map((rule) => [rule.account_type, rule.priority])),
 )
 const priorityFilterOptions = computed<Array<{ label: string; value: PriorityFilter }>>(() => [
-  { label: t('全部优先级', 'All Priorities'), value: 'all' },
   { label: t('手动优先 >20', 'Manual Priority >20'), value: 'high' },
   ...[...priorityRules.value]
     .filter((rule) => rule.priority >= 0 && rule.priority <= 20)
@@ -330,10 +318,6 @@ const accountTypeOptions = computed(() =>
     .sort((a, b) => String(a).localeCompare(String(b)))
     .map((value) => ({ label: accountTypeLabel(String(value)), value: String(value) })),
 )
-const selectedAccountTypeOption = computed(
-  () => accountTypeOptions.value.find((option) => option.value === filters.accountType) ?? null,
-)
-
 const filteredAccounts = computed(() =>
   accounts.value.filter((account) => {
     const keyword = filters.keyword.trim().toLowerCase()
@@ -662,14 +646,15 @@ function isStatusFilterActive(value: Exclude<AccountStatusFilter, 'all'>): boole
 }
 
 function setAccountTypeFilter(value: unknown) {
-  const option = value as { value?: unknown } | null
-  filters.accountType = typeof option?.value === 'string' ? option.value : null
+  filters.accountType = typeof value === 'string' ? value : null
 }
 
 function setPriorityFilter(value: unknown) {
   if (typeof value === 'string' && priorityFilterOptions.value.some((option) => option.value === value)) {
     filters.priority = value as PriorityFilter
+    return
   }
+  filters.priority = 'all'
 }
 
 function setAccountDisplaySize(value: unknown) {
@@ -2408,47 +2393,24 @@ onBeforeUnmount(() => {
             <InputGroupAddon><Search /></InputGroupAddon>
             <InputGroupInput v-model="filters.keyword" :placeholder="t('搜索凭证或邮箱', 'Search credential or email')" />
           </InputGroup>
-          <Combobox
-            :model-value="selectedAccountTypeOption"
-            by="value"
+          <FilterCombobox
+            :model-value="filters.accountType"
+            :options="accountTypeOptions"
+            :placeholder="t('凭证类型', 'Credential Type')"
+            :search-placeholder="t('搜索凭证类型', 'Search credential types')"
+            :empty-text="t('没有匹配类型', 'No matching types')"
+            :icon="Users"
             @update:model-value="setAccountTypeFilter"
-          >
-            <ComboboxAnchor as-child>
-              <ComboboxTrigger as-child>
-                <Button
-                  variant="outline"
-                  class="filter-combobox-trigger"
-                  role="combobox"
-                  aria-haspopup="listbox"
-                  :aria-label="t('凭证类型', 'Credential Type')"
-                >
-                  <span class="min-w-0 flex-1 truncate text-left">{{ selectedAccountTypeOption?.label ?? t('凭证类型', 'Credential Type') }}</span>
-                  <ChevronsUpDown data-icon="inline-end" class="text-muted-foreground" />
-                </Button>
-              </ComboboxTrigger>
-            </ComboboxAnchor>
-            <ComboboxList align="start">
-              <ComboboxInput :placeholder="t('凭证类型', 'Credential Type')" />
-              <ComboboxEmpty>{{ t('没有匹配类型', 'No matching type') }}</ComboboxEmpty>
-              <ComboboxGroup>
-                <ComboboxItem :value="null">{{ t('全部类型', 'All types') }}</ComboboxItem>
-                <ComboboxItem v-for="option in accountTypeOptions" :key="option.value" :value="option">
-                  <span class="truncate">{{ option.label }}</span>
-                  <ComboboxItemIndicator><Check /></ComboboxItemIndicator>
-                </ComboboxItem>
-              </ComboboxGroup>
-            </ComboboxList>
-          </Combobox>
-          <Select :model-value="filters.priority" @update:model-value="setPriorityFilter">
-            <SelectTrigger :aria-label="t('优先级筛选', 'Priority filter')"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                <SelectItem v-for="option in priorityFilterOptions" :key="option.value" :value="option.value">
-                  {{ option.label }}
-                </SelectItem>
-              </SelectGroup>
-            </SelectContent>
-          </Select>
+          />
+          <FilterCombobox
+            :model-value="filters.priority === 'all' ? null : filters.priority"
+            :options="priorityFilterOptions"
+            :placeholder="t('优先级', 'Priority')"
+            :search-placeholder="t('搜索优先级', 'Search priorities')"
+            :empty-text="t('没有匹配优先级', 'No matching priorities')"
+            :icon="Gauge"
+            @update:model-value="setPriorityFilter"
+          />
         </div>
       </CardHeader>
 
@@ -3440,12 +3402,6 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   gap: 10px 14px;
   min-width: 0;
-}
-
-.filter-combobox-trigger {
-  width: 100%;
-  justify-content: space-between;
-  font-weight: 400;
 }
 
 .account-section-actions {

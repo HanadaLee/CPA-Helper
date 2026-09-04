@@ -11,8 +11,10 @@ defineOptions({
 
 const props = withDefaults(defineProps<ComboboxContentProps & { class?: HTMLAttributes['class'] }>(), {
   position: 'popper',
-  align: 'center',
+  align: 'start',
+  side: 'bottom',
   sideOffset: 4,
+  avoidCollisions: false,
 })
 const emits = defineEmits<ComboboxContentEmits>()
 
@@ -25,7 +27,7 @@ const forwarded = useForwardPropsEmits(delegatedProps, emits)
     <ComboboxContent
       data-slot="combobox-content"
       v-bind="{ ...$attrs, ...forwarded }"
-      :class="cn('bg-popover text-popover-foreground data-open:animate-in data-closed:animate-out data-closed:fade-out-0 data-open:fade-in-0 data-closed:zoom-out-95 data-open:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 ring-foreground/10 *:data-[slot=input-group]:bg-background *:data-[slot=input-group]:border-input max-h-72 min-w-40 overflow-hidden rounded-[10px] p-1 shadow-md ring-1 duration-100 *:data-[slot=input-group]:mb-1 *:data-[slot=input-group]:h-8 *:data-[slot=input-group]:shadow-none data-[side=inline-start]:slide-in-from-right-2 data-[side=inline-end]:slide-in-from-left-2 cn-menu-translucent group/combobox-content z-50 w-(--reka-combobox-trigger-width)', props.class)"
+      :class="cn('bg-popover text-popover-foreground data-open:animate-in data-closed:animate-out data-closed:fade-out-0 data-open:fade-in-0 data-closed:zoom-out-95 data-open:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 ring-foreground/10 *:data-[slot=input-group]:bg-popover *:data-[slot=input-group]:border-input max-h-72 min-w-40 overflow-hidden rounded-[10px] p-1 shadow-md ring-1 duration-100 *:data-[slot=input-group]:mb-1 *:data-[slot=input-group]:h-8 *:data-[slot=input-group]:shadow-none data-[side=inline-start]:slide-in-from-right-2 data-[side=inline-end]:slide-in-from-left-2 cn-menu-translucent group/combobox-content z-50 w-(--reka-combobox-trigger-width)', props.class)"
     >
       <slot />
     </ComboboxContent>
