@@ -151,6 +151,10 @@ type AccountAction = 'toggle' | 'priority' | 'delete' | 'refresh' | 'reset-query
 type AccountConfirmType = 'default' | 'warning' | 'error' | 'primary'
 type OAuthDialogStatus = 'idle' | 'waiting' | 'success' | 'error'
 type KeeperPollMode = 'once' | 'accounts'
+type ResetCreditFeedback = {
+  variant: 'success' | 'warning' | 'error'
+  text: string
+}
 type QuotaWindowItem = {
   label: string
   usedPercent: number
@@ -215,6 +219,7 @@ const isBulkOperationRunning = computed(
 )
 const actingActions = ref<Set<string>>(new Set())
 const accounts = ref<CodexKeeperAccount[]>([])
+const resetCreditFeedback = ref<Record<string, ResetCreditFeedback>>({})
 const priorityRules = ref<CodexKeeperPriorityRule[]>([])
 const keeperStatus = ref<CodexKeeperStatus | null>(null)
 const selectedAccount = ref<CodexKeeperAccount | null>(null)
@@ -1850,6 +1855,20 @@ function setAccountResetCredits(accountName: string, resetCredits: CodexKeeperRe
   }
 }
 
+function setResetCreditFeedback(accountName: string, feedback: ResetCreditFeedback | null) {
+  const next = { ...resetCreditFeedback.value }
+  if (feedback) {
+    next[accountName] = feedback
+  } else {
+    delete next[accountName]
+  }
+  resetCreditFeedback.value = next
+}
+
+function getResetCreditFeedback(accountName: string): ResetCreditFeedback | null {
+  return resetCreditFeedback.value[accountName] ?? null
+}
+
 async function runResetCreditAction(
   account: CodexKeeperAccount,
   action: 'reset-query' | 'reset-consume',
@@ -1859,23 +1878,30 @@ async function runResetCreditAction(
     return
   }
   actingActions.value = new Set(actingActions.value).add(key)
+  setResetCreditFeedback(account.name, null)
   try {
     const result = action === 'reset-query'
       ? await queryCodexKeeperResetCredits(account.name)
       : await consumeCodexKeeperResetCredit(account.name)
     setAccountResetCredits(account.name, result)
-    message.success(action === 'reset-query'
-      ? t('重置次数已更新', 'Reset credits updated')
-      : t('已使用一次重置次数', 'One reset credit was used'))
-    if (action === 'reset-consume') {
+    if (action === 'reset-query') {
+      const successText = t('重置次数已更新', 'Reset credits updated')
+      setResetCreditFeedback(account.name, { variant: 'success', text: successText })
+      message.success(successText)
+    } else {
+      const successText = t('已使用一次重置次数，并开始巡检该凭证', 'One reset credit was used and this credential inspection has started')
+      setResetCreditFeedback(account.name, { variant: 'success', text: successText })
+      message.success(successText)
       void pollKeeperModeUntilIdle('accounts')
     }
   } catch (error) {
-    message.error(errorText(
+    const failureText = errorText(
       error,
       action === 'reset-query' ? '查询重置次数失败' : '使用重置次数失败',
       action === 'reset-query' ? 'Failed to query reset credits' : 'Failed to use reset credit',
-    ))
+    )
+    setResetCreditFeedback(account.name, { variant: 'error', text: failureText })
+    message.error(failureText)
   } finally {
     const nextActions = new Set(actingActions.value)
     nextActions.delete(key)
@@ -2820,6 +2846,17 @@ onBeforeUnmount(() => {
                     {{ t('使用一次', 'Use Once') }}
                   </Button>
                 </div>
+                <Alert
+                  v-if="getResetCreditFeedback(selectedAccount.name)"
+                  :variant="getResetCreditFeedback(selectedAccount.name)?.variant === 'error' ? 'destructive' : 'default'"
+                  :class="[
+                    'detail-reset-feedback',
+                    getResetCreditFeedback(selectedAccount.name)?.variant === 'error' ? 'is-error' : '',
+                    getResetCreditFeedback(selectedAccount.name)?.variant === 'warning' ? 'is-warning' : '',
+                  ]"
+                >
+                  <AlertDescription>{{ getResetCreditFeedback(selectedAccount.name)?.text }}</AlertDescription>
+                </Alert>
               </CardContent>
             </Card>
           </section>
@@ -3457,6 +3494,21 @@ onBeforeUnmount(() => {
 
 .detail-action-separator {
   margin: 16px 0;
+}
+
+.detail-reset-feedback {
+  border-color: color-mix(in oklch, var(--cpa-success) 38%, var(--border));
+  background: color-mix(in oklch, var(--cpa-success) 8%, var(--card));
+}
+
+.detail-reset-feedback.is-warning {
+  border-color: color-mix(in oklch, var(--cpa-warning) 38%, var(--border));
+  background: color-mix(in oklch, var(--cpa-warning) 8%, var(--card));
+}
+
+.detail-reset-feedback.is-error {
+  border-color: color-mix(in oklch, var(--destructive) 38%, var(--border));
+  background: color-mix(in oklch, var(--destructive) 8%, var(--card));
 }
 
 .detail-drawer-header {
