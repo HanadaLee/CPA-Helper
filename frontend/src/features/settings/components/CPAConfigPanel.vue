@@ -468,7 +468,7 @@ onMounted(loadConfig)
   padding: .875rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--muted) 24%, transparent);
+  background: var(--cpa-surface-muted);
 }
 
 .cpa-list-input {
