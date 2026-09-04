@@ -2,6 +2,7 @@ import { apiClient } from '@/shared/api/apiClient'
 import type {
   CodexKeeperAuthFileDetail,
   CodexKeeperAuthFileFields,
+  CodexKeeperAuthFileModelsResponse,
   CodexKeeperAuthFileUploadResponse,
   CodexKeeperBulkDeletePayload,
   CodexKeeperBulkDeleteResponse,
@@ -15,6 +16,7 @@ import type {
   CodexKeeperSettings,
   CodexKeeperSettingsUpdatePayload,
   CodexKeeperStatus,
+  CredentialOAuthProvider,
 } from '@/shared/types/api'
 
 export function uploadCodexKeeperAuthFiles(files: File[]): Promise<CodexKeeperAuthFileUploadResponse> {
@@ -23,21 +25,36 @@ export function uploadCodexKeeperAuthFiles(files: File[]): Promise<CodexKeeperAu
   return apiClient.postForm<CodexKeeperAuthFileUploadResponse>('/codex-keeper/auth-files', form)
 }
 
-export function startCodexKeeperOAuth(): Promise<CodexKeeperOAuthStartResponse> {
-  return apiClient.post<CodexKeeperOAuthStartResponse>('/codex-keeper/oauth/start')
+export function startCodexKeeperOAuth(
+  provider: CredentialOAuthProvider,
+  projectId?: string,
+): Promise<CodexKeeperOAuthStartResponse> {
+  return apiClient.post<CodexKeeperOAuthStartResponse>('/codex-keeper/oauth/start', {
+    provider,
+    project_id: projectId?.trim() || undefined,
+  })
 }
 
 export function getCodexKeeperOAuthStatus(state: string): Promise<CodexKeeperOAuthStatusResponse> {
   return apiClient.get<CodexKeeperOAuthStatusResponse>('/codex-keeper/oauth/status', { state })
 }
 
-export function submitCodexKeeperOAuthCallback(redirectUrl: string): Promise<void> {
-  return apiClient.post<void>('/codex-keeper/oauth/callback', { redirect_url: redirectUrl })
+export function submitCodexKeeperOAuthCallback(
+  provider: CredentialOAuthProvider,
+  redirectUrl: string,
+): Promise<void> {
+  return apiClient.post<void>('/codex-keeper/oauth/callback', { provider, redirect_url: redirectUrl })
 }
 
 export function getCodexKeeperAuthFile(name: string): Promise<CodexKeeperAuthFileDetail> {
   return apiClient.get<CodexKeeperAuthFileDetail>(
     `/codex-keeper/auth-files/${encodeURIComponent(name)}`,
+  )
+}
+
+export function getCodexKeeperAuthFileModels(name: string): Promise<CodexKeeperAuthFileModelsResponse> {
+  return apiClient.get<CodexKeeperAuthFileModelsResponse>(
+    `/codex-keeper/auth-files/${encodeURIComponent(name)}/models`,
   )
 }
 

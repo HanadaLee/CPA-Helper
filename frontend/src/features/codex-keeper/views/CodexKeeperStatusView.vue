@@ -93,6 +93,7 @@ import {
   disableCodexKeeperAccount,
   enableCodexKeeperAccount,
   getCodexKeeperAuthFile,
+  getCodexKeeperAuthFileModels,
   getCodexKeeperOAuthStatus,
   getCodexKeeperStatus,
   listCodexKeeperAccounts,
@@ -111,10 +112,12 @@ import { useCurrentUser } from '@/features/auth/state/currentUser'
 import type {
   CodexKeeperAccount,
   CodexKeeperAuthFileFields,
+  CodexKeeperAuthFileModel,
   CodexKeeperPriorityRule,
   CodexKeeperQuotaWindowUsage,
   CodexKeeperResetCredits,
   CodexKeeperStatus,
+  CredentialOAuthProvider,
 } from '@/shared/types/api'
 import { useI18n } from '@/shared/i18n'
 import FilterCombobox from '@/shared/ui/FilterCombobox.vue'
@@ -133,9 +136,9 @@ type PriorityTypeFilter = `type:${string}`
 type PriorityFilter = FixedPriorityFilter | PriorityTypeFilter
 type AccountStatusFilter = 'all' | 'enabled' | 'disabled' | 'unauthorized' | 'quotaExhausted'
 type AccountDisplaySize = 50 | 100 | 150 | 200
-type AccountSortKey = 'quotaDay' | 'quotaWeek' | 'accountType' | 'status' | 'priority' | 'lastCheckedAt'
+type AccountSortKey = 'quotaDay' | 'quotaWeek' | 'provider' | 'status' | 'priority' | 'lastCheckedAt'
 type SortDirection = 'asc' | 'desc'
-type PriorityMode = 'low' | 'high' | 'default'
+type PriorityMode = 'low' | 'high' | 'default' | 'custom'
 type AccountAction = 'toggle' | 'priority' | 'delete' | 'refresh' | 'reset-query' | 'reset-consume'
 type AccountConfirmType = 'default' | 'warning' | 'error' | 'primary'
 type OAuthDialogStatus = 'idle' | 'waiting' | 'success' | 'error'
@@ -152,6 +155,11 @@ type QuotaWindowItem = {
   usage: CodexKeeperQuotaWindowUsage | null
 }
 type QuotaUsageTag = { label: string; value: string; tone?: 'stale' }
+type CredentialQuotaObservation = {
+  label: string
+  observedAt: string | null
+  signals: Array<{ name: string; value: string }>
+}
 type AccountStatusPreferences = {
   displaySize?: unknown
   sort?: {
@@ -170,8 +178,14 @@ type AuthFileEditorState = {
   json: Record<string, unknown> | null
   prefix: string
   proxyUrl: string
+  weight: number | null
+  weightTouched: boolean
+  requestRetry: number | null
+  requestRetryTouched: boolean
   websockets: boolean
   websocketsTouched: boolean
+  usingApi: boolean
+  usingApiTouched: boolean
   note: string
   noteTouched: boolean
   headersText: string
@@ -184,8 +198,8 @@ const AUTH_FILE_MAX_SIZE = 10 * 1024 * 1024
 const CODEX_FIVE_HOUR_WINDOW_SECONDS = 5 * 60 * 60
 const CODEX_WEEK_WINDOW_SECONDS = 7 * 24 * 60 * 60
 const CODEX_MONTH_WINDOW_SECONDS = 30 * 24 * 60 * 60
-const accountManageTableScrollX = 1546
-const accountReadOnlyTableScrollX = 1518
+const accountManageTableScrollX = 1562
+const accountReadOnlyTableScrollX = 1534
 const KEEPER_STATUS_POLL_INTERVAL_MS = 3000
 const REFRESH_STATUS_POLL_INTERVAL_MS = 1500
 const OAUTH_STATUS_POLL_INTERVAL_MS = 3000
@@ -208,10 +222,14 @@ const isBulkOperationRunning = computed(
 )
 const actingActions = ref<Set<string>>(new Set())
 const accounts = ref<CodexKeeperAccount[]>([])
+const accountListDegraded = ref(false)
 const resetCreditFeedback = ref<Record<string, ResetCreditFeedback>>({})
 const priorityRules = ref<CodexKeeperPriorityRule[]>([])
 const keeperStatus = ref<CodexKeeperStatus | null>(null)
 const selectedAccount = ref<CodexKeeperAccount | null>(null)
+const selectedAccountModels = ref<CodexKeeperAuthFileModel[] | null>(null)
+const selectedAccountModelsLoading = ref(false)
+const selectedAccountModelsError = ref<string | null>(null)
 const selectedAccountNote = ref<string | null>(null)
 const isSelectedAccountNoteLoading = ref(false)
 let selectedAccountNoteRequestID = 0
@@ -222,6 +240,8 @@ const isUploadingAuthFiles = ref(false)
 const isStartingAccountInspection = ref(false)
 const authFileEditor = ref<AuthFileEditorState | null>(null)
 const oauthDialogOpen = ref(false)
+const oauthProvider = ref<CredentialOAuthProvider>('codex')
+const oauthProjectId = ref('')
 const oauthDialogStatus = ref<OAuthDialogStatus>('idle')
 const oauthAuthURL = ref('')
 const oauthCallbackURL = ref('')
@@ -233,7 +253,7 @@ const accountListPage = ref(1)
 const relativeTimeNow = ref(Date.now())
 const filters = reactive({
   keyword: '',
-  accountType: null as string | null,
+  provider: null as string | null,
   priority: 'all' as PriorityFilter,
   status: 'all' as AccountStatusFilter,
 })
@@ -287,6 +307,18 @@ const oauthStatusText = computed(() => {
       return t('尚未开始', 'Not started')
   }
 })
+const oauthProviderOptions = computed<Array<{ label: string; value: CredentialOAuthProvider }>>(() => [
+  { label: 'Codex', value: 'codex' },
+  { label: 'Claude', value: 'anthropic' },
+  { label: 'Antigravity', value: 'antigravity' },
+  { label: 'Gemini CLI', value: 'gemini-cli' },
+  { label: 'Kimi', value: 'kimi' },
+  { label: 'xAI', value: 'xai' },
+])
+const oauthProviderLabel = computed(
+  () => oauthProviderOptions.value.find((option) => option.value === oauthProvider.value)?.label ?? oauthProvider.value,
+)
+const oauthCallbackSupported = computed(() => oauthProvider.value !== 'kimi')
 
 const priorityRuleMap = computed(() =>
   Object.fromEntries(priorityRules.value.map((rule) => [rule.account_type, rule.priority])),
@@ -313,21 +345,22 @@ const quotaSortOptions = computed(() => [
   { label: t('月/周', 'Month/Week'), key: 'quotaWeek' },
 ])
 
-const accountTypeOptions = computed(() =>
-  [...new Set(accounts.value.map((item) => item.account_type).filter(Boolean))]
+const providerOptions = computed(() =>
+  [...new Set(accounts.value.map((item) => item.provider).filter(Boolean))]
     .sort((a, b) => String(a).localeCompare(String(b)))
-    .map((value) => ({ label: accountTypeLabel(String(value)), value: String(value) })),
+    .map((value) => ({ label: credentialProviderLabel(String(value)), value: String(value) })),
 )
 const filteredAccounts = computed(() =>
   accounts.value.filter((account) => {
     const keyword = filters.keyword.trim().toLowerCase()
     if (
       keyword &&
-      ![account.name, account.email ?? ''].some((value) => value.toLowerCase().includes(keyword))
+      ![account.name, account.email ?? '', account.label ?? '', account.account ?? '', account.project_id ?? '']
+        .some((value) => value.toLowerCase().includes(keyword))
     ) {
       return false
     }
-    if (filters.accountType && account.account_type !== filters.accountType) {
+    if (filters.provider && account.provider !== filters.provider) {
       return false
     }
     return matchesPriorityFilter(account, filters.priority) && matchesStatusFilter(account, filters.status)
@@ -384,7 +417,7 @@ const keeperStatusFootnoteText = computed(() =>
   isKeeperDaemonRunning.value ? t('等待 Cron 调度', 'Waiting for Cron schedule') : t('后台自动巡检', 'Background automatic inspection'),
 )
 const unauthorizedErrorAccountCount = computed(
-  () => accounts.value.filter((account) => account.last_status_code === 401).length,
+  () => accounts.value.filter((account) => isCodexCredential(account) && account.last_status_code === 401).length,
 )
 const quotaExhaustedAccountCount = computed(
   () => accounts.value.filter(isQuotaExhaustedAccount).length,
@@ -392,7 +425,7 @@ const quotaExhaustedAccountCount = computed(
 const activeFilterCount = computed(
   () =>
     Number(filters.keyword.trim() !== '') +
-    Number(filters.accountType !== null) +
+    Number(filters.provider !== null) +
     Number(filters.priority !== 'all') +
     Number(filters.status !== 'all'),
 )
@@ -401,7 +434,7 @@ const visibleListAccounts = computed(() =>
   pagedAccounts(sortedListAccounts.value, accountListPage.value),
 )
 const selectableVisibleAccounts = computed(() =>
-  visibleListAccounts.value.filter((account) => !isRowActing(account) && !isBulkOperationRunning.value),
+  visibleListAccounts.value.filter((account) => isCredentialMutable(account) && !isRowActing(account) && !isBulkOperationRunning.value),
 )
 const visibleSelectedCount = computed(() => {
   const selected = new Set(selectedAccountKeys.value)
@@ -454,7 +487,7 @@ function isAccountSortKey(value: unknown): value is AccountSortKey {
   return (
     value === 'quotaDay' ||
     value === 'quotaWeek' ||
-    value === 'accountType' ||
+    value === 'provider' ||
     value === 'status' ||
     value === 'priority' ||
     value === 'lastCheckedAt'
@@ -541,7 +574,7 @@ const canBulkDelete = computed(() =>
   selectedAccountCount.value > 0 && !isBulkOperationRunning.value,
 )
 const canRefreshSelected = computed(
-  () => selectedAccountCount.value > 0 && !isBulkOperationRunning.value && !isLoading.value,
+  () => selectedAccounts.value.some(isCodexCredential) && !isBulkOperationRunning.value && !isLoading.value,
 )
 const canBulkEnable = computed(
   () => selectedDisabledAccounts.value.length > 0 && !isBulkOperationRunning.value,
@@ -561,6 +594,9 @@ const bulkDeleteWarningText = computed(() =>
   ),
 )
 const canSubmitPriority = computed(() => {
+  if (priorityDialog.mode === 'custom') {
+    return priorityDialog.account !== null && priorityDialog.value !== null && Number.isInteger(priorityDialog.value)
+  }
   if (priorityDialog.mode === 'default') {
     return priorityDialog.account !== null && defaultPriority(priorityDialog.account) !== null
   }
@@ -572,6 +608,9 @@ const canSubmitPriority = computed(() => {
 })
 const priorityDialogTitle = computed(() => t('修改优先级', 'Change Priority'))
 const priorityDialogHint = computed(() => {
+  if (priorityDialog.mode === 'custom') {
+    return t('为此凭证设置 CPA 调度优先级。', 'Set the CPA scheduling priority for this credential.')
+  }
   if (priorityDialog.mode === 'low') {
     return t('手动低优先级必须小于 -1，巡检永远不会自动调整。', 'Manual low priority must be less than -1. Inspection will never adjust it automatically.')
   }
@@ -585,6 +624,9 @@ const priorityDialogHint = computed(() => {
     : t(`将优先级设置为当前凭证类型默认值 ${value}。`, `Set the priority to the current credential type default: ${value}.`)
 })
 const priorityModeOptions = computed(() => {
+  if (!isCodexCredential(priorityDialog.account)) {
+    return [{ label: t('自定义优先级', 'Custom Priority'), value: 'custom', disabled: false }]
+  }
   const defaultValue = priorityDialog.account ? defaultPriority(priorityDialog.account) : null
   return [
     { label: t('手动低优先 (< -1)', 'Manual Low Priority (< -1)'), value: 'low' },
@@ -645,8 +687,8 @@ function isStatusFilterActive(value: Exclude<AccountStatusFilter, 'all'>): boole
   return filters.status === value
 }
 
-function setAccountTypeFilter(value: unknown) {
-  filters.accountType = typeof value === 'string' ? value : null
+function setProviderFilter(value: unknown) {
+  filters.provider = typeof value === 'string' ? value : null
 }
 
 function setPriorityFilter(value: unknown) {
@@ -700,7 +742,7 @@ function accountPriority(account: CodexKeeperAccount): number {
 }
 
 function isQuotaExhaustedAccount(account: CodexKeeperAccount): boolean {
-  return !account.disabled && accountPriority(account) === -1
+  return isCodexCredential(account) && !account.disabled && accountPriority(account) === -1
 }
 
 function priorityTypeFilter(accountType: string): PriorityTypeFilter {
@@ -749,8 +791,8 @@ function compareAccountsByActiveSort(left: CodexKeeperAccount, right: CodexKeepe
         direction,
       )
       break
-    case 'accountType':
-      result = compareNullableString(left.account_type, right.account_type, direction)
+    case 'provider':
+      result = compareNullableString(left.provider, right.provider, direction)
       break
     case 'status':
       result = compareNullableNumber(left.disabled ? 1 : 0, right.disabled ? 1 : 0, direction)
@@ -760,8 +802,8 @@ function compareAccountsByActiveSort(left: CodexKeeperAccount, right: CodexKeepe
       break
     case 'lastCheckedAt':
       result = compareNullableNumber(
-        timestampValue(left.last_checked_at),
-        timestampValue(right.last_checked_at),
+        timestampValue(credentialActivityAt(left)),
+        timestampValue(credentialActivityAt(right)),
         direction,
       )
       break
@@ -820,11 +862,91 @@ function compareAccountFileName(left: CodexKeeperAccount, right: CodexKeeperAcco
 }
 
 function defaultPriority(account: CodexKeeperAccount): number | null {
-  if (!account.account_type) {
+  if (!isCodexCredential(account) || !account.account_type) {
     return null
   }
   return priorityRuleMap.value[account.account_type] ?? null
 }
+
+function credentialActivityAt(account: CodexKeeperAccount): string | null {
+  return isCodexCredential(account)
+    ? account.last_checked_at
+    : account.last_refresh_at ?? account.modified_at
+}
+
+function isCodexCredential(account: CodexKeeperAccount | null | undefined): boolean {
+  return account?.provider?.trim().toLowerCase() === 'codex'
+}
+
+function isCredentialMutable(account: CodexKeeperAccount | null | undefined): boolean {
+  return account?.runtime_only !== true
+}
+
+function credentialProviderLabel(provider: string | null | undefined): string {
+  const normalized = provider?.trim().toLowerCase()
+  const labels: Record<string, string> = {
+    anthropic: 'Claude',
+    claude: 'Claude',
+    codex: 'Codex',
+    'gemini-cli': 'Gemini CLI',
+    gemini: 'Gemini',
+    aistudio: 'AI Studio',
+    antigravity: 'Antigravity',
+    iflow: 'iFlow',
+    kimi: 'Kimi',
+    qwen: 'Qwen',
+    vertex: 'Vertex AI',
+    xai: 'xAI',
+  }
+  if (!normalized || normalized === 'unknown') {
+    return t('未知', 'Unknown')
+  }
+  return labels[normalized] ?? provider ?? normalized
+}
+
+function credentialObject(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
+}
+
+function credentialQuotaObservation(
+  label: string,
+  value: unknown,
+): CredentialQuotaObservation | null {
+  const observation = credentialObject(value)
+  if (!observation) {
+    return null
+  }
+  const rawObservedAt = observation.observed_at ?? observation.observedAt
+  const observedAt = typeof rawObservedAt === 'string' ? rawObservedAt : null
+  const signalObject = credentialObject(observation.signals)
+  const signals = signalObject
+    ? Object.entries(signalObject)
+        .filter(([, signalValue]) => signalValue !== null && signalValue !== undefined)
+        .map(([name, signalValue]) => ({ name, value: String(signalValue) }))
+    : []
+  return observedAt || signals.length > 0 ? { label, observedAt, signals } : null
+}
+
+function credentialQuotaObservations(account: CodexKeeperAccount): CredentialQuotaObservation[] {
+  const observations: CredentialQuotaObservation[] = []
+  const overall = credentialQuotaObservation(t('凭证', 'Credential'), account.quota)
+  if (overall) {
+    observations.push(overall)
+  }
+  Object.entries(account.model_quotas ?? {}).forEach(([model, value]) => {
+    const observation = credentialQuotaObservation(model, value)
+    if (observation) {
+      observations.push(observation)
+    }
+  })
+  return observations
+}
+
+const selectedAccountQuotaObservations = computed(() =>
+  selectedAccount.value ? credentialQuotaObservations(selectedAccount.value) : [],
+)
 
 function accountTypeLabel(accountType: string | null): string {
   const normalized = accountType?.trim().toLowerCase()
@@ -909,7 +1031,7 @@ function quotaWindowLabelForSeconds(seconds: number | null): string | null {
 }
 
 function shouldShowQuotaWindow(account: CodexKeeperAccount): boolean {
-  return !account.disabled
+  return isCodexCredential(account) && !account.disabled
 }
 
 function quotaWindowItems(account: CodexKeeperAccount): QuotaWindowItem[] {
@@ -1043,11 +1165,14 @@ function quotaWindowPredictionTitle(item: QuotaWindowItem): string {
 }
 
 function latestActionText(account: CodexKeeperAccount): string {
-  const text = account.last_error?.trim() || account.latest_action?.trim()
+  const text = account.last_error?.trim() || account.latest_action?.trim() || account.status_message?.trim()
   return text ? credentialServerText(text, '凭证状态', 'Credential status') : '-'
 }
 
 function accountStatusTags(account: CodexKeeperAccount) {
+  const remoteStatus = account.status?.trim().toLowerCase()
+  const statusMessage = account.status_message?.trim()
+  const healthyStatuses = new Set(['active', 'ok', 'ready', 'healthy', 'success', 'available'])
   const statusTags = [
     {
       label: account.disabled ? t('已禁用', 'Disabled') : t('启用中', 'Enabled'),
@@ -1059,15 +1184,31 @@ function accountStatusTags(account: CodexKeeperAccount) {
     isQuotaExhaustedAccount(account)
       ? { label: t('额度耗尽', 'Quota Exhausted'), tone: 'is-purple' }
       : null,
+    account.unavailable || remoteStatus === 'error'
+      ? { label: t('不可用', 'Unavailable'), tone: 'is-danger' }
+      : null,
+    account.runtime_only
+      ? { label: t('运行时', 'Runtime'), tone: 'is-type' }
+      : null,
+    !account.disabled && !account.unavailable && remoteStatus && !healthyStatuses.has(remoteStatus)
+      ? { label: account.status ?? remoteStatus, tone: 'is-warning' }
+      : null,
+    !account.disabled && statusMessage && !healthyStatuses.has(statusMessage.toLowerCase())
+      ? { label: t('状态警告', 'Status Warning'), tone: 'is-warning' }
+      : null,
   ].filter((item): item is { label: string; tone: string } => item !== null)
   return statusTags
 }
 
 function accountIdentityTitle(account: CodexKeeperAccount): string {
-  const primary = account.email ?? account.name
+  const primary = credentialDisplayName(account)
   const statusTags = accountStatusTags(account)
   const statusLabel = statusTags.map((item) => item.label).join(' / ')
-  return `${primary}\n${account.name}\n${t('状态', 'Status')} ${statusLabel}`
+  return `${primary}\n${account.name}\n${t('提供商', 'Provider')} ${credentialProviderLabel(account.provider)}\n${t('状态', 'Status')} ${statusLabel}`
+}
+
+function credentialDisplayName(account: CodexKeeperAccount): string {
+  return account.email ?? account.account ?? account.label ?? account.project_id ?? account.user_id ?? account.name
 }
 
 function quotaWindowTooltip(item: QuotaWindowItem): string {
@@ -1091,6 +1232,13 @@ async function loadAccounts() {
       getCodexKeeperStatus(),
     ])
     accounts.value = accountsResponse.items
+    accountListDegraded.value = accountsResponse.degraded === true
+    if (selectedAccount.value) {
+      selectedAccount.value = accountsResponse.items.find((account) => account.name === selectedAccount.value?.name) ?? null
+      if (!selectedAccount.value) {
+        detailOpen.value = false
+      }
+    }
     priorityRules.value = accountsResponse.priority_rules
     keeperStatus.value = nextStatus
   } catch (error) {
@@ -1135,7 +1283,11 @@ function setAllVisibleAccounts(selected: boolean | 'indeterminate') {
 }
 
 function pruneSelectedAccountKeys() {
-  const availableNames = new Set(visibleListAccounts.value.map((account) => account.name))
+  const availableNames = new Set(
+    visibleListAccounts.value
+      .filter(isCredentialMutable)
+      .map((account) => account.name),
+  )
   selectedAccountKeys.value = selectedAccountKeys.value.filter((key) =>
     availableNames.has(String(key)),
   )
@@ -1156,6 +1308,14 @@ function authFileBooleanField(value: unknown): boolean {
     return ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase())
   }
   return false
+}
+
+function authFileIntegerField(value: unknown): number | null {
+  if (value === null || value === undefined || String(value).trim() === '') {
+    return null
+  }
+  const parsed = typeof value === 'number' ? value : Number(String(value).trim())
+  return Number.isSafeInteger(parsed) ? parsed : null
 }
 
 function authFileHeadersField(value: unknown): Record<string, string> {
@@ -1199,8 +1359,17 @@ function buildAuthFileEditorFields(editor: AuthFileEditorState): CodexKeeperAuth
   if (editor.proxyUrl.trim() !== authFileStringField(original.proxy_url).trim()) {
     fields.proxy_url = editor.proxyUrl.trim()
   }
+  if (editor.weightTouched && editor.weight !== authFileIntegerField(original.weight)) {
+    fields.weight = editor.weight
+  }
+  if (editor.requestRetryTouched && editor.requestRetry !== authFileIntegerField(original.request_retry)) {
+    fields.request_retry = editor.requestRetry
+  }
   if (editor.websocketsTouched && editor.websockets !== authFileBooleanField(original.websockets ?? original.websocket)) {
     fields.websockets = editor.websockets
+  }
+  if (editor.usingApiTouched && editor.usingApi !== authFileBooleanField(original.using_api)) {
+    fields.using_api = editor.usingApi
   }
   if (editor.noteTouched && editor.note.trim() !== authFileStringField(original.note).trim()) {
     fields.note = editor.note.trim()
@@ -1246,9 +1415,20 @@ function buildAuthFileUpdatedText(editor: AuthFileEditorState): string {
       delete updated.proxy_url
     }
   }
+  if (fields.weight !== undefined) {
+    if (fields.weight === null) delete updated.weight
+    else updated.weight = fields.weight
+  }
+  if (fields.request_retry !== undefined) {
+    if (fields.request_retry === null) delete updated.request_retry
+    else updated.request_retry = fields.request_retry
+  }
   if (fields.websockets !== undefined) {
     delete updated.websocket
     updated.websockets = fields.websockets
+  }
+  if (fields.using_api !== undefined) {
+    updated.using_api = fields.using_api
   }
   if (fields.note !== undefined) {
     if (fields.note) {
@@ -1299,6 +1479,18 @@ const authFileEditorDirty = computed(() => {
   }
 })
 
+const authFileEditorProvider = computed(() => {
+  const editor = authFileEditor.value
+  const rawProvider = authFileStringField(editor?.json?.type || editor?.json?.provider)
+  return rawProvider.trim().toLowerCase()
+})
+
+const authFileEditorSupportsWebsockets = computed(
+  () => authFileEditorProvider.value === 'codex' || authFileEditorProvider.value === 'xai',
+)
+
+const authFileEditorSupportsUsingApi = computed(() => authFileEditorProvider.value === 'xai')
+
 function handleAuthFileHeadersChange(value: string) {
   const editor = authFileEditor.value
   if (!editor) {
@@ -1329,6 +1521,7 @@ async function reloadAccounts() {
       getCodexKeeperStatus(),
     ])
     accounts.value = accountsResponse.items
+    accountListDegraded.value = accountsResponse.degraded === true
     priorityRules.value = accountsResponse.priority_rules
     keeperStatus.value = nextStatus
   } catch (error) {
@@ -1354,8 +1547,14 @@ async function openAuthFileEditor(account: CodexKeeperAccount) {
     json: null,
     prefix: '',
     proxyUrl: '',
+    weight: null,
+    weightTouched: false,
+    requestRetry: null,
+    requestRetryTouched: false,
     websockets: false,
     websocketsTouched: false,
+    usingApi: false,
+    usingApiTouched: false,
     note: '',
     noteTouched: false,
     headersText: '',
@@ -1388,7 +1587,10 @@ async function openAuthFileEditor(account: CodexKeeperAccount) {
     const headers = authFileHeadersField(detail.json.headers)
     current.prefix = authFileStringField(detail.json.prefix)
     current.proxyUrl = authFileStringField(detail.json.proxy_url)
+    current.weight = authFileIntegerField(detail.json.weight)
+    current.requestRetry = authFileIntegerField(detail.json.request_retry)
     current.websockets = authFileBooleanField(detail.json.websockets ?? detail.json.websocket)
+    current.usingApi = authFileBooleanField(detail.json.using_api)
     current.note = authFileStringField(detail.json.note)
     current.headersText = Object.keys(headers).length > 0 ? JSON.stringify(headers, null, 2) : ''
   } catch (error) {
@@ -1422,6 +1624,27 @@ function setAuthFileWebsockets(value: boolean) {
   editor.websocketsTouched = true
 }
 
+function setAuthFileUsingApi(value: boolean) {
+  const editor = authFileEditor.value
+  if (!editor) return
+  editor.usingApi = value
+  editor.usingApiTouched = true
+}
+
+function setAuthFileWeight(value: string | number) {
+  const editor = authFileEditor.value
+  if (!editor) return
+  editor.weight = authFileIntegerField(value)
+  editor.weightTouched = true
+}
+
+function setAuthFileRequestRetry(value: string | number) {
+  const editor = authFileEditor.value
+  if (!editor) return
+  editor.requestRetry = authFileIntegerField(value)
+  editor.requestRetryTouched = true
+}
+
 async function saveAuthFileEditor() {
   const editor = authFileEditor.value
   if (!editor?.json || editor.loading || editor.saving || editor.headersError) {
@@ -1448,13 +1671,16 @@ async function saveAuthFileEditor() {
       isSelectedAccountNoteLoading.value = true
       await loadSelectedAccountNote(editor.fileName, selectedAccountNoteRequestID)
     }
+    const editedAccount = accounts.value.find((account) => account.name === editor.fileName)
     authFileEditor.value = null
-    await refreshAccounts([editor.fileName], {
-      successMessage: t(
-        `已开始巡检“${editor.fileName}”以同步凭证信息`,
-        `Started inspecting “${editor.fileName}” to sync credential information`,
-      ),
-    })
+    if (isCodexCredential(editedAccount)) {
+      await refreshAccounts([editor.fileName], {
+        successMessage: t(
+          `已开始巡检“${editor.fileName}”以同步凭证信息`,
+          `Started inspecting “${editor.fileName}” to sync credential information`,
+        ),
+      })
+    }
   } catch (error) {
     message.error(errorText(error, '更新认证文件失败', 'Failed to update auth file'))
   } finally {
@@ -1487,16 +1713,27 @@ function resetCodexOAuthDialog() {
   isSubmittingOAuthCallback.value = false
 }
 
+function handleOAuthProviderChange(value: unknown) {
+  if (!oauthProviderOptions.value.some((option) => option.value === value)) {
+    return
+  }
+  resetCodexOAuthDialog()
+  oauthProvider.value = value as CredentialOAuthProvider
+}
+
 function openCodexOAuthDialog() {
   if (!canManageAccounts.value) {
     return
   }
   resetCodexOAuthDialog()
+  oauthProvider.value = 'codex'
+  oauthProjectId.value = ''
   oauthDialogOpen.value = true
 }
 
 function closeCodexOAuthDialog() {
   resetCodexOAuthDialog()
+  oauthProjectId.value = ''
   oauthDialogOpen.value = false
 }
 
@@ -1507,6 +1744,10 @@ function handleCodexOAuthDialogOpen(open: boolean) {
 }
 
 async function reloadAccountsAfterOAuth() {
+  if (oauthProvider.value !== 'codex') {
+    await loadAccounts()
+    return
+  }
   try {
     await runCodexKeeperOnce()
     void pollKeeperModeUntilIdle('once')
@@ -1531,13 +1772,13 @@ async function pollCodexOAuthStatus(state: string, token: number) {
         oauthDialogStatus.value = 'success'
         oauthError.value = ''
         oauthPollToken += 1
-        message.success(t('Codex OAuth 认证成功', 'Codex OAuth authentication successful'))
+        message.success(t(`${oauthProviderLabel.value} OAuth 认证成功`, `${oauthProviderLabel.value} OAuth authentication successful`))
         void reloadAccountsAfterOAuth()
         return
       }
       if (status === 'error') {
         oauthDialogStatus.value = 'error'
-        oauthError.value = response.error?.trim() || t('Codex OAuth 认证失败', 'Codex OAuth authentication failed')
+        oauthError.value = response.error?.trim() || t(`${oauthProviderLabel.value} OAuth 认证失败`, `${oauthProviderLabel.value} OAuth authentication failed`)
         oauthPollToken += 1
         return
       }
@@ -1566,7 +1807,7 @@ async function startCodexOAuth() {
   oauthError.value = ''
   isStartingOAuth.value = true
   try {
-    const response = await startCodexKeeperOAuth()
+    const response = await startCodexKeeperOAuth(oauthProvider.value, oauthProjectId.value)
     if (token !== oauthPollToken || !oauthDialogOpen.value) {
       return
     }
@@ -1578,7 +1819,11 @@ async function startCodexOAuth() {
       return
     }
     oauthDialogStatus.value = 'error'
-    oauthError.value = errorText(error, '启动 Codex OAuth 失败', 'Failed to start Codex OAuth')
+    oauthError.value = errorText(
+      error,
+      `启动 ${oauthProviderLabel.value} OAuth 失败`,
+      `Failed to start ${oauthProviderLabel.value} OAuth`,
+    )
   } finally {
     if (token === oauthPollToken) {
       isStartingOAuth.value = false
@@ -1608,7 +1853,7 @@ async function submitCodexOAuthCallbackURL() {
   }
   isSubmittingOAuthCallback.value = true
   try {
-    await submitCodexKeeperOAuthCallback(redirectURL)
+    await submitCodexKeeperOAuthCallback(oauthProvider.value, redirectURL)
     message.success(t('回调 URL 已提交，正在等待认证结果', 'Callback URL submitted; waiting for authentication'))
   } catch (error) {
     message.error(errorText(error, '提交回调 URL 失败', 'Failed to submit callback URL'))
@@ -1673,12 +1918,19 @@ async function handleAuthFileUpload(event: Event) {
     const result = await uploadCodexKeeperAuthFiles(validFiles)
     if (result.uploaded > 0) {
       message.success(t(`上传成功 ${result.uploaded} 个认证文件`, `Uploaded ${result.uploaded} auth file(s)`))
-      await refreshAccounts(result.files, {
-        successMessage: t(
-          `已开始巡检 ${result.uploaded} 份新凭证`,
-          `Started inspecting ${result.uploaded} new credential(s)`,
-        ),
-      })
+      await loadAccounts()
+      const uploadedNames = new Set(result.files)
+      const uploadedCodexNames = accounts.value
+        .filter((account) => uploadedNames.has(account.name) && isCodexCredential(account))
+        .map((account) => account.name)
+      if (uploadedCodexNames.length > 0) {
+        await refreshAccounts(uploadedCodexNames, {
+          successMessage: t(
+            `已开始巡检 ${uploadedCodexNames.length} 份新 Codex 凭证`,
+            `Started inspecting ${uploadedCodexNames.length} new Codex credential(s)`,
+          ),
+        })
+      }
     }
     if (result.failed.length > 0) {
       message.error(result.failed.map((item) => `${item.name}: ${item.error}`).join('; '))
@@ -1821,6 +2073,9 @@ async function loadSelectedAccountNote(accountName: string, requestID: number) {
 
 function openDetail(account: CodexKeeperAccount) {
   selectedAccount.value = account
+  selectedAccountModels.value = null
+  selectedAccountModelsError.value = null
+  selectedAccountModelsLoading.value = false
   selectedAccountNote.value = null
   isSelectedAccountNoteLoading.value = false
   selectedAccountNoteRequestID += 1
@@ -1829,6 +2084,34 @@ function openDetail(account: CodexKeeperAccount) {
     void loadSelectedAccountNote(account.name, selectedAccountNoteRequestID)
   }
   detailOpen.value = true
+}
+
+async function loadSelectedAccountModels() {
+  const account = selectedAccount.value
+  if (!account || selectedAccountModelsLoading.value) {
+    return
+  }
+  selectedAccountModelsLoading.value = true
+  selectedAccountModelsError.value = null
+  try {
+    const response = await getCodexKeeperAuthFileModels(account.name)
+    if (selectedAccount.value?.name !== account.name) {
+      return
+    }
+    selectedAccountModels.value = response.models
+  } catch (error) {
+    if (selectedAccount.value?.name === account.name) {
+      selectedAccountModelsError.value = errorText(
+        error,
+        '读取凭证支持模型失败',
+        'Failed to load supported models',
+      )
+    }
+  } finally {
+    if (selectedAccount.value?.name === account.name) {
+      selectedAccountModelsLoading.value = false
+    }
+  }
 }
 
 function setAccountResetCredits(accountName: string, resetCredits: CodexKeeperResetCredits) {
@@ -1913,6 +2196,11 @@ function confirmConsumeResetCredit(account: CodexKeeperAccount) {
 function openPriorityDialog(account: CodexKeeperAccount) {
   priorityDialog.account = account
   const priority = accountPriority(account)
+  if (!isCodexCredential(account)) {
+    setPriorityDialogMode('custom')
+    priorityDialog.show = true
+    return
+  }
   const mode =
     priority < -1
       ? 'low'
@@ -1930,6 +2218,10 @@ function setPriorityDialogMode(mode: PriorityMode) {
     priorityDialog.value = null
     return
   }
+  if (mode === 'custom') {
+    priorityDialog.value = account.priority ?? 0
+    return
+  }
   if (mode === 'low') {
     const priority = accountPriority(account)
     priorityDialog.value = priority < -1 ? priority : -2
@@ -1944,7 +2236,7 @@ function setPriorityDialogMode(mode: PriorityMode) {
 }
 
 function handlePriorityDialogMode(value: unknown) {
-  if (value === 'low' || value === 'high' || value === 'default') {
+  if (value === 'low' || value === 'high' || value === 'default' || value === 'custom') {
     setPriorityDialogMode(value)
   }
 }
@@ -2074,7 +2366,10 @@ function refreshAccount(account: CodexKeeperAccount, options: { closeDetail?: bo
 }
 
 async function refreshSelectedAccounts() {
-  await refreshAccounts(selectedAccountNames.value, { clearSelection: true })
+  await refreshAccounts(
+    selectedAccounts.value.filter(isCodexCredential).map((account) => account.name),
+    { clearSelection: true },
+  )
 }
 
 function uniqueAccountNames(raw: string[]): string[] {
@@ -2206,7 +2501,7 @@ watch(
     () => accountSort.key,
     () => accountSort.direction,
     () => filters.keyword,
-    () => filters.accountType,
+    () => filters.provider,
     () => filters.priority,
     () => filters.status,
   ],
@@ -2259,7 +2554,7 @@ onBeforeUnmount(() => {
         >
           <Spinner v-if="isStartingAccountInspection || isAccountInspectionRunning" data-icon="inline-start" />
           <ShieldCheck v-else data-icon="inline-start" />
-          {{ t('凭证巡检', 'Inspect Credentials') }}
+          {{ t('Codex 巡检', 'Inspect Codex') }}
         </Button>
         <Button variant="outline" :disabled="isLoading" @click="reloadAccounts">
           <Spinner v-if="isLoading" data-icon="inline-start" />
@@ -2277,11 +2572,18 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
+    <Alert v-if="accountListDegraded" variant="destructive">
+      <ShieldAlert />
+      <AlertDescription>
+        {{ t('无法读取 CPA 实时凭证列表，当前仅展示本地 Codex 巡检缓存。', 'The live CPA credential list is unavailable. Only the local Codex inspection cache is shown.') }}
+      </AlertDescription>
+    </Alert>
+
     <div class="account-metrics">
       <Card size="sm" class="account-metric-card inspection-status-card">
         <CardHeader class="account-metric-header">
           <div class="min-w-0">
-            <CardDescription>{{ t('运行状态', 'Run Status') }}</CardDescription>
+            <CardDescription>{{ t('Codex 巡检', 'Codex Inspection') }}</CardDescription>
             <CardTitle class="inspection-status-value" :title="keeperStatusDetailText">
               <Badge class="inspection-status-tag" :variant="keeperStateType">
                 {{ keeperStatusDetailText }}
@@ -2394,13 +2696,13 @@ onBeforeUnmount(() => {
             <InputGroupInput v-model="filters.keyword" :placeholder="t('搜索凭证或邮箱', 'Search credential or email')" />
           </InputGroup>
           <FilterCombobox
-            :model-value="filters.accountType"
-            :options="accountTypeOptions"
-            :placeholder="t('凭证类型', 'Credential Type')"
-            :search-placeholder="t('搜索凭证类型', 'Search credential types')"
-            :empty-text="t('没有匹配类型', 'No matching types')"
+            :model-value="filters.provider"
+            :options="providerOptions"
+            :placeholder="t('提供商', 'Provider')"
+            :search-placeholder="t('搜索提供商', 'Search providers')"
+            :empty-text="t('没有匹配提供商', 'No matching providers')"
             :icon="Users"
-            @update:model-value="setAccountTypeFilter"
+            @update:model-value="setProviderFilter"
           />
           <FilterCombobox
             :model-value="filters.priority === 'all' ? null : filters.priority"
@@ -2433,10 +2735,10 @@ onBeforeUnmount(() => {
               </DropdownMenu>
               <Button
                 size="sm"
-                :variant="isAccountSortActive('accountType') ? 'secondary' : 'outline'"
-                @click="toggleAccountSort('accountType')"
+                :variant="isAccountSortActive('provider') ? 'secondary' : 'outline'"
+                @click="toggleAccountSort('provider')"
               >
-                {{ t('类型', 'Type') }} {{ accountSortMark('accountType') }}
+                {{ t('提供商', 'Provider') }} {{ accountSortMark('provider') }}
               </Button>
               <Button
                 size="sm"
@@ -2457,7 +2759,7 @@ onBeforeUnmount(() => {
                 :variant="isAccountSortActive('lastCheckedAt') ? 'secondary' : 'outline'"
                 @click="toggleAccountSort('lastCheckedAt')"
               >
-                {{ t('最近巡检', 'Last Inspection') }} {{ accountSortMark('lastCheckedAt') }}
+                {{ t('最近活动', 'Last Activity') }} {{ accountSortMark('lastCheckedAt') }}
               </Button>
             </div>
             <div v-if="canManageAccounts" class="account-section-actions">
@@ -2517,13 +2819,13 @@ onBeforeUnmount(() => {
                     />
                   </TableHead>
                   <TableHead class="w-[220px]">{{ t('凭证', 'Credential') }}</TableHead>
-                  <TableHead class="w-[96px]">{{ t('类型', 'Type') }}</TableHead>
+                  <TableHead class="w-[112px]">{{ t('提供商', 'Provider') }}</TableHead>
                   <TableHead class="w-[88px]">{{ t('优先级', 'Priority') }}</TableHead>
                   <TableHead class="w-[168px]">{{ t('额度窗口', 'Quota Window') }}</TableHead>
                   <TableHead class="w-[152px]">{{ t('重置时间', 'Reset Time') }}</TableHead>
                   <TableHead class="w-[266px]">{{ t('窗口用量', 'Window Usage') }}</TableHead>
                   <TableHead class="w-[116px]">{{ t('窗口预测', 'Window Projection') }}</TableHead>
-                  <TableHead class="w-[100px]">{{ t('最近巡检', 'Last Inspection') }}</TableHead>
+                  <TableHead class="w-[100px]">{{ t('最近活动', 'Last Activity') }}</TableHead>
                   <TableHead class="w-[152px]">{{ t('最近操作', 'Latest Action') }}</TableHead>
                   <TableHead class="w-[52px]"><span class="sr-only">{{ t('操作', 'Actions') }}</span></TableHead>
                 </TableRow>
@@ -2543,14 +2845,14 @@ onBeforeUnmount(() => {
                   <TableCell v-if="canManageAccounts">
                     <Checkbox
                       :model-value="isAccountSelected(row)"
-                      :disabled="isRowActing(row) || isBulkOperationRunning"
+                      :disabled="!isCredentialMutable(row) || isRowActing(row) || isBulkOperationRunning"
                       :aria-label="t(`选择 ${row.email ?? row.name}`, `Select ${row.email ?? row.name}`)"
                       @update:model-value="setAccountSelected(row, $event)"
                     />
                   </TableCell>
                   <TableCell>
                     <div class="account-table-identity" :title="accountIdentityTitle(row)">
-                      <span class="account-table-email">{{ row.email ?? row.name }}</span>
+                      <span class="account-table-email">{{ credentialDisplayName(row) }}</span>
                       <span class="account-table-name">{{ row.name }}</span>
                       <span class="account-table-meta">
                         <span v-for="tag in accountStatusTags(row)" :key="tag.label" class="account-table-chip" :class="tag.tone">
@@ -2559,7 +2861,12 @@ onBeforeUnmount(() => {
                       </span>
                     </div>
                   </TableCell>
-                  <TableCell><span class="account-table-chip is-type" :title="accountTypeLabel(row.account_type)">{{ accountTypeLabel(row.account_type) }}</span></TableCell>
+                  <TableCell>
+                    <div class="credential-provider-cell">
+                      <span class="account-table-chip is-type" :title="credentialProviderLabel(row.provider)">{{ credentialProviderLabel(row.provider) }}</span>
+                      <small v-if="row.account_type" class="truncate text-xs text-muted-foreground" :title="accountTypeLabel(row.account_type)">{{ accountTypeLabel(row.account_type) }}</small>
+                    </div>
+                  </TableCell>
                   <TableCell><span class="account-table-chip is-priority" :title="t(`优先级 ${formatInteger(accountPriority(row))}`, `Priority ${formatInteger(accountPriority(row))}`)">{{ formatInteger(accountPriority(row)) }}</span></TableCell>
                   <TableCell>
                     <div v-if="quotaWindowItems(row).length" class="quota-window-cell">
@@ -2614,10 +2921,10 @@ onBeforeUnmount(() => {
                   <TableCell>
                     <span
                       class="account-table-value-pill is-time"
-                      :class="{ 'is-empty': formatRelativeTime(row.last_checked_at, relativeTimeNow) === '-' }"
-                      :title="formatDateTime(row.last_checked_at)"
+                      :class="{ 'is-empty': formatRelativeTime(credentialActivityAt(row), relativeTimeNow) === '-' }"
+                      :title="formatDateTime(credentialActivityAt(row))"
                     >
-                      {{ formatRelativeTime(row.last_checked_at, relativeTimeNow) }}
+                      {{ formatRelativeTime(credentialActivityAt(row), relativeTimeNow) }}
                     </span>
                   </TableCell>
                   <TableCell>
@@ -2636,16 +2943,16 @@ onBeforeUnmount(() => {
                         <DropdownMenuGroup>
                           <DropdownMenuItem @select="openDetail(row)"><Eye /><span>{{ t('详情', 'Details') }}</span></DropdownMenuItem>
                         </DropdownMenuGroup>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuGroup>
+                        <DropdownMenuSeparator v-if="isCredentialMutable(row)" />
+                        <DropdownMenuGroup v-if="isCredentialMutable(row)">
                           <DropdownMenuItem :disabled="isRowActing(row) || isBulkOperationRunning" @select="row.disabled ? confirmEnableAccount(row) : confirmDisableAccount(row)">
                             <ShieldCheck v-if="row.disabled" /><PauseCircle v-else />
                             <span>{{ row.disabled ? t('启用', 'Enable') : t('禁用', 'Disable') }}</span>
                           </DropdownMenuItem>
-                          <DropdownMenuItem :disabled="isRowActing(row) || isBulkOperationRunning" @select="refreshAccount(row)"><RefreshCw /><span>{{ t('刷新', 'Refresh') }}</span></DropdownMenuItem>
+                          <DropdownMenuItem v-if="isCodexCredential(row)" :disabled="isRowActing(row) || isBulkOperationRunning" @select="refreshAccount(row)"><RefreshCw /><span>{{ t('巡检', 'Inspect') }}</span></DropdownMenuItem>
                         </DropdownMenuGroup>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem variant="destructive" :disabled="isRowActing(row) || isBulkOperationRunning" @select="confirmDeleteAccount(row)"><Trash2 /><span>{{ t('删除', 'Delete') }}</span></DropdownMenuItem>
+                        <DropdownMenuSeparator v-if="isCredentialMutable(row)" />
+                        <DropdownMenuItem v-if="isCredentialMutable(row)" variant="destructive" :disabled="isRowActing(row) || isBulkOperationRunning" @select="confirmDeleteAccount(row)"><Trash2 /><span>{{ t('删除', 'Delete') }}</span></DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                     <Button v-else size="sm" variant="ghost" @click="openDetail(row)">{{ t('详情', 'Details') }}</Button>
@@ -2694,13 +3001,22 @@ onBeforeUnmount(() => {
             <div class="detail-row"><dt>{{ t('凭证', 'Credential') }}</dt><dd>{{ selectedAccount.name }}</dd></div>
             <div class="detail-row"><dt>{{ t('邮箱', 'Email') }}</dt><dd>{{ selectedAccount.email ?? '-' }}</dd></div>
             <div v-if="canManageAccounts" class="detail-row"><dt>{{ t('备注', 'Note') }}</dt><dd>{{ isSelectedAccountNoteLoading ? t('加载中...', 'Loading...') : (selectedAccountNote ?? '-') }}</dd></div>
-            <div class="detail-row"><dt>{{ t('凭证类型', 'Credential Type') }}</dt><dd>{{ accountTypeLabel(selectedAccount.account_type) }}</dd></div>
+            <div class="detail-row"><dt>{{ t('提供商', 'Provider') }}</dt><dd>{{ credentialProviderLabel(selectedAccount.provider) }}</dd></div>
+            <div v-if="selectedAccount.account_type" class="detail-row"><dt>{{ t('账户类型', 'Account Type') }}</dt><dd>{{ accountTypeLabel(selectedAccount.account_type) }}</dd></div>
+            <div v-if="selectedAccount.account" class="detail-row"><dt>{{ t('账户', 'Account') }}</dt><dd>{{ selectedAccount.account }}</dd></div>
+            <div v-if="selectedAccount.project_id" class="detail-row"><dt>{{ t('项目 ID', 'Project ID') }}</dt><dd>{{ selectedAccount.project_id }}</dd></div>
+            <div v-if="selectedAccount.auth_index" class="detail-row"><dt>{{ t('认证索引', 'Auth Index') }}</dt><dd>{{ selectedAccount.auth_index }}</dd></div>
             <div class="detail-row"><dt>{{ t('启用状态', 'Enabled Status') }}</dt><dd>{{ selectedAccount.disabled ? t('已禁用', 'Disabled') : t('启用中', 'Enabled') }}</dd></div>
+            <div class="detail-row"><dt>{{ t('运行状态', 'Runtime Status') }}</dt><dd>{{ selectedAccount.status ?? '-' }}</dd></div>
+            <div v-if="selectedAccount.success !== null" class="detail-row"><dt>{{ t('成功请求', 'Successful Requests') }}</dt><dd>{{ formatInteger(selectedAccount.success) }}</dd></div>
+            <div v-if="selectedAccount.failed !== null" class="detail-row"><dt>{{ t('失败请求', 'Failed Requests') }}</dt><dd>{{ formatInteger(selectedAccount.failed) }}</dd></div>
+            <div v-if="selectedAccount.weight !== null" class="detail-row"><dt>{{ t('调度权重', 'Routing Weight') }}</dt><dd>{{ selectedAccount.weight }}</dd></div>
+            <div v-if="selectedAccount.request_retry !== null" class="detail-row"><dt>{{ t('请求重试次数', 'Request Retry Count') }}</dt><dd>{{ selectedAccount.request_retry }}</dd></div>
             <div class="detail-row">
               <dt>{{ t('当前优先级', 'Current Priority') }}</dt>
               <dd class="detail-priority-control">
                 <Button
-                  v-if="canManageAccounts"
+                  v-if="canManageAccounts && isCredentialMutable(selectedAccount)"
                   size="xs"
                   variant="outline"
                   :disabled="isRowActing(selectedAccount) || isBulkOperationRunning"
@@ -2712,12 +3028,50 @@ onBeforeUnmount(() => {
                 <span>{{ accountPriority(selectedAccount) }}</span>
               </dd>
             </div>
-            <div class="detail-row"><dt>{{ t('类型默认优先级', 'Type Default Priority') }}</dt><dd>{{ defaultPriority(selectedAccount) ?? '-' }}</dd></div>
-            <div class="detail-row"><dt>{{ t('状态码', 'Status Code') }}</dt><dd>{{ selectedAccount.last_status_code ?? '-' }}</dd></div>
-            <div class="detail-row"><dt>{{ t('最近健康', 'Last Healthy') }}</dt><dd>{{ formatDateTime(selectedAccount.last_healthy_at) }}</dd></div>
-            <div class="detail-row"><dt>{{ t('最近巡检', 'Last Inspection') }}</dt><dd>{{ formatDateTime(selectedAccount.last_checked_at) }}</dd></div>
+            <div v-if="isCodexCredential(selectedAccount)" class="detail-row"><dt>{{ t('类型默认优先级', 'Type Default Priority') }}</dt><dd>{{ defaultPriority(selectedAccount) ?? '-' }}</dd></div>
+            <div v-if="isCodexCredential(selectedAccount)" class="detail-row"><dt>{{ t('状态码', 'Status Code') }}</dt><dd>{{ selectedAccount.last_status_code ?? '-' }}</dd></div>
+            <div v-if="isCodexCredential(selectedAccount)" class="detail-row"><dt>{{ t('最近健康', 'Last Healthy') }}</dt><dd>{{ formatDateTime(selectedAccount.last_healthy_at) }}</dd></div>
+            <div class="detail-row"><dt>{{ isCodexCredential(selectedAccount) ? t('最近巡检', 'Last Inspection') : t('最近刷新', 'Last Refresh') }}</dt><dd>{{ formatDateTime(credentialActivityAt(selectedAccount)) }}</dd></div>
             <div class="detail-row"><dt>{{ t('最近操作', 'Latest Action') }}</dt><dd>{{ latestActionText(selectedAccount) }}</dd></div>
           </dl>
+          <section v-if="selectedAccount && canManageAccounts" class="detail-section">
+            <div class="detail-section-heading">
+              <h3>{{ t('支持模型', 'Supported Models') }}</h3>
+              <Button size="sm" variant="outline" :disabled="selectedAccountModelsLoading" @click="loadSelectedAccountModels">
+                <Spinner v-if="selectedAccountModelsLoading" data-icon="inline-start" />
+                <Search v-else data-icon="inline-start" />
+                {{ selectedAccountModels === null ? t('查询模型', 'Load Models') : t('重新查询', 'Load Again') }}
+              </Button>
+            </div>
+            <Alert v-if="selectedAccountModelsError" variant="destructive"><AlertDescription>{{ selectedAccountModelsError }}</AlertDescription></Alert>
+            <div v-else-if="selectedAccountModels !== null" class="credential-model-list">
+              <Badge v-for="model in selectedAccountModels" :key="model.id" variant="secondary" :title="model.display_name || model.id">{{ model.id }}</Badge>
+              <span v-if="selectedAccountModels.length === 0" class="text-sm text-muted-foreground">{{ t('该凭证当前没有已注册模型', 'No models are currently registered for this credential') }}</span>
+            </div>
+          </section>
+          <section v-if="selectedAccount && selectedAccountQuotaObservations.length > 0" class="detail-section">
+            <div class="detail-section-heading">
+              <h3>{{ t('CPA 额度状态', 'CPA Quota Status') }}</h3>
+              <span>{{ t('最近一次上游观测', 'Latest upstream observation') }}</span>
+            </div>
+            <div class="credential-observation-list">
+              <div
+                v-for="observation in selectedAccountQuotaObservations"
+                :key="observation.label"
+                class="credential-observation-item"
+              >
+                <div class="credential-observation-heading">
+                  <strong>{{ observation.label }}</strong>
+                  <span>{{ formatDateTime(observation.observedAt) }}</span>
+                </div>
+                <div v-if="observation.signals.length > 0" class="credential-observation-signals">
+                  <Badge v-for="signal in observation.signals" :key="signal.name" variant="secondary">
+                    {{ signal.name }}: {{ signal.value }}
+                  </Badge>
+                </div>
+              </div>
+            </div>
+          </section>
           <section v-if="selectedAccount && shouldShowQuotaWindow(selectedAccount)" class="detail-section">
             <div class="detail-section-heading">
               <h3>{{ t('额度窗口', 'Quota Windows') }}</h3>
@@ -2760,7 +3114,7 @@ onBeforeUnmount(() => {
               </Card>
             </div>
           </section>
-          <section v-if="selectedAccount && canManageAccounts" class="detail-section">
+          <section v-if="selectedAccount && canManageAccounts && isCodexCredential(selectedAccount)" class="detail-section">
             <div class="detail-section-heading">
               <h3>{{ t('主动重置', 'Manual Reset') }}</h3>
               <span>{{ t('查询结果会保留到下次查询或使用', 'The result stays cached until the next query or use') }}</span>
@@ -2824,13 +3178,14 @@ onBeforeUnmount(() => {
               </CardContent>
             </Card>
           </section>
-          <Separator v-if="selectedAccount && canManageAccounts" class="detail-action-separator" />
-          <div v-if="selectedAccount && canManageAccounts" class="detail-action-row">
+          <Separator v-if="selectedAccount && canManageAccounts && isCredentialMutable(selectedAccount)" class="detail-action-separator" />
+          <div v-if="selectedAccount && canManageAccounts && isCredentialMutable(selectedAccount)" class="detail-action-row">
             <Button size="sm" variant="outline" @click="openAuthFileEditor(selectedAccount)">
               <Pencil data-icon="inline-start" />
               {{ t('认证文件管理', 'Auth File Management') }}
             </Button>
             <Button
+              v-if="isCodexCredential(selectedAccount)"
               size="sm"
               variant="outline"
               :disabled="isRowActing(selectedAccount) || isBulkOperationRunning"
@@ -2877,12 +3232,45 @@ onBeforeUnmount(() => {
     <Dialog v-if="canManageAccounts" :open="oauthDialogOpen" @update:open="handleCodexOAuthDialogOpen">
       <DialogContent class="max-h-[calc(100svh-2rem)] overflow-y-auto sm:max-w-[640px]">
         <DialogHeader>
-          <DialogTitle>Codex OAuth</DialogTitle>
+          <DialogTitle>{{ t('OAuth 登录', 'OAuth Login') }}</DialogTitle>
           <DialogDescription>
-            {{ t('通过 Codex OAuth 登录，认证成功后生成的认证文件会自动加入凭证管理。', 'Sign in with Codex OAuth. The generated auth file will be added to credential management automatically.') }}
+            {{ t('选择提供商完成 OAuth 登录，生成的认证文件会自动加入凭证管理。', 'Choose a provider to sign in with OAuth. The generated auth file will be added to credential management automatically.') }}
           </DialogDescription>
         </DialogHeader>
         <div class="oauth-dialog">
+          <FieldGroup>
+            <Field>
+              <FieldLabel>{{ t('提供商', 'Provider') }}</FieldLabel>
+              <Select
+                :model-value="oauthProvider"
+                :disabled="oauthDialogStatus === 'waiting' || isStartingOAuth"
+                @update:model-value="handleOAuthProviderChange"
+              >
+                <SelectTrigger class="w-full">
+                  <SelectValue :placeholder="t('选择 OAuth 提供商', 'Select an OAuth provider')" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectItem
+                      v-for="option in oauthProviderOptions"
+                      :key="option.value"
+                      :value="option.value"
+                    >
+                      {{ option.label }}
+                    </SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field v-if="oauthProvider === 'gemini-cli'">
+              <FieldLabel>{{ t('项目 ID（可选）', 'Project ID (optional)') }}</FieldLabel>
+              <Input
+                v-model="oauthProjectId"
+                :disabled="oauthDialogStatus === 'waiting' || isStartingOAuth"
+                :placeholder="t('Google Cloud 项目 ID', 'Google Cloud project ID')"
+              />
+            </Field>
+          </FieldGroup>
           <div class="oauth-status-row">
             <span>{{ t('认证状态', 'Authentication status') }}</span>
             <Badge :variant="oauthStatusType">
@@ -2899,7 +3287,7 @@ onBeforeUnmount(() => {
           >
             <Spinner v-if="isStartingOAuth" data-icon="inline-start" />
             <LogIn v-else data-icon="inline-start" />
-            {{ t('开始 Codex 登录', 'Start Codex Login') }}
+            {{ t(`开始 ${oauthProviderLabel} 登录`, `Start ${oauthProviderLabel} Login`) }}
           </Button>
           <div v-if="oauthAuthURL" class="oauth-dialog-section">
             <label>{{ t('授权链接', 'Authorization link') }}</label>
@@ -2919,7 +3307,7 @@ onBeforeUnmount(() => {
               </Button>
             </div>
           </div>
-          <div v-if="oauthDialogStatus === 'waiting'" class="oauth-dialog-section">
+          <div v-if="oauthDialogStatus === 'waiting' && oauthCallbackSupported" class="oauth-dialog-section">
             <label>{{ t('回调 URL', 'Callback URL') }}</label>
             <p class="oauth-dialog-hint">
               {{ t('如果当前浏览器无法访问 localhost 回调地址，请复制浏览器最终跳转后的完整 URL 并粘贴到这里。', 'If this browser cannot reach the localhost callback, paste the complete URL from the browser after its final redirect here.') }}
@@ -2945,7 +3333,7 @@ onBeforeUnmount(() => {
             @click="startCodexOAuth"
           >
             <Spinner v-if="isStartingOAuth" data-icon="inline-start" />
-            {{ t('添加另一份凭证', 'Add another credential') }}
+            {{ t(`重新发起 ${oauthProviderLabel} 登录`, `Restart ${oauthProviderLabel} Login`) }}
           </Button>
         </div>
         <DialogFooter>
@@ -3025,7 +3413,31 @@ onBeforeUnmount(() => {
                     :placeholder="t('socks5://username:password@proxy_ip:port/', 'socks5://username:password@proxy_ip:port/')"
                   />
                 </Field>
-                <Field orientation="horizontal" class="auth-file-editor-switch-field">
+                <Field>
+                  <FieldLabel>{{ t('调度权重（weight）', 'Routing Weight (weight)') }}</FieldLabel>
+                  <Input
+                    type="number"
+                    step="1"
+                    max="1000000"
+                    :model-value="authFileEditor.weight ?? ''"
+                    :placeholder="t('留空使用默认权重 1', 'Leave empty to use the default weight of 1')"
+                    @update:model-value="setAuthFileWeight"
+                  />
+                  <FieldDescription>{{ t('设置为 0 可退出加权调度，最大值为 1000000。', 'Set to 0 to exclude this credential from weighted routing; maximum 1000000.') }}</FieldDescription>
+                </Field>
+                <Field>
+                  <FieldLabel>{{ t('请求重试次数（request_retry）', 'Request Retry Count (request_retry)') }}</FieldLabel>
+                  <Input
+                    type="number"
+                    step="1"
+                    min="0"
+                    :model-value="authFileEditor.requestRetry ?? ''"
+                    :placeholder="t('留空使用全局配置', 'Leave empty to use the global setting')"
+                    @update:model-value="setAuthFileRequestRetry"
+                  />
+                  <FieldDescription>{{ t('覆盖此凭证的请求级重试次数。', 'Override the request retry count for this credential.') }}</FieldDescription>
+                </Field>
+                <Field v-if="authFileEditorSupportsWebsockets" orientation="horizontal" class="auth-file-editor-switch-field">
                   <div>
                     <FieldLabel>{{ t('WebSockets（websockets）', 'WebSockets (websockets)') }}</FieldLabel>
                     <FieldDescription>{{ t('为此认证文件启用 WebSocket 支持。', 'Enable WebSocket support for this auth file.') }}</FieldDescription>
@@ -3033,6 +3445,16 @@ onBeforeUnmount(() => {
                   <Switch
                     :model-value="authFileEditor.websockets"
                     @update:model-value="setAuthFileWebsockets"
+                  />
+                </Field>
+                <Field v-if="authFileEditorSupportsUsingApi" orientation="horizontal" class="auth-file-editor-switch-field">
+                  <div>
+                    <FieldLabel>{{ t('API 模式（using_api）', 'API Mode (using_api)') }}</FieldLabel>
+                    <FieldDescription>{{ t('让 xAI 凭证使用 API 模式。', 'Use API mode for this xAI credential.') }}</FieldDescription>
+                  </div>
+                  <Switch
+                    :model-value="authFileEditor.usingApi"
+                    @update:model-value="setAuthFileUsingApi"
                   />
                 </Field>
                 <Field class="auth-file-editor-wide-field">
@@ -3583,6 +4005,46 @@ onBeforeUnmount(() => {
   font-weight: 650;
 }
 
+.credential-model-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.credential-observation-list {
+  display: grid;
+  gap: 8px;
+}
+
+.credential-observation-item {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--muted);
+}
+
+.credential-observation-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+}
+
+.credential-observation-heading span {
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.credential-observation-signals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .detail-section-heading span {
   color: var(--muted-foreground);
   font-size: 11px;
@@ -4092,6 +4554,12 @@ onBeforeUnmount(() => {
   color: var(--cpa-warning);
   background: var(--cpa-warning-weak);
   border-color: color-mix(in srgb, var(--cpa-warning) 26%, transparent);
+}
+
+:global(.credential-provider-cell) {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
 }
 
 :global(.account-table-chip.is-danger) {

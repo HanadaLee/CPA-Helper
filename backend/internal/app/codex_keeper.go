@@ -40,6 +40,7 @@ const (
 	keeperMaxAuthFileSize          = 10 << 20
 	keeperMaxOAuthStateLength      = 4 << 10
 	keeperMaxOAuthURLLength        = 32 << 10
+	keeperMaxOAuthProjectIDLength  = 256
 	keeperFiveHourWindowSeconds    = 5 * 60 * 60
 	keeperWeekWindowSeconds        = 7 * 24 * 60 * 60
 	keeperMonthWindowSeconds       = 30 * 24 * 60 * 60
@@ -127,41 +128,82 @@ type keeperOAuthStartResponse struct {
 	State string `json:"state"`
 }
 
+type keeperOAuthStartRequest struct {
+	Provider  string `json:"provider"`
+	ProjectID string `json:"project_id"`
+}
+
 type keeperOAuthStatusResponse struct {
 	Status string `json:"status"`
 	Error  string `json:"error,omitempty"`
 }
 
 type keeperOAuthCallbackRequest struct {
+	Provider    string `json:"provider"`
 	RedirectURL string `json:"redirect_url"`
 }
 
 type keeperAccount struct {
-	Name                   string     `json:"name"`
-	Email                  *string    `json:"email"`
-	AuthIndex              *string    `json:"auth_index"`
-	AccountType            *string    `json:"account_type"`
-	Disabled               bool       `json:"disabled"`
-	Priority               *int       `json:"priority"`
-	PrimaryUsedPercent     *int       `json:"primary_used_percent"`
-	SecondaryUsedPercent   *int       `json:"secondary_used_percent"`
-	PrimaryResetAt         *time.Time `json:"primary_reset_at"`
-	SecondaryResetAt       *time.Time `json:"secondary_reset_at"`
-	PrimaryWindowSeconds   *int       `json:"primary_window_seconds"`
-	SecondaryWindowSeconds *int       `json:"secondary_window_seconds"`
-	QuotaThreshold         *int       `json:"quota_threshold"`
-	LastStatusCode         *int       `json:"last_status_code"`
-	LastError              *string    `json:"last_error"`
-	LatestAction           *string    `json:"latest_action"`
-	LastCheckedAt          *time.Time `json:"last_checked_at"`
-	LastHealthyAt          *time.Time `json:"last_healthy_at"`
+	Name                   string         `json:"name"`
+	Provider               string         `json:"provider"`
+	Email                  *string        `json:"email"`
+	Label                  *string        `json:"label"`
+	Account                *string        `json:"account"`
+	ProjectID              *string        `json:"project_id"`
+	UserID                 *string        `json:"user_id"`
+	AuthIndex              *string        `json:"auth_index"`
+	AccountType            *string        `json:"account_type"`
+	Weight                 *int           `json:"weight"`
+	RequestRetry           *int           `json:"request_retry"`
+	Disabled               bool           `json:"disabled"`
+	Unavailable            bool           `json:"unavailable"`
+	RuntimeOnly            bool           `json:"runtime_only"`
+	Status                 *string        `json:"status"`
+	StatusMessage          *string        `json:"status_message"`
+	Success                *int           `json:"success"`
+	Failed                 *int           `json:"failed"`
+	Quota                  map[string]any `json:"quota"`
+	ModelQuotas            map[string]any `json:"model_quotas"`
+	LastRefreshAt          *time.Time     `json:"last_refresh_at"`
+	ModifiedAt             *time.Time     `json:"modified_at"`
+	Priority               *int           `json:"priority"`
+	PrimaryUsedPercent     *int           `json:"primary_used_percent"`
+	SecondaryUsedPercent   *int           `json:"secondary_used_percent"`
+	PrimaryResetAt         *time.Time     `json:"primary_reset_at"`
+	SecondaryResetAt       *time.Time     `json:"secondary_reset_at"`
+	PrimaryWindowSeconds   *int           `json:"primary_window_seconds"`
+	SecondaryWindowSeconds *int           `json:"secondary_window_seconds"`
+	QuotaThreshold         *int           `json:"quota_threshold"`
+	LastStatusCode         *int           `json:"last_status_code"`
+	LastError              *string        `json:"last_error"`
+	LatestAction           *string        `json:"latest_action"`
+	LastCheckedAt          *time.Time     `json:"last_checked_at"`
+	LastHealthyAt          *time.Time     `json:"last_healthy_at"`
 }
 
 type keeperAccountResponse struct {
 	Name                   string                          `json:"name"`
+	Provider               string                          `json:"provider"`
 	Email                  *string                         `json:"email"`
+	Label                  *string                         `json:"label"`
+	Account                *string                         `json:"account"`
+	ProjectID              *string                         `json:"project_id"`
+	UserID                 *string                         `json:"user_id"`
+	AuthIndex              *string                         `json:"auth_index"`
 	AccountType            *string                         `json:"account_type"`
+	Weight                 *int                            `json:"weight"`
+	RequestRetry           *int                            `json:"request_retry"`
 	Disabled               bool                            `json:"disabled"`
+	Unavailable            bool                            `json:"unavailable"`
+	RuntimeOnly            bool                            `json:"runtime_only"`
+	Status                 *string                         `json:"status"`
+	StatusMessage          *string                         `json:"status_message"`
+	Success                *int                            `json:"success"`
+	Failed                 *int                            `json:"failed"`
+	Quota                  map[string]any                  `json:"quota"`
+	ModelQuotas            map[string]any                  `json:"model_quotas"`
+	LastRefreshAt          *string                         `json:"last_refresh_at"`
+	ModifiedAt             *string                         `json:"modified_at"`
 	Priority               *int                            `json:"priority"`
 	PrimaryUsedPercent     *int                            `json:"primary_used_percent"`
 	SecondaryUsedPercent   *int                            `json:"secondary_used_percent"`
@@ -939,7 +981,7 @@ func (a *App) handleCodexKeeper(w http.ResponseWriter, r *http.Request) error {
 		if err := requireMethod(r, http.MethodGet); err != nil {
 			return err
 		}
-		accounts, err := a.listKeeperAccounts(r.Context())
+		accounts, degraded, err := a.listKeeperCredentials(r.Context())
 		if err != nil {
 			return err
 		}
@@ -954,7 +996,26 @@ func (a *App) handleCodexKeeper(w http.ResponseWriter, r *http.Request) error {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"items":          a.keeperAccountResponses(accounts, windowUsages),
 			"priority_rules": sortedPriorityRules(cfg.CodexKeeperPriorityRule),
+			"degraded":       degraded,
 		})
+		return nil
+	case len(parts) == 3 && parts[0] == "auth-files" && parts[2] == "models":
+		if err := requireMethod(r, http.MethodGet); err != nil {
+			return err
+		}
+		authName, err := keeperAccountNameFromPath(parts[1])
+		if err != nil {
+			return err
+		}
+		cfg, err := a.loadConfig(r.Context())
+		if err != nil {
+			return err
+		}
+		models, err := a.listKeeperRemoteAuthFileModels(r.Context(), cfg, authName)
+		if err != nil {
+			return err
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"models": models})
 		return nil
 	case len(parts) == 2 && parts[0] == "oauth" && parts[1] == "start":
 		if err := requireMethod(r, http.MethodPost); err != nil {
@@ -1190,9 +1251,27 @@ func (a *App) keeperAccountResponses(accounts []keeperAccount, windowUsages map[
 		usage := windowUsages[account.Name]
 		responses = append(responses, keeperAccountResponse{
 			Name:                   account.Name,
+			Provider:               account.Provider,
 			Email:                  account.Email,
+			Label:                  account.Label,
+			Account:                account.Account,
+			ProjectID:              account.ProjectID,
+			UserID:                 account.UserID,
+			AuthIndex:              account.AuthIndex,
 			AccountType:            account.AccountType,
+			Weight:                 account.Weight,
+			RequestRetry:           account.RequestRetry,
 			Disabled:               account.Disabled,
+			Unavailable:            account.Unavailable,
+			RuntimeOnly:            account.RuntimeOnly,
+			Status:                 account.Status,
+			StatusMessage:          account.StatusMessage,
+			Success:                account.Success,
+			Failed:                 account.Failed,
+			Quota:                  account.Quota,
+			ModelQuotas:            account.ModelQuotas,
+			LastRefreshAt:          apiDateTimePtr(account.LastRefreshAt),
+			ModifiedAt:             apiDateTimePtr(account.ModifiedAt),
 			Priority:               keeperDisplayPriority(account.Priority),
 			PrimaryUsedPercent:     account.PrimaryUsedPercent,
 			SecondaryUsedPercent:   account.SecondaryUsedPercent,
@@ -1208,10 +1287,17 @@ func (a *App) keeperAccountResponses(accounts []keeperAccount, windowUsages map[
 			LatestAction:           account.LatestAction,
 			LastCheckedAt:          apiDateTimePtr(account.LastCheckedAt),
 			LastHealthyAt:          apiDateTimePtr(account.LastHealthyAt),
-			ResetCredits:           a.cachedKeeperResetCredits(account.Name),
+			ResetCredits:           keeperResetCreditsForAccount(a, account),
 		})
 	}
 	return responses
+}
+
+func keeperResetCreditsForAccount(a *App, account keeperAccount) *keeperResetCreditsResponse {
+	if a == nil || !keeperIsCodexProvider(account.Provider) {
+		return nil
+	}
+	return a.cachedKeeperResetCredits(account.Name)
 }
 
 func keeperQuotaWindowUsageResponseFrom(usage *keeperQuotaWindowUsage) *keeperQuotaWindowUsageResponse {
@@ -1763,7 +1849,7 @@ func (a *App) executeKeeperRunWithOptions(ctx context.Context, options keeperRun
 	filtered := make([]map[string]any, 0, len(authFiles))
 	remoteCodexNames := map[string]bool{}
 	for _, item := range authFiles {
-		if keeperString(item["type"]) != "codex" {
+		if !keeperIsCodexProvider(keeperCredentialProvider(item)) {
 			continue
 		}
 		name := keeperString(item["name"])
@@ -2062,7 +2148,7 @@ func (a *App) reconcileKeeperConditionalRemoteAuthStates(ctx context.Context, cf
 	remoteNames := map[string]bool{}
 	refreshableRemoteNames := map[string]bool{}
 	for _, item := range authFiles {
-		if keeperString(item["type"]) != "codex" {
+		if !keeperIsCodexProvider(keeperCredentialProvider(item)) {
 			continue
 		}
 		name := keeperString(item["name"])
@@ -2167,7 +2253,7 @@ func (a *App) keeperAuthNamesFromRemoteUsageIdentifiers(ctx context.Context, cfg
 	}
 	codexFiles := make([]map[string]any, 0, len(authFiles))
 	for _, item := range authFiles {
-		if keeperString(item["type"]) != "codex" {
+		if !keeperIsCodexProvider(keeperCredentialProvider(item)) {
 			continue
 		}
 		if keeperBool(item["disabled"]) {
@@ -2878,6 +2964,45 @@ func (a *App) listKeeperRemoteAuthFiles(ctx context.Context, cfg AppConfig) ([]m
 	return extractKeeperObjects(raw, []string{"files", "items", "data", "value"}), nil
 }
 
+func (a *App) listKeeperRemoteAuthFileModels(ctx context.Context, cfg AppConfig, name string) ([]map[string]any, error) {
+	query := url.Values{"name": []string{name}}
+	_, payload, err := a.keeperRequest(
+		ctx,
+		cfg,
+		http.MethodGet,
+		"/v0/management/auth-files/models",
+		query,
+		nil,
+		time.Duration(cfg.CodexKeeper.CPATimeoutSeconds)*time.Second,
+	)
+	if err != nil {
+		return nil, err
+	}
+	var raw any
+	if err := json.Unmarshal(payload, &raw); err != nil {
+		return nil, validationError("读取凭证支持模型失败：响应不是有效 JSON")
+	}
+	items := extractKeeperObjects(raw, []string{"models", "items", "data", "value"})
+	models := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		id := keeperString(item["id"])
+		if id == "" {
+			continue
+		}
+		model := map[string]any{"id": id}
+		for _, key := range []string{"display_name", "type", "owned_by"} {
+			if value := keeperString(item[key]); value != "" {
+				model[key] = value
+			}
+		}
+		models = append(models, model)
+	}
+	sort.Slice(models, func(i, j int) bool {
+		return strings.ToLower(keeperString(models[i]["id"])) < strings.ToLower(keeperString(models[j]["id"]))
+	})
+	return models, nil
+}
+
 type keeperAuthFileUploadFailure struct {
 	Name  string `json:"name"`
 	Error string `json:"error"`
@@ -2895,16 +3020,36 @@ type keeperAuthFileEditorDetail struct {
 }
 
 func (a *App) startKeeperOAuth(w http.ResponseWriter, r *http.Request) error {
+	request := keeperOAuthStartRequest{Provider: "codex"}
+	if r.Body != nil && r.ContentLength != 0 {
+		if err := decodeJSON(r, &request); err != nil {
+			return validationError("OAuth 登录参数无效")
+		}
+	}
+	request.ProjectID = strings.TrimSpace(request.ProjectID)
+	if len(request.ProjectID) > keeperMaxOAuthProjectIDLength || strings.IndexFunc(request.ProjectID, unicode.IsControl) >= 0 {
+		return validationError("OAuth 项目 ID 无效")
+	}
+	provider, endpoint, err := keeperOAuthProvider(request.Provider)
+	if err != nil {
+		return err
+	}
 	cfg, err := a.loadConfig(r.Context())
 	if err != nil {
 		return err
 	}
-	query := url.Values{"is_webui": []string{"true"}}
+	query := url.Values{}
+	if keeperOAuthSupportsWebUI(provider) {
+		query.Set("is_webui", "true")
+	}
+	if provider == "gemini-cli" && request.ProjectID != "" {
+		query.Set("project_id", request.ProjectID)
+	}
 	_, payload, err := a.keeperRequest(
 		r.Context(),
 		cfg,
 		http.MethodGet,
-		"/v0/management/codex-auth-url",
+		"/v0/management/"+endpoint,
 		query,
 		nil,
 		time.Duration(cfg.CodexKeeper.CPATimeoutSeconds)*time.Second,
@@ -2914,15 +3059,15 @@ func (a *App) startKeeperOAuth(w http.ResponseWriter, r *http.Request) error {
 	}
 	response := keeperOAuthStartResponse{}
 	if err := json.Unmarshal(payload, &response); err != nil {
-		return validationError("启动 Codex OAuth 失败：响应不是有效 JSON")
+		return validationError("启动 OAuth 失败：响应不是有效 JSON")
 	}
 	response.URL = strings.TrimSpace(response.URL)
 	response.State = strings.TrimSpace(response.State)
-	if err := validateKeeperOAuthURL(response.URL, "Codex OAuth 授权地址"); err != nil {
+	if err := validateKeeperOAuthURL(response.URL, "OAuth 授权地址"); err != nil {
 		return err
 	}
 	if err := validateKeeperOAuthState(response.State); err != nil {
-		return validationError("启动 Codex OAuth 失败：" + err.Error())
+		return validationError("启动 OAuth 失败：" + err.Error())
 	}
 	writeJSON(w, http.StatusOK, response)
 	return nil
@@ -2952,12 +3097,12 @@ func (a *App) getKeeperOAuthStatus(w http.ResponseWriter, r *http.Request) error
 	}
 	response := keeperOAuthStatusResponse{}
 	if err := json.Unmarshal(payload, &response); err != nil {
-		return validationError("查询 Codex OAuth 状态失败：响应不是有效 JSON")
+		return validationError("查询 OAuth 状态失败：响应不是有效 JSON")
 	}
 	response.Status = strings.TrimSpace(response.Status)
 	response.Error = strings.TrimSpace(response.Error)
 	if response.Status == "" {
-		return validationError("查询 Codex OAuth 状态失败：响应缺少 status")
+		return validationError("查询 OAuth 状态失败：响应缺少 status")
 	}
 	writeJSON(w, http.StatusOK, response)
 	return nil
@@ -2969,6 +3114,10 @@ func (a *App) submitKeeperOAuthCallback(w http.ResponseWriter, r *http.Request) 
 		return err
 	}
 	request.RedirectURL = strings.TrimSpace(request.RedirectURL)
+	provider, _, err := keeperOAuthProvider(request.Provider)
+	if err != nil {
+		return err
+	}
 	if err := validateKeeperOAuthURL(request.RedirectURL, "回调 URL"); err != nil {
 		return err
 	}
@@ -2983,7 +3132,7 @@ func (a *App) submitKeeperOAuthCallback(w http.ResponseWriter, r *http.Request) 
 		"/v0/management/oauth-callback",
 		nil,
 		map[string]string{
-			"provider":     "codex",
+			"provider":     keeperOAuthCallbackProvider(provider),
 			"redirect_url": request.RedirectURL,
 		},
 		time.Duration(cfg.CodexKeeper.CPATimeoutSeconds)*time.Second,
@@ -2995,12 +3144,43 @@ func (a *App) submitKeeperOAuthCallback(w http.ResponseWriter, r *http.Request) 
 	return nil
 }
 
+func keeperOAuthProvider(value string) (string, string, error) {
+	provider := strings.ToLower(strings.TrimSpace(value))
+	if provider == "" {
+		provider = "codex"
+	}
+	endpoints := map[string]string{
+		"codex":       "codex-auth-url",
+		"anthropic":   "anthropic-auth-url",
+		"antigravity": "antigravity-auth-url",
+		"gemini-cli":  "gemini-cli-auth-url",
+		"kimi":        "kimi-auth-url",
+		"xai":         "xai-auth-url",
+	}
+	endpoint, ok := endpoints[provider]
+	if !ok {
+		return "", "", validationError("不支持的 OAuth 提供商")
+	}
+	return provider, endpoint, nil
+}
+
+func keeperOAuthCallbackProvider(provider string) string {
+	if provider == "gemini-cli" {
+		return "gemini"
+	}
+	return provider
+}
+
+func keeperOAuthSupportsWebUI(provider string) bool {
+	return provider != "kimi"
+}
+
 func validateKeeperOAuthState(state string) error {
 	if state == "" {
-		return validationError("Codex OAuth state 不能为空")
+		return validationError("OAuth state 不能为空")
 	}
 	if len(state) > keeperMaxOAuthStateLength {
-		return validationError("Codex OAuth state 过长")
+		return validationError("OAuth state 过长")
 	}
 	return nil
 }
@@ -3571,16 +3751,23 @@ func (a *App) updateKeeperRemoteAuthFileFields(ctx context.Context, cfg AppConfi
 				return validationError(fmt.Sprintf("认证文件字段 %s 必须是字符串", key))
 			}
 			payload[key] = text
-		case "priority":
+		case "priority", "weight", "request_retry":
+			if value == nil && (key == "weight" || key == "request_retry") {
+				payload[key] = nil
+				continue
+			}
 			number, ok := value.(float64)
 			if !ok || number != math.Trunc(number) {
-				return validationError("认证文件优先级必须是整数")
+				return validationError(fmt.Sprintf("认证文件字段 %s 必须是整数", key))
+			}
+			if number < -1000000 || number > 1000000 {
+				return validationError(fmt.Sprintf("认证文件字段 %s 超出允许范围", key))
 			}
 			payload[key] = int(number)
-		case "websockets":
+		case "websockets", "using_api":
 			enabled, ok := value.(bool)
 			if !ok {
-				return validationError("认证文件 websockets 必须是布尔值")
+				return validationError(fmt.Sprintf("认证文件字段 %s 必须是布尔值", key))
 			}
 			payload[key] = enabled
 		case "headers":
@@ -3982,6 +4169,199 @@ func (a *App) checkKeeperUsage(ctx context.Context, cfg AppConfig, detail map[st
 	}
 }
 
+func (a *App) listKeeperCredentials(ctx context.Context) ([]keeperAccount, bool, error) {
+	cfg, err := a.loadConfig(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	authFiles, err := a.listKeeperRemoteAuthFiles(ctx, cfg)
+	if err != nil {
+		accounts, localErr := a.listKeeperAccounts(ctx)
+		if localErr != nil {
+			return nil, false, localErr
+		}
+		for index := range accounts {
+			accounts[index].Provider = "codex"
+		}
+		return accounts, true, nil
+	}
+	inspectedAccounts, err := a.listKeeperAccounts(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	inspectedByName := make(map[string]keeperAccount, len(inspectedAccounts))
+	for _, account := range inspectedAccounts {
+		inspectedByName[account.Name] = account
+	}
+
+	remoteByName := keeperRemoteAuthFilesByName(authFiles)
+	names := make([]string, 0, len(remoteByName))
+	for name := range remoteByName {
+		names = append(names, name)
+	}
+	sort.Slice(names, func(i, j int) bool {
+		return strings.ToLower(names[i]) < strings.ToLower(names[j])
+	})
+	accounts := make([]keeperAccount, 0, len(names))
+	for _, name := range names {
+		item := remoteByName[name]
+		provider := keeperCredentialProvider(item)
+		account := keeperAccount{
+			Name:          name,
+			Provider:      provider,
+			Email:         keeperStringPtr(item["email"]),
+			Label:         keeperStringPtr(item["label"]),
+			Account:       keeperStringPtr(item["account"]),
+			ProjectID:     keeperStringPtr(item["project_id"], item["projectId"]),
+			UserID:        keeperStringPtr(item["user_id"], item["userId"]),
+			AuthIndex:     keeperRemoteAuthIndex(item),
+			AccountType:   keeperStringPtr(item["account_type"], item["accountType"], item["plan_type"], item["planType"]),
+			Weight:        keeperIntPtr(item["weight"]),
+			RequestRetry:  keeperIntPtr(item["request_retry"], item["request-retry"]),
+			Disabled:      keeperBool(item["disabled"]),
+			Unavailable:   keeperBool(item["unavailable"]),
+			RuntimeOnly:   keeperBool(item["runtime_only"], item["runtimeOnly"]),
+			Status:        keeperStringPtr(item["status"]),
+			StatusMessage: keeperStringPtr(item["status_message"], item["statusMessage"]),
+			Success:       keeperIntPtr(item["success"]),
+			Failed:        keeperIntPtr(item["failed"]),
+			Quota:         keeperObject(item["quota"]),
+			ModelQuotas:   keeperObject(item["model_quotas"], item["modelQuotas"]),
+			LastRefreshAt: keeperRemoteTimePtr(item["last_refresh"], item["lastRefresh"], item["last_refreshed_at"]),
+			ModifiedAt:    keeperRemoteTimePtr(item["modtime"], item["updated_at"], item["modified"]),
+			Priority:      keeperIntPtr(item["priority"]),
+		}
+		if inspected, ok := inspectedByName[name]; ok && keeperIsCodexProvider(provider) {
+			if account.Email == nil {
+				account.Email = inspected.Email
+			}
+			if account.AuthIndex == nil {
+				account.AuthIndex = inspected.AuthIndex
+			}
+			if account.AccountType == nil {
+				account.AccountType = inspected.AccountType
+			}
+			if !keeperMapHasAnyKey(item, "disabled") {
+				account.Disabled = inspected.Disabled
+			}
+			if account.Priority == nil {
+				account.Priority = inspected.Priority
+			}
+			account.PrimaryUsedPercent = inspected.PrimaryUsedPercent
+			account.SecondaryUsedPercent = inspected.SecondaryUsedPercent
+			account.PrimaryResetAt = inspected.PrimaryResetAt
+			account.SecondaryResetAt = inspected.SecondaryResetAt
+			account.PrimaryWindowSeconds = inspected.PrimaryWindowSeconds
+			account.SecondaryWindowSeconds = inspected.SecondaryWindowSeconds
+			account.QuotaThreshold = inspected.QuotaThreshold
+			account.LastStatusCode = inspected.LastStatusCode
+			account.LastError = inspected.LastError
+			account.LatestAction = inspected.LatestAction
+			account.LastCheckedAt = inspected.LastCheckedAt
+			account.LastHealthyAt = inspected.LastHealthyAt
+		}
+		accounts = append(accounts, account)
+	}
+	return accounts, false, nil
+}
+
+func keeperCredentialProvider(item map[string]any) string {
+	provider := strings.ToLower(keeperFirstString(item["type"], item["provider"]))
+	if provider == "" {
+		return "unknown"
+	}
+	return provider
+}
+
+func keeperIsCodexProvider(provider string) bool {
+	return strings.EqualFold(strings.TrimSpace(provider), "codex")
+}
+
+func keeperRemoteTimePtr(values ...any) *time.Time {
+	for _, value := range values {
+		if parsed := keeperTimeValue(value); parsed != nil {
+			return parsed
+		}
+	}
+	return nil
+}
+
+func keeperRemoteAuthFilesByName(authFiles []map[string]any) map[string]map[string]any {
+	// CPA may return a physical auth file together with runtime entries expanded
+	// from that file. Auth-file download, field updates, and deletion are all
+	// source-file operations keyed by name, so expose one merged file row just as
+	// the reference panel does instead of presenting runtime children as files.
+	grouped := map[string][]map[string]any{}
+	for _, item := range authFiles {
+		name := keeperString(item["name"])
+		if name == "" {
+			continue
+		}
+		grouped[name] = append(grouped[name], item)
+	}
+	result := make(map[string]map[string]any, len(grouped))
+	for name, items := range grouped {
+		sort.SliceStable(items, func(i, j int) bool {
+			return keeperRemoteAuthFileScore(items[i]) > keeperRemoteAuthFileScore(items[j])
+		})
+		merged := map[string]any{}
+		for _, item := range items {
+			for key, value := range item {
+				if !keeperHasMeaningfulValue(merged[key]) && keeperHasMeaningfulValue(value) {
+					merged[key] = value
+				}
+			}
+		}
+		result[name] = merged
+	}
+	return result
+}
+
+func keeperRemoteAuthFileScore(item map[string]any) int {
+	score := 0
+	if strings.EqualFold(keeperString(item["source"]), "file") {
+		score += 8
+	}
+	if keeperString(item["path"]) != "" {
+		score += 4
+	}
+	if !keeperBool(item["runtime_only"], item["runtimeOnly"]) {
+		score += 2
+	}
+	if !keeperBool(item["disabled"]) {
+		score++
+	}
+	return score
+}
+
+func keeperHasMeaningfulValue(value any) bool {
+	if value == nil {
+		return false
+	}
+	if text, ok := value.(string); ok {
+		return strings.TrimSpace(text) != ""
+	}
+	return true
+}
+
+func keeperMapHasAnyKey(item map[string]any, keys ...string) bool {
+	for _, key := range keys {
+		if _, ok := item[key]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func keeperObject(values ...any) map[string]any {
+	for _, value := range values {
+		if object, ok := value.(map[string]any); ok {
+			return object
+		}
+	}
+	return nil
+}
+
 func (a *App) listKeeperAccounts(ctx context.Context) ([]keeperAccount, error) {
 	rows, err := a.db.QueryContext(ctx, `
 		SELECT auth_name, email, auth_index, account_type, disabled, priority, primary_used_percent,
@@ -4015,15 +4395,16 @@ func (a *App) syncKeeperAccountList(ctx context.Context) (int, int, error) {
 	if err != nil {
 		return 0, 0, err
 	}
+	return a.syncKeeperAccountListFromRemote(ctx, authFiles)
+}
+
+func (a *App) syncKeeperAccountListFromRemote(ctx context.Context, authFiles []map[string]any) (int, int, error) {
 	remoteAccounts := map[string]map[string]any{}
-	for _, item := range authFiles {
-		if keeperString(item["type"]) != "codex" {
+	for name, item := range keeperRemoteAuthFilesByName(authFiles) {
+		if !keeperIsCodexProvider(keeperCredentialProvider(item)) {
 			continue
 		}
-		name := keeperString(item["name"])
-		if name != "" {
-			remoteAccounts[name] = item
-		}
+		remoteAccounts[name] = item
 	}
 
 	tx, err := a.db.BeginTx(ctx, nil)
@@ -4260,10 +4641,6 @@ func (a *App) setKeeperAccountDisabled(ctx context.Context, authName string, dis
 	if err != nil {
 		return err
 	}
-	state, err := a.getKeeperState(ctx, authName)
-	if err != nil {
-		return err
-	}
 	if err := a.setKeeperRemoteDisabled(ctx, cfg, authName, disabled); err != nil {
 		return err
 	}
@@ -4283,7 +4660,7 @@ func (a *App) setKeeperAccountDisabled(ctx context.Context, authName string, dis
 		    quota_threshold = CASE WHEN ? THEN NULL ELSE quota_threshold END,
 		    last_checked_at = ?, last_healthy_at = COALESCE(?, last_healthy_at), updated_at = ?
 		WHERE auth_name = ?
-	`, disabled, disabled, disabled, disabled, disabled, disabled, checkedAt, lastHealthy, now, state.Name)
+	`, disabled, disabled, disabled, disabled, disabled, disabled, checkedAt, lastHealthy, now, authName)
 	return err
 }
 
@@ -4292,16 +4669,12 @@ func (a *App) deleteKeeperAccount(ctx context.Context, authName string) error {
 	if err != nil {
 		return err
 	}
-	state, err := a.getKeeperState(ctx, authName)
-	if err != nil {
+	if err := a.deleteKeeperRemoteAuthFile(ctx, cfg, authName); err != nil {
 		return err
 	}
-	if err := a.deleteKeeperRemoteAuthFile(ctx, cfg, state.Name); err != nil {
-		return err
-	}
-	_, err = a.db.ExecContext(ctx, `DELETE FROM codex_keeper_auth_states WHERE auth_name = ?`, state.Name)
+	_, err = a.db.ExecContext(ctx, `DELETE FROM codex_keeper_auth_states WHERE auth_name = ?`, authName)
 	if err == nil {
-		a.deleteCachedKeeperResetCredits(state.Name)
+		a.deleteCachedKeeperResetCredits(authName)
 	}
 	return err
 }
@@ -4333,12 +4706,21 @@ func (a *App) updateKeeperAccountPriority(ctx context.Context, authName string, 
 	if err != nil {
 		return err
 	}
-	state, err := a.getKeeperState(ctx, authName)
+	authFiles, err := a.listKeeperRemoteAuthFiles(ctx, cfg)
 	if err != nil {
 		return err
 	}
-	if err := validateKeeperPriority(priority, state.AccountType, cfg.CodexKeeperPriorityRule); err != nil {
-		return err
+	item, ok := keeperRemoteAuthFilesByName(authFiles)[authName]
+	if !ok {
+		return notFoundError("凭证不存在")
+	}
+	if keeperIsCodexProvider(keeperCredentialProvider(item)) {
+		accountType := keeperStringPtr(item["account_type"], item["accountType"], item["plan_type"], item["planType"])
+		if err := validateKeeperPriority(priority, accountType, cfg.CodexKeeperPriorityRule); err != nil {
+			return err
+		}
+	} else if priority < -1000000 || priority > 1000000 {
+		return validationError("凭证优先级必须在 -1000000 到 1000000 之间")
 	}
 	if err := a.setKeeperRemotePriority(ctx, cfg, authName, &priority); err != nil {
 		return err
@@ -4793,18 +5175,25 @@ func keeperIntPtr(values ...any) *int {
 	return nil
 }
 
-func keeperBool(value any) bool {
-	switch typed := value.(type) {
-	case bool:
-		return typed
-	case string:
-		normalized := strings.ToLower(strings.TrimSpace(typed))
-		return normalized == "1" || normalized == "true" || normalized == "yes" || normalized == "on"
-	case float64:
-		return typed != 0
-	default:
-		return false
+func keeperBool(values ...any) bool {
+	for _, value := range values {
+		switch typed := value.(type) {
+		case bool:
+			if typed {
+				return true
+			}
+		case string:
+			normalized := strings.ToLower(strings.TrimSpace(typed))
+			if normalized == "1" || normalized == "true" || normalized == "yes" || normalized == "on" {
+				return true
+			}
+		case float64:
+			if typed != 0 {
+				return true
+			}
+		}
 	}
+	return false
 }
 
 func boolValue(value *bool) bool {

@@ -8,6 +8,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -35,7 +36,15 @@ type keeperSettingsResponse struct {
 type keeperAccountsResponse struct {
 	Items []struct {
 		Name           string                      `json:"name"`
+		Provider       string                      `json:"provider"`
+		AuthIndex      *string                     `json:"auth_index"`
 		AccountType    *string                     `json:"account_type"`
+		Weight         *int                        `json:"weight"`
+		RequestRetry   *int                        `json:"request_retry"`
+		Success        *int                        `json:"success"`
+		Failed         *int                        `json:"failed"`
+		Quota          map[string]any              `json:"quota"`
+		ModelQuotas    map[string]any              `json:"model_quotas"`
 		Disabled       bool                        `json:"disabled"`
 		Priority       *int                        `json:"priority"`
 		PrimaryResetAt *string                     `json:"primary_reset_at"`
@@ -50,6 +59,7 @@ type keeperAccountsResponse struct {
 		AccountType string `json:"account_type"`
 		Priority    int    `json:"priority"`
 	} `json:"priority_rules"`
+	Degraded bool `json:"degraded"`
 }
 
 type keeperResetCreditsResponse struct {
@@ -568,6 +578,164 @@ func TestKeeperOAuthProxyUsesManagementAuthAndCodexProvider(t *testing.T) {
 	}, cookies, http.StatusUnprocessableEntity)
 }
 
+func TestKeeperOAuthSupportsCredentialProviders(t *testing.T) {
+	t.Setenv("CPA_HELPER_DATA_DIR", t.TempDir())
+
+	var mu sync.Mutex
+	startQueries := map[string]url.Values{}
+	callbackBodies := []map[string]string{}
+	cpa := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer test-management-key" {
+			http.Error(w, "missing management authorization", http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "-auth-url") {
+			mu.Lock()
+			startQueries[r.URL.Path] = r.URL.Query()
+			mu.Unlock()
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"url":   "https://auth.example.com/authorize",
+				"state": strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/v0/management/"), "-auth-url") + "-state",
+			})
+			return
+		}
+		if r.Method == http.MethodPost && r.URL.Path == "/v0/management/oauth-callback" {
+			body := map[string]string{}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			mu.Lock()
+			callbackBodies = append(callbackBodies, body)
+			mu.Unlock()
+			_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer cpa.Close()
+
+	app, err := backendApp.New()
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	defer app.Close()
+	handler := app.Routes()
+	cookies := requestJSON(t, handler, http.MethodPost, "/api/auth/setup", map[string]any{
+		"username": "admin", "password": "test-password", "nickname": "Admin",
+	}, nil, nil)
+	requestJSON(t, handler, http.MethodPut, "/api/settings", map[string]any{
+		"cliaproxy_url": cpa.URL, "management_key": "test-management-key", "collector_enabled": false,
+	}, cookies, nil)
+
+	providers := map[string]string{
+		"codex":       "codex-auth-url",
+		"anthropic":   "anthropic-auth-url",
+		"antigravity": "antigravity-auth-url",
+		"gemini-cli":  "gemini-cli-auth-url",
+		"kimi":        "kimi-auth-url",
+		"xai":         "xai-auth-url",
+	}
+	for provider, endpoint := range providers {
+		payload := map[string]any{"provider": provider}
+		if provider == "gemini-cli" {
+			payload["project_id"] = "test-project"
+		}
+		started := keeperOAuthStartResponse{}
+		requestJSON(t, handler, http.MethodPost, "/api/codex-keeper/oauth/start", payload, cookies, &started)
+		if started.URL == "" || started.State == "" {
+			t.Fatalf("%s OAuth start response = %#v", provider, started)
+		}
+		query := startQueries["/v0/management/"+endpoint]
+		if provider == "kimi" {
+			if query.Has("is_webui") {
+				t.Fatalf("Kimi OAuth query = %v, want no is_webui", query)
+			}
+		} else if query.Get("is_webui") != "true" {
+			t.Fatalf("%s OAuth query = %v, want is_webui=true", provider, query)
+		}
+		if provider == "gemini-cli" && query.Get("project_id") != "test-project" {
+			t.Fatalf("Gemini CLI OAuth query = %v, want project_id", query)
+		}
+	}
+
+	requestJSON(t, handler, http.MethodPost, "/api/codex-keeper/oauth/callback", map[string]any{
+		"provider": "gemini-cli", "redirect_url": "http://localhost:8085/oauth-callback?code=test",
+	}, cookies, nil)
+	if len(callbackBodies) != 1 || callbackBodies[0]["provider"] != "gemini" {
+		t.Fatalf("Gemini CLI callback bodies = %#v", callbackBodies)
+	}
+	requestJSONExpectStatus(t, handler, http.MethodPost, "/api/codex-keeper/oauth/start", map[string]any{
+		"provider": "unsupported",
+	}, cookies, http.StatusUnprocessableEntity)
+	requestJSONExpectStatus(t, handler, http.MethodPost, "/api/codex-keeper/oauth/start", map[string]any{
+		"provider": "gemini-cli", "project_id": strings.Repeat("p", 257),
+	}, cookies, http.StatusUnprocessableEntity)
+}
+
+func TestKeeperManagesNonCodexCredentials(t *testing.T) {
+	t.Setenv("CPA_HELPER_DATA_DIR", t.TempDir())
+
+	var statusPayload map[string]any
+	var priorityPayload map[string]any
+	deletedName := ""
+	cpa := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v0/management/auth-files":
+			_ = json.NewEncoder(w).Encode(map[string]any{"files": []map[string]any{{
+				"name": "claude.json", "type": "anthropic", "priority": 4,
+			}}})
+		case r.Method == http.MethodPatch && r.URL.Path == "/v0/management/auth-files/status":
+			if err := json.NewDecoder(r.Body).Decode(&statusPayload); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		case r.Method == http.MethodPatch && r.URL.Path == "/v0/management/auth-files/fields":
+			if err := json.NewDecoder(r.Body).Decode(&priorityPayload); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		case r.Method == http.MethodDelete && r.URL.Path == "/v0/management/auth-files":
+			deletedName = r.URL.Query().Get("name")
+			_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer cpa.Close()
+
+	app, err := backendApp.New()
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	defer app.Close()
+	handler := app.Routes()
+	cookies := requestJSON(t, handler, http.MethodPost, "/api/auth/setup", map[string]any{
+		"username": "admin", "password": "test-password", "nickname": "Admin",
+	}, nil, nil)
+	requestJSON(t, handler, http.MethodPut, "/api/settings", map[string]any{
+		"cliaproxy_url": cpa.URL, "management_key": "test-management-key", "collector_enabled": false,
+	}, cookies, nil)
+
+	requestJSON(t, handler, http.MethodPost, "/api/codex-keeper/accounts/claude.json/disable", nil, cookies, nil)
+	if statusPayload["name"] != "claude.json" || statusPayload["disabled"] != true {
+		t.Fatalf("non-Codex status payload = %#v", statusPayload)
+	}
+	requestJSON(t, handler, http.MethodPatch, "/api/codex-keeper/accounts/claude.json/priority", map[string]any{"priority": 17}, cookies, nil)
+	if priorityPayload["name"] != "claude.json" || priorityPayload["priority"] != float64(17) {
+		t.Fatalf("non-Codex priority payload = %#v", priorityPayload)
+	}
+	requestJSONExpectStatus(t, handler, http.MethodPatch, "/api/codex-keeper/accounts/claude.json/priority", map[string]any{"priority": 1000001}, cookies, http.StatusUnprocessableEntity)
+	requestJSON(t, handler, http.MethodDelete, "/api/codex-keeper/accounts/claude.json", nil, cookies, nil)
+	if deletedName != "claude.json" {
+		t.Fatalf("deleted non-Codex credential = %q", deletedName)
+	}
+}
+
 func TestKeeperAuthFileManagementUsesMultipartAndSupportsInvalidPreview(t *testing.T) {
 	t.Setenv("CPA_HELPER_DATA_DIR", t.TempDir())
 
@@ -581,6 +749,16 @@ func TestKeeperAuthFileManagementUsesMultipartAndSupportsInvalidPreview(t *testi
 			return
 		}
 		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v0/management/auth-files/models":
+			if r.URL.Query().Get("name") != "valid.json" {
+				http.Error(w, "unexpected auth file name", http.StatusBadRequest)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"models": []map[string]any{
+				{"id": "z-model", "owned_by": "provider"},
+				{"id": "a-model", "display_name": "A Model"},
+			}})
 		case r.Method == http.MethodGet && r.URL.Path == "/v0/management/auth-files":
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{
@@ -750,6 +928,17 @@ func TestKeeperAuthFileManagementUsesMultipartAndSupportsInvalidPreview(t *testi
 	if validDetail.JSON["prefix"] != "team-a" || validDetail.JSON["websockets"] != true || validDetail.JSON["note"] != remoteNote {
 		t.Fatalf("valid auth detail = %#v", validDetail.JSON)
 	}
+	modelsResponse := struct {
+		Models []struct {
+			ID          string `json:"id"`
+			DisplayName string `json:"display_name"`
+			OwnedBy     string `json:"owned_by"`
+		} `json:"models"`
+	}{}
+	requestJSON(t, handler, http.MethodGet, "/api/codex-keeper/auth-files/valid.json/models", nil, cookies, &modelsResponse)
+	if len(modelsResponse.Models) != 2 || modelsResponse.Models[0].ID != "a-model" || modelsResponse.Models[0].DisplayName != "A Model" || modelsResponse.Models[1].OwnedBy != "provider" {
+		t.Fatalf("auth file models = %#v", modelsResponse.Models)
+	}
 
 	invalidDetail := struct {
 		JSON          map[string]any `json:"json"`
@@ -762,15 +951,17 @@ func TestKeeperAuthFileManagementUsesMultipartAndSupportsInvalidPreview(t *testi
 	}
 
 	requestJSON(t, handler, http.MethodPatch, "/api/codex-keeper/auth-files/valid.json", map[string]any{
-		"prefix":     "team-b",
-		"priority":   12,
-		"websockets": false,
-		"note":       "CPA 中更新后的备注",
+		"prefix":        "team-b",
+		"priority":      12,
+		"weight":        4,
+		"request_retry": 2,
+		"websockets":    false,
+		"note":          "CPA 中更新后的备注",
 		"headers": map[string]string{
 			"X-Test": "value",
 		},
 	}, cookies, nil)
-	if updatedFields["name"] != "valid.json" || updatedFields["prefix"] != "team-b" || updatedFields["priority"] != float64(12) || updatedFields["websockets"] != false || updatedFields["note"] != remoteNote {
+	if updatedFields["name"] != "valid.json" || updatedFields["prefix"] != "team-b" || updatedFields["priority"] != float64(12) || updatedFields["weight"] != float64(4) || updatedFields["request_retry"] != float64(2) || updatedFields["websockets"] != false || updatedFields["note"] != remoteNote {
 		t.Fatalf("updated fields = %#v", updatedFields)
 	}
 	headers, ok := updatedFields["headers"].(map[string]any)
@@ -1178,10 +1369,7 @@ func TestKeeperRefreshAccountsOnlyProcessesSelectedAuths(t *testing.T) {
 	requestJSON(t, handler, http.MethodPost, "/api/codex-keeper/accounts/refresh", map[string]any{
 		"auth_names": []string{"refresh-me.json"},
 	}, cookies, nil)
-	response := waitForKeeperAccounts(t, handler, cookies, 1)
-	if response.Items[0].Name != "refresh-me.json" {
-		t.Fatalf("refreshed account = %q, want refresh-me.json", response.Items[0].Name)
-	}
+	waitForKeeperAccountChecked(t, handler, cookies, "refresh-me.json")
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -1212,7 +1400,7 @@ func TestKeeperSyncAccountListOnlyReconcilesMembership(t *testing.T) {
 				"files": []map[string]any{
 					{"name": "kept.json", "type": "codex", "disabled": true, "priority": 99},
 					{"name": "new.json", "type": "codex", "email": "new@example.com", "account_type": "plus", "disabled": true, "priority": 7},
-					{"name": "ignored.json", "type": "openai"},
+					{"name": "ignored.json", "type": "openai", "auth_index": "openai-index", "weight": 3, "request_retry": 2, "success": 8, "failed": 2, "quota": map[string]any{"signals": map[string]string{"remaining": "75%"}}},
 				},
 			})
 		case r.Method == http.MethodGet && r.URL.Path == "/v0/management/auth-files/download":
@@ -1277,29 +1465,51 @@ func TestKeeperSyncAccountListOnlyReconcilesMembership(t *testing.T) {
 
 	response := keeperAccountsResponse{}
 	requestJSON(t, handler, http.MethodGet, "/api/codex-keeper/accounts", nil, cookies, &response)
-	if len(response.Items) != 2 {
-		t.Fatalf("accounts length = %d, want 2", len(response.Items))
+	if len(response.Items) != 3 {
+		t.Fatalf("accounts length = %d, want 3", len(response.Items))
 	}
 	items := map[string]struct {
+		Provider      string
+		AuthIndex     *string
 		AccountType   *string
+		Weight        *int
+		RequestRetry  *int
+		Success       *int
+		Failed        *int
+		Quota         map[string]any
 		Disabled      bool
 		Priority      *int
 		LastCheckedAt *string
 	}{}
 	for _, item := range response.Items {
 		items[item.Name] = struct {
+			Provider      string
+			AuthIndex     *string
 			AccountType   *string
+			Weight        *int
+			RequestRetry  *int
+			Success       *int
+			Failed        *int
+			Quota         map[string]any
 			Disabled      bool
 			Priority      *int
 			LastCheckedAt *string
-		}{item.AccountType, item.Disabled, item.Priority, item.LastCheckedAt}
+		}{item.Provider, item.AuthIndex, item.AccountType, item.Weight, item.RequestRetry, item.Success, item.Failed, item.Quota, item.Disabled, item.Priority, item.LastCheckedAt}
 	}
 	kept, ok := items["kept.json"]
 	if !ok {
 		t.Fatal("kept.json missing after sync")
 	}
-	if kept.Disabled || kept.Priority == nil || *kept.Priority != 11 {
-		t.Fatalf("existing account fields changed during sync: disabled=%v priority=%v", kept.Disabled, kept.Priority)
+	if !kept.Disabled || kept.Priority == nil || *kept.Priority != 99 {
+		t.Fatalf("remote account fields not reflected after sync: disabled=%v priority=%v", kept.Disabled, kept.Priority)
+	}
+	var storedDisabled bool
+	var storedPriority int
+	if err := db.QueryRow(`SELECT disabled, priority FROM codex_keeper_auth_states WHERE auth_name = ?`, "kept.json").Scan(&storedDisabled, &storedPriority); err != nil {
+		t.Fatalf("read retained keeper state: %v", err)
+	}
+	if storedDisabled || storedPriority != 11 {
+		t.Fatalf("sync changed retained keeper state: disabled=%v priority=%d", storedDisabled, storedPriority)
 	}
 	added, ok := items["new.json"]
 	if !ok {
@@ -1314,8 +1524,25 @@ func TestKeeperSyncAccountListOnlyReconcilesMembership(t *testing.T) {
 	if _, ok := items["stale.json"]; ok {
 		t.Fatal("stale.json still present after sync")
 	}
-	if _, ok := items["ignored.json"]; ok {
-		t.Fatal("non-Codex account was added during sync")
+	ignored, ok := items["ignored.json"]
+	if !ok {
+		t.Fatal("non-Codex account missing from credential list")
+	}
+	if ignored.Provider != "openai" {
+		t.Fatalf("non-Codex provider = %q, want openai", ignored.Provider)
+	}
+	if ignored.AuthIndex == nil || *ignored.AuthIndex != "openai-index" || ignored.Weight == nil || *ignored.Weight != 3 || ignored.RequestRetry == nil || *ignored.RequestRetry != 2 {
+		t.Fatalf("non-Codex common fields = %#v", ignored)
+	}
+	if ignored.Success == nil || *ignored.Success != 8 || ignored.Failed == nil || *ignored.Failed != 2 || ignored.Quota == nil {
+		t.Fatalf("non-Codex observations = %#v", ignored)
+	}
+	var ignoredStateCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM codex_keeper_auth_states WHERE auth_name = 'ignored.json'`).Scan(&ignoredStateCount); err != nil {
+		t.Fatalf("read non-Codex keeper state count: %v", err)
+	}
+	if ignoredStateCount != 0 {
+		t.Fatalf("non-Codex keeper state count = %d, want 0", ignoredStateCount)
 	}
 
 	var runCount int
@@ -1327,8 +1554,50 @@ func TestKeeperSyncAccountListOnlyReconcilesMembership(t *testing.T) {
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	if listCalls != 1 || detailCalls != 0 || usageCalls != 0 {
-		t.Fatalf("CPA calls = list %d, detail %d, usage %d; want 1, 0, 0", listCalls, detailCalls, usageCalls)
+	if listCalls != 2 || detailCalls != 0 || usageCalls != 0 {
+		t.Fatalf("CPA calls = list %d, detail %d, usage %d; want 2, 0, 0", listCalls, detailCalls, usageCalls)
+	}
+}
+
+func TestKeeperAccountListMarksLocalFallbackAsDegraded(t *testing.T) {
+	dataDir := t.TempDir()
+	t.Setenv("CPA_HELPER_DATA_DIR", dataDir)
+
+	cpa := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "temporarily unavailable", http.StatusServiceUnavailable)
+	}))
+	defer cpa.Close()
+
+	app, err := backendApp.New()
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	defer app.Close()
+	handler := app.Routes()
+	cookies := requestJSON(t, handler, http.MethodPost, "/api/auth/setup", map[string]any{
+		"username": "admin", "password": "test-password", "nickname": "Admin",
+	}, nil, nil)
+	requestJSON(t, handler, http.MethodPut, "/api/settings", map[string]any{
+		"cliaproxy_url": cpa.URL, "management_key": "test-management-key", "collector_enabled": false,
+	}, cookies, nil)
+
+	db, err := sql.Open("sqlite", filepath.Join(dataDir, "db", "cpa_helper.sqlite3")+"?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)")
+	if err != nil {
+		t.Fatalf("open sqlite db: %v", err)
+	}
+	defer db.Close()
+	now := "2026-09-04 10:00:00"
+	if _, err := db.Exec(`
+		INSERT INTO codex_keeper_auth_states (auth_name, email, disabled, priority, created_at, updated_at)
+		VALUES ('cached.json', 'cached@example.com', 0, 4, ?, ?)
+	`, now, now); err != nil {
+		t.Fatalf("seed cached keeper state: %v", err)
+	}
+
+	response := keeperAccountsResponse{}
+	requestJSON(t, handler, http.MethodGet, "/api/codex-keeper/accounts", nil, cookies, &response)
+	if !response.Degraded || len(response.Items) != 1 || response.Items[0].Name != "cached.json" || response.Items[0].Provider != "codex" {
+		t.Fatalf("degraded credential response = %+v", response)
 	}
 }
 
@@ -2024,16 +2293,48 @@ func waitForKeeperAccounts(t *testing.T, handler http.Handler, cookies []*http.C
 	response := keeperAccountsResponse{}
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
+		statusBefore := keeperStatusResponse{}
+		requestJSON(t, handler, http.MethodGet, "/api/codex-keeper/status", nil, cookies, &statusBefore)
+		if statusBefore.Running {
+			time.Sleep(20 * time.Millisecond)
+			continue
+		}
 		response = keeperAccountsResponse{}
 		requestJSON(t, handler, http.MethodGet, "/api/codex-keeper/accounts", nil, cookies, &response)
-		status := keeperStatusResponse{}
-		requestJSON(t, handler, http.MethodGet, "/api/codex-keeper/status", nil, cookies, &status)
-		if len(response.Items) == expected && !status.Running {
+		statusAfter := keeperStatusResponse{}
+		requestJSON(t, handler, http.MethodGet, "/api/codex-keeper/status", nil, cookies, &statusAfter)
+		if len(response.Items) == expected && !statusAfter.Running {
 			return response
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatalf("accounts length = %d, want %d after keeper run completed", len(response.Items), expected)
+	return response
+}
+
+func waitForKeeperAccountChecked(t *testing.T, handler http.Handler, cookies []*http.Cookie, name string) keeperAccountsResponse {
+	t.Helper()
+	response := keeperAccountsResponse{}
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		statusBefore := keeperStatusResponse{}
+		requestJSON(t, handler, http.MethodGet, "/api/codex-keeper/status", nil, cookies, &statusBefore)
+		if statusBefore.Running {
+			time.Sleep(20 * time.Millisecond)
+			continue
+		}
+		response = keeperAccountsResponse{}
+		requestJSON(t, handler, http.MethodGet, "/api/codex-keeper/accounts", nil, cookies, &response)
+		statusAfter := keeperStatusResponse{}
+		requestJSON(t, handler, http.MethodGet, "/api/codex-keeper/status", nil, cookies, &statusAfter)
+		for _, item := range response.Items {
+			if item.Name == name && item.LastCheckedAt != nil && !statusAfter.Running {
+				return response
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("%s was not checked after keeper run completed", name)
 	return response
 }
 

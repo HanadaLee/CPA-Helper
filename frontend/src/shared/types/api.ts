@@ -287,9 +287,27 @@ export interface CodexKeeperResetCredits {
 
 export interface CodexKeeperAccount {
   name: string
+  provider: string
   email: string | null
+  label: string | null
+  account: string | null
+  project_id: string | null
+  user_id: string | null
+  auth_index: string | null
   account_type: string | null
+  weight: number | null
+  request_retry: number | null
   disabled: boolean
+  unavailable: boolean
+  runtime_only: boolean
+  status: string | null
+  status_message: string | null
+  success: number | null
+  failed: number | null
+  quota: Record<string, unknown> | null
+  model_quotas: Record<string, unknown> | null
+  last_refresh_at: string | null
+  modified_at: string | null
   priority: number | null
   primary_used_percent: number | null
   secondary_used_percent: number | null
@@ -312,9 +330,23 @@ export interface CodexKeeperAuthFileFields {
   prefix?: string
   proxy_url?: string
   priority?: number
+  weight?: number | null
+  request_retry?: number | null
   websockets?: boolean
+  using_api?: boolean
   note?: string
   headers?: Record<string, string>
+}
+
+export interface CodexKeeperAuthFileModel {
+  id: string
+  display_name?: string
+  type?: string
+  owned_by?: string
+}
+
+export interface CodexKeeperAuthFileModelsResponse {
+  models: CodexKeeperAuthFileModel[]
 }
 
 export interface CodexKeeperAuthFileDetail {
@@ -340,6 +372,8 @@ export interface CodexKeeperOAuthStartResponse {
   state: string
 }
 
+export type CredentialOAuthProvider = 'codex' | 'anthropic' | 'antigravity' | 'gemini-cli' | 'kimi' | 'xai'
+
 export interface CodexKeeperOAuthStatusResponse {
   status: string
   error?: string
@@ -348,6 +382,7 @@ export interface CodexKeeperOAuthStatusResponse {
 export interface CodexKeeperAccountsResponse {
   items: CodexKeeperAccount[]
   priority_rules: CodexKeeperPriorityRule[]
+  degraded?: boolean
 }
 
 export interface CodexKeeperBulkDeletePayload {

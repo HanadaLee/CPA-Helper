@@ -276,7 +276,7 @@ test('standard users open the renamed credential status route in read-only mode'
   await expect(page.locator('[data-page-title]')).toHaveText(/凭证状态|Credential Status/)
   await expect(page.getByRole('button', { name: /凭证状态|Credential Status/ })).toBeVisible()
   await expect(page.getByRole('button', { name: /上传文件|Upload Files/ })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: /凭证巡检|Inspect Credentials/ })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /Codex 巡检|Inspect Codex/ })).toHaveCount(0)
 })
 
 test('API key actions can temporarily disable and re-enable one key', async ({ page }) => {
@@ -450,6 +450,7 @@ test('all migrated routes render and core controls remain interactive', async ({
         items: [
           {
             name: 'menu-test.json',
+            provider: 'codex',
             email: 'menu-test@example.com',
             account_type: 'plus',
             disabled: false,
@@ -469,6 +470,22 @@ test('all migrated routes render and core controls remain interactive', async ({
             last_checked_at: null,
             last_healthy_at: null,
           },
+          {
+            name: 'claude-test.json',
+            provider: 'anthropic',
+            email: 'claude@example.com',
+            label: 'Claude Team',
+            disabled: false,
+            unavailable: false,
+            runtime_only: false,
+            priority: 5,
+            weight: 2,
+            request_retry: 1,
+            status: 'active',
+            status_message: null,
+            last_refresh_at: '2026-09-04T12:00:00Z',
+            modified_at: '2026-09-04T12:00:00Z',
+          },
         ],
         priority_rules: [],
       },
@@ -486,12 +503,15 @@ test('all migrated routes render and core controls remain interactive', async ({
     })
   })
   await page.goto('/admin/credential-mgmt')
-  const accountTypeFilter = page.getByRole('combobox', { name: /凭证类型|Credential Type/ })
-  await accountTypeFilter.click()
-  const accountTypePopup = page.locator('[data-slot="combobox-content"]')
-  await expect(accountTypePopup.getByRole('option').first()).toHaveText(/清除筛选|Clear filter/)
-  await expect(page.getByPlaceholder(/搜索凭证类型|Search credential types/)).toHaveCount(0)
+  const providerFilter = page.getByRole('combobox', { name: /提供商|Provider/ })
+  await providerFilter.click()
+  const providerPopup = page.locator('[data-slot="combobox-content"]')
+  await expect(providerPopup.getByRole('option').first()).toHaveText(/清除筛选|Clear filter/)
+  await expect(page.getByPlaceholder(/搜索提供商|Search providers/)).toHaveCount(0)
   await page.keyboard.press('Escape')
+  const credentialTable = page.locator('.account-table')
+  await expect(credentialTable.getByText('Codex', { exact: true })).toBeVisible()
+  await expect(credentialTable.getByText('Claude', { exact: true })).toBeVisible()
   const accountPagination = page.locator('[data-slot="table-pagination-footer"]')
   await expect(accountPagination.locator('[data-slot="pagination"]')).toBeVisible()
   await expect(accountPagination.getByRole('combobox', { name: /每页数量|Rows per page/ })).toBeVisible()
@@ -520,16 +540,22 @@ test('all migrated routes render and core controls remain interactive', async ({
     ])
     return fixedCellColor === firstCellColor
   }).toBe(true)
-  await page.getByRole('button', { name: /打开 .*操作菜单|Open actions for/ }).first().click()
+  await page.getByRole('button', { name: /打开 claude@example\.com 的操作菜单|Open actions for claude@example\.com/ }).click()
   await expect(page.getByRole('menuitem', { name: /详情|Details/ })).toBeVisible()
   await expect(page.getByRole('menuitem', { name: /禁用|Disable/ })).toBeVisible()
-  await expect(page.getByRole('menuitem', { name: /刷新|Refresh/ })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: /巡检|Inspect/ })).toHaveCount(0)
+  await expect(page.getByRole('menuitem', { name: /删除|Delete/ })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await page.getByRole('button', { name: /打开 menu-test@example\.com 的操作菜单|Open actions for menu-test@example\.com/ }).click()
+  await expect(page.getByRole('menuitem', { name: /详情|Details/ })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: /禁用|Disable/ })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: /巡检|Inspect/ })).toBeVisible()
   await expect(page.getByRole('menuitem', { name: /删除|Delete/ })).toBeVisible()
   await page.getByRole('menuitem', { name: /删除|Delete/ }).click()
   const accountDeleteDialog = page.getByRole('dialog', { name: /删除凭证|Delete Credential/ })
   await expectPlainDialogFooter(accountDeleteDialog)
   await accountDeleteDialog.getByRole('button', { name: /取消|Cancel/ }).click()
-  await page.getByRole('button', { name: /打开 .*操作菜单|Open actions for/ }).first().click()
+  await page.getByRole('button', { name: /打开 menu-test@example\.com 的操作菜单|Open actions for menu-test@example\.com/ }).click()
   await page.getByRole('menuitem', { name: /详情|Details/ }).click()
   await page.getByRole('button', { name: /认证文件管理|Auth File Management/ }).click()
   const authFileDialog = page.getByRole('dialog', { name: /认证文件管理|Auth File Management/ })
