@@ -288,7 +288,7 @@ onMounted(loadConfig)
       </Alert>
 
       <Tabs v-else-if="isLoaded" v-model="activeSection" class="cpa-config-tabs">
-        <TabsList variant="line" class="cpa-config-tabs-list">
+        <TabsList class="cpa-config-tabs-list">
           <TabsTrigger v-for="section in cpaConfigSections" :key="section.key" :value="section.key">
             {{ t(section.labelZH, section.labelEN) }}
           </TabsTrigger>
