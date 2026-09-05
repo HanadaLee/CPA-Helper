@@ -7,6 +7,20 @@ interface ApiErrorPayload {
   }
 }
 
+export class ApiRequestError extends Error {
+  readonly status: number
+
+  constructor(status: number, message: string) {
+    super(message)
+    this.name = 'ApiRequestError'
+    this.status = status
+  }
+}
+
+export function isUnauthorizedApiError(error: unknown): boolean {
+  return error instanceof ApiRequestError && error.status === 401
+}
+
 function isApiErrorPayload(value: unknown): value is ApiErrorPayload {
   if (!value || typeof value !== 'object') {
     return false
@@ -39,7 +53,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   })
 
   if (!response.ok) {
-    throw new Error(await parseError(response))
+    throw new ApiRequestError(response.status, await parseError(response))
   }
 
   if (response.status === 204) {

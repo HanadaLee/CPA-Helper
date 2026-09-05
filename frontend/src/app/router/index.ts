@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 
 import { getMe, getSetupState } from '@/features/auth/api/authApi'
 import { getCurrentUser, setCurrentUser } from '@/features/auth/state/currentUser'
+import { isUnauthorizedApiError } from '@/shared/api/apiClient'
 import type { AuthUser } from '@/shared/types/api'
 
 let skipNextBackgroundAuthRefresh = false
@@ -221,9 +222,14 @@ router.beforeEach(async (to) => {
       return { path: '/account/usage' }
     }
     return true
-  } catch {
-    setCurrentUser(null)
-    return { name: 'login', query: { redirect: to.fullPath } }
+  } catch (error) {
+    if (isUnauthorizedApiError(error)) {
+      setCurrentUser(null)
+      return { name: 'login', query: { redirect: to.fullPath } }
+    }
+    // A transient /auth/me failure must not invalidate a still-valid session.
+    // The destination can render while afterEach/AppShell retries the identity request.
+    return true
   }
 })
 
@@ -260,7 +266,10 @@ router.afterEach((to) => {
     if (to.meta.requiresUsageHistory && !user.can_view_usage_history) {
       void router.replace('/account/usage')
     }
-  }).catch(() => {
+  }).catch((error) => {
+    if (!isUnauthorizedApiError(error)) {
+      return
+    }
     setCurrentUser(null)
     if (router.currentRoute.value.fullPath === to.fullPath) {
       void router.replace({ name: 'login', query: { redirect: to.fullPath } })

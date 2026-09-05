@@ -54,6 +54,7 @@ import {
 import { getMe, isAuthUser, logout } from '@/features/auth/api/authApi'
 import { useCurrentUser } from '@/features/auth/state/currentUser'
 import { getBranding } from '@/features/settings/api/settingsApi'
+import { isUnauthorizedApiError } from '@/shared/api/apiClient'
 import { useThemePreference } from '@/shared/composables/useThemePreference'
 import { useI18n } from '@/shared/i18n'
 import type { BrandingResponse } from '@/shared/types/api'
@@ -90,8 +91,10 @@ onBeforeUnmount(() => {
 async function refreshCurrentUser() {
   try {
     setCurrentUser(await getMe())
-  } catch {
-    setCurrentUser(null)
+  } catch (error) {
+    if (isUnauthorizedApiError(error)) {
+      setCurrentUser(null)
+    }
   } finally {
     hasLoadedUser.value = true
   }

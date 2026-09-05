@@ -170,6 +170,27 @@ test('sidebar navigation switches immediately and lets the destination render it
   await expect(page.locator('.provider-table-shell [data-slot="skeleton"]')).toHaveCount(0)
 })
 
+test('a transient auth me gateway failure does not sign out a valid session', async ({ page }) => {
+  await setupOrLogin(page)
+  await page.goto('/admin/usage')
+
+  let failedMeRequests = 0
+  await page.route('**/api/auth/me', async (route) => {
+    if (failedMeRequests === 0) {
+      failedMeRequests += 1
+      await route.fulfill({ status: 504, contentType: 'text/plain', body: 'Gateway Timeout' })
+      return
+    }
+    await route.continue()
+  })
+
+  await page.reload()
+  await expect.poll(() => failedMeRequests).toBe(1)
+  await expect(page).toHaveURL(/\/admin\/usage$/)
+  await expect(page.locator('[data-page-title]')).toContainText(/用量分析|Usage Analytics/i)
+  await expect(page).not.toHaveURL(/\/login/)
+})
+
 test('upstream model discovery merges selected models into the editor', async ({ page }) => {
   await setupOrLogin(page)
   await page.route('**/api/upstreams', async (route) => {
