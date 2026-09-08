@@ -198,6 +198,64 @@ func TestSaveUsageMessageStoresFastTierAndFixedFastCost(t *testing.T) {
 	}
 }
 
+func TestSaveUsageMessageStoresFixedLongContextCost(t *testing.T) {
+	t.Setenv("CPA_HELPER_DATA_DIR", t.TempDir())
+	app, err := NewWithOptions(context.Background(), NewOptions{Migrate: true})
+	if err != nil {
+		t.Fatalf("NewWithOptions failed: %v", err)
+	}
+	defer app.Close()
+
+	now := dbTime(time.Now())
+	if _, err := app.db.Exec(`
+		INSERT INTO model_prices (
+			provider, model, input_usd_per_million, output_usd_per_million,
+			cache_read_usd_per_million, cache_creation_usd_per_million,
+			long_context_enabled, long_context_threshold_tokens,
+			long_context_input_usd_per_million, long_context_output_usd_per_million,
+			long_context_cache_read_usd_per_million, long_context_cache_creation_usd_per_million,
+			source, updated_at
+		) VALUES ('openai', 'gpt-long-fixed', 1, 2, 0.1, 0,
+		          1, 100, 3, 6, 0.3, 0, 'manual', ?)
+	`, now); err != nil {
+		t.Fatal(err)
+	}
+
+	record, created, err := app.saveUsageMessage(context.Background(), []byte(`{
+		"provider":"openai",
+		"model":"gpt-long-fixed",
+		"request_id":"long-context-fixed-cost",
+		"input_tokens":101,
+		"cached_tokens":1,
+		"output_tokens":10,
+		"total_tokens":111
+	}`))
+	if err != nil || !created {
+		t.Fatalf("saveUsageMessage created=%v err=%v", created, err)
+	}
+	want := mathRound((100*3+1*0.3+10*6)/1_000_000.0, 8)
+	if record.CostUSD != want || record.Unpriced {
+		t.Fatalf("stored long-context cost = %v unpriced=%v, want %v/false", record.CostUSD, record.Unpriced, want)
+	}
+	if _, err := app.db.Exec(`
+		UPDATE model_prices
+		SET long_context_input_usd_per_million = 30,
+		    long_context_output_usd_per_million = 60,
+		    long_context_cache_read_usd_per_million = 3
+		WHERE model = 'gpt-long-fixed'
+	`); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := app.getUsageRecord(context.Background(), record.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	amount, unpriced := recordCost(reloaded, nil)
+	if amount != want || unpriced {
+		t.Fatalf("reloaded fixed long-context cost = %v unpriced=%v, want %v/false", amount, unpriced, want)
+	}
+}
+
 func TestSaveUsageMessageStoresReasoningEffortAndTTFT(t *testing.T) {
 	t.Setenv("CPA_HELPER_DATA_DIR", t.TempDir())
 	app, err := New()

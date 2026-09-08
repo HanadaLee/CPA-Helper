@@ -82,6 +82,18 @@ func TestRunMigrationsCreatesGooseVersionAndFinalSchema(t *testing.T) {
 	if !testColumnExists(t, app.db, "model_prices", "fast_multiplier") {
 		t.Fatal("model_prices.fast_multiplier was not created")
 	}
+	for _, column := range []string{
+		"long_context_enabled",
+		"long_context_threshold_tokens",
+		"long_context_input_usd_per_million",
+		"long_context_output_usd_per_million",
+		"long_context_cache_read_usd_per_million",
+		"long_context_cache_creation_usd_per_million",
+	} {
+		if !testColumnExists(t, app.db, "model_prices", column) {
+			t.Fatalf("model_prices.%s was not created", column)
+		}
+	}
 	if testColumnExists(t, app.db, "model_prices", "cached_usd_per_million") {
 		t.Fatal("old model_prices.cached_usd_per_million should not exist")
 	}

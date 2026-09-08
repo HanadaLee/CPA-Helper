@@ -557,6 +557,12 @@ export interface ModelPrice {
   cache_creation_usd_per_million: number
   request_usd: number | null
   fast_multiplier: number
+  long_context_enabled: boolean
+  long_context_threshold_tokens: number
+  long_context_input_usd_per_million: number
+  long_context_output_usd_per_million: number
+  long_context_cache_read_usd_per_million: number
+  long_context_cache_creation_usd_per_million: number
   billing_unit: 'token' | 'request' | string
   source: 'manual' | 'litellm' | string
   source_model: string | null
@@ -574,6 +580,12 @@ export interface ModelPricePayload {
   cache_creation_usd_per_million: number
   request_usd: number | null
   fast_multiplier: number
+  long_context_enabled: boolean
+  long_context_threshold_tokens: number
+  long_context_input_usd_per_million: number
+  long_context_output_usd_per_million: number
+  long_context_cache_read_usd_per_million: number
+  long_context_cache_creation_usd_per_million: number
 }
 
 export interface ModelPriceSyncResponse {
@@ -692,6 +704,12 @@ export interface AvailableModelPrice {
   cache_creation_usd_per_million: number
   request_usd: number | null
   fast_multiplier: number
+  long_context_enabled: boolean
+  long_context_threshold_tokens: number
+  long_context_input_usd_per_million: number
+  long_context_output_usd_per_million: number
+  long_context_cache_read_usd_per_million: number
+  long_context_cache_creation_usd_per_million: number
   billing_unit: 'token' | 'request' | string
 }
 

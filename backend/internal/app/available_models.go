@@ -32,15 +32,21 @@ type AvailableModelSource struct {
 }
 
 type AvailableModelPrice struct {
-	Provider                   string   `json:"provider"`
-	Model                      string   `json:"model"`
-	InputUSDPerMillion         float64  `json:"input_usd_per_million"`
-	OutputUSDPerMillion        float64  `json:"output_usd_per_million"`
-	CacheReadUSDPerMillion     float64  `json:"cache_read_usd_per_million"`
-	CacheCreationUSDPerMillion float64  `json:"cache_creation_usd_per_million"`
-	RequestUSD                 *float64 `json:"request_usd"`
-	FastMultiplier             float64  `json:"fast_multiplier"`
-	BillingUnit                string   `json:"billing_unit"`
+	Provider                              string   `json:"provider"`
+	Model                                 string   `json:"model"`
+	InputUSDPerMillion                    float64  `json:"input_usd_per_million"`
+	OutputUSDPerMillion                   float64  `json:"output_usd_per_million"`
+	CacheReadUSDPerMillion                float64  `json:"cache_read_usd_per_million"`
+	CacheCreationUSDPerMillion            float64  `json:"cache_creation_usd_per_million"`
+	RequestUSD                            *float64 `json:"request_usd"`
+	FastMultiplier                        float64  `json:"fast_multiplier"`
+	LongContextEnabled                    bool     `json:"long_context_enabled"`
+	LongContextThresholdTokens            int      `json:"long_context_threshold_tokens"`
+	LongContextInputUSDPerMillion         float64  `json:"long_context_input_usd_per_million"`
+	LongContextOutputUSDPerMillion        float64  `json:"long_context_output_usd_per_million"`
+	LongContextCacheReadUSDPerMillion     float64  `json:"long_context_cache_read_usd_per_million"`
+	LongContextCacheCreationUSDPerMillion float64  `json:"long_context_cache_creation_usd_per_million"`
+	BillingUnit                           string   `json:"billing_unit"`
 }
 
 type AvailableModelItem struct {
@@ -157,15 +163,21 @@ func (a *App) availableModelsForUser(ctx context.Context, userID int) (Available
 	for _, model := range modelsByID {
 		if price := findMatchingPrice(prices, model.Owner, &model.ID); price != nil {
 			model.Price = &AvailableModelPrice{
-				Provider:                   price.Provider,
-				Model:                      price.Model,
-				InputUSDPerMillion:         price.InputUSDPerMillion,
-				OutputUSDPerMillion:        price.OutputUSDPerMillion,
-				CacheReadUSDPerMillion:     price.CacheReadUSDPerMillion,
-				CacheCreationUSDPerMillion: price.CacheCreationUSDPerMillion,
-				RequestUSD:                 price.RequestUSD,
-				FastMultiplier:             price.FastMultiplier,
-				BillingUnit:                price.BillingUnit,
+				Provider:                              price.Provider,
+				Model:                                 price.Model,
+				InputUSDPerMillion:                    price.InputUSDPerMillion,
+				OutputUSDPerMillion:                   price.OutputUSDPerMillion,
+				CacheReadUSDPerMillion:                price.CacheReadUSDPerMillion,
+				CacheCreationUSDPerMillion:            price.CacheCreationUSDPerMillion,
+				RequestUSD:                            price.RequestUSD,
+				FastMultiplier:                        price.FastMultiplier,
+				LongContextEnabled:                    price.LongContextEnabled,
+				LongContextThresholdTokens:            price.LongContextThresholdTokens,
+				LongContextInputUSDPerMillion:         price.LongContextInputUSDPerMillion,
+				LongContextOutputUSDPerMillion:        price.LongContextOutputUSDPerMillion,
+				LongContextCacheReadUSDPerMillion:     price.LongContextCacheReadUSDPerMillion,
+				LongContextCacheCreationUSDPerMillion: price.LongContextCacheCreationUSDPerMillion,
+				BillingUnit:                           price.BillingUnit,
 			}
 		}
 		response.Models = append(response.Models, model)

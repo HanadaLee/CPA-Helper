@@ -146,6 +146,84 @@ func TestRecordCostAppliesFastMultiplierToPriorityAndFastRequests(t *testing.T) 
 	}
 }
 
+func TestRecordCostUsesLongContextRatesAboveInputThreshold(t *testing.T) {
+	provider := "openai"
+	model := "gpt-long-context-test"
+	prices := map[[2]string]ModelPrice{
+		priceKey(provider, model): {
+			Provider:                              provider,
+			Model:                                 model,
+			InputUSDPerMillion:                    2,
+			OutputUSDPerMillion:                   4,
+			CacheReadUSDPerMillion:                1,
+			FastMultiplier:                        2,
+			LongContextEnabled:                    true,
+			LongContextThresholdTokens:            100,
+			LongContextInputUSDPerMillion:         6,
+			LongContextOutputUSDPerMillion:        12,
+			LongContextCacheReadUSDPerMillion:     3,
+			LongContextCacheCreationUSDPerMillion: 8,
+		},
+	}
+
+	base := UsageRecord{
+		Provider:     &provider,
+		Model:        &model,
+		InputTokens:  100,
+		CachedTokens: 20,
+		OutputTokens: 10,
+		TotalTokens:  110,
+	}
+	amount, unpriced := recordCost(base, prices)
+	wantBase := mathRound((80*2+20*1+10*4)/1_000_000.0, 8)
+	if unpriced || amount != wantBase {
+		t.Fatalf("at-threshold cost = %v unpriced=%v, want base cost %v false", amount, unpriced, wantBase)
+	}
+
+	base.InputTokens = 101
+	base.TotalTokens = 111
+	amount, unpriced = recordCost(base, prices)
+	wantLong := mathRound((81*6+20*3+10*12)/1_000_000.0, 8)
+	if unpriced || amount != wantLong {
+		t.Fatalf("above-threshold cost = %v unpriced=%v, want long-context cost %v false", amount, unpriced, wantLong)
+	}
+
+	serviceTier := "fast"
+	base.RequestServiceTier = &serviceTier
+	amount, unpriced = recordCost(base, prices)
+	if unpriced || amount != mathRound(wantLong*2, 8) {
+		t.Fatalf("fast long-context cost = %v unpriced=%v, want %v false", amount, unpriced, mathRound(wantLong*2, 8))
+	}
+}
+
+func TestUsagePromptTokensIncludesSeparatelyReportedCachedInput(t *testing.T) {
+	provider := "openai"
+	record := UsageRecord{
+		Provider:        &provider,
+		InputTokens:     2_555,
+		CachedTokens:    198_400,
+		CacheReadTokens: 198_400,
+	}
+	if got := usagePromptTokens(record); got != 200_955 {
+		t.Fatalf("usagePromptTokens = %d, want 200955", got)
+	}
+}
+
+func TestValidatePricePayloadRequiresPositiveLongContextThreshold(t *testing.T) {
+	payload := modelPricePayload{
+		Provider:           "openai",
+		Model:              "gpt-long-context-test",
+		LongContextEnabled: true,
+	}
+	if _, err := validatePricePayload(payload); err == nil {
+		t.Fatal("enabled long-context pricing without a threshold should fail")
+	}
+	payload.LongContextThresholdTokens = 200_000
+	if _, err := validatePricePayload(payload); err != nil {
+		t.Fatalf("valid long-context pricing failed: %v", err)
+	}
+}
+
 func TestRecordCostTreatsImageWithoutRequestPriceAsUnpriced(t *testing.T) {
 	provider := "openai"
 	model := "custom-image-model"
@@ -215,7 +293,46 @@ func TestModelPriceAPIUpdatesImageRequestPrice(t *testing.T) {
 	}
 }
 
-func TestUpdateAutoSyncedPriceOnlyFastMultiplierKeepsLiteLLMSync(t *testing.T) {
+func TestModelPriceAPIRoundTripsLongContextRates(t *testing.T) {
+	t.Setenv("CPA_HELPER_DATA_DIR", t.TempDir())
+	app, err := New()
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	defer app.Close()
+
+	handler := app.Routes()
+	cookies := requestJSONForPricingTest(t, handler, http.MethodPost, "/api/auth/setup", map[string]any{
+		"username": "admin",
+		"password": "test-password",
+		"nickname": "管理员",
+	}, nil, nil)
+
+	var created ModelPrice
+	requestJSONForPricingTest(t, handler, http.MethodPost, "/api/model-prices", map[string]any{
+		"provider":                                    "openai",
+		"model":                                       "gpt-long-context-api",
+		"input_usd_per_million":                       1,
+		"output_usd_per_million":                      2,
+		"cache_read_usd_per_million":                  0.1,
+		"cache_creation_usd_per_million":              0,
+		"request_usd":                                 nil,
+		"fast_multiplier":                             1.5,
+		"long_context_enabled":                        true,
+		"long_context_threshold_tokens":               200000,
+		"long_context_input_usd_per_million":          3,
+		"long_context_output_usd_per_million":         6,
+		"long_context_cache_read_usd_per_million":     0.3,
+		"long_context_cache_creation_usd_per_million": 0.5,
+	}, cookies, &created)
+	if !created.LongContextEnabled || created.LongContextThresholdTokens != 200_000 ||
+		created.LongContextInputUSDPerMillion != 3 || created.LongContextOutputUSDPerMillion != 6 ||
+		created.LongContextCacheReadUSDPerMillion != 0.3 || created.LongContextCacheCreationUSDPerMillion != 0.5 {
+		t.Fatalf("created long-context price = %#v", created)
+	}
+}
+
+func TestUpdateAutoSyncedPriceLocalOverridesKeepLiteLLMSync(t *testing.T) {
 	t.Setenv("CPA_HELPER_DATA_DIR", t.TempDir())
 	app, err := New()
 	if err != nil {
@@ -237,13 +354,19 @@ func TestUpdateAutoSyncedPriceOnlyFastMultiplierKeepsLiteLLMSync(t *testing.T) {
 	id, _ := result.LastInsertId()
 	fastMultiplier := 3.0
 	updated, err := app.updatePrice(context.Background(), int(id), modelPricePayload{
-		Provider:                   "openai",
-		Model:                      "gpt-fast-sync",
-		InputUSDPerMillion:         1,
-		OutputUSDPerMillion:        2,
-		CacheReadUSDPerMillion:     0.1,
-		CacheCreationUSDPerMillion: 0.2,
-		FastMultiplier:             &fastMultiplier,
+		Provider:                              "openai",
+		Model:                                 "gpt-fast-sync",
+		InputUSDPerMillion:                    1,
+		OutputUSDPerMillion:                   2,
+		CacheReadUSDPerMillion:                0.1,
+		CacheCreationUSDPerMillion:            0.2,
+		FastMultiplier:                        &fastMultiplier,
+		LongContextEnabled:                    true,
+		LongContextThresholdTokens:            200_000,
+		LongContextInputUSDPerMillion:         2,
+		LongContextOutputUSDPerMillion:        4,
+		LongContextCacheReadUSDPerMillion:     0.2,
+		LongContextCacheCreationUSDPerMillion: 0.4,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -253,6 +376,9 @@ func TestUpdateAutoSyncedPriceOnlyFastMultiplierKeepsLiteLLMSync(t *testing.T) {
 	}
 	if updated.FastMultiplier != 3 {
 		t.Fatalf("updated fast multiplier = %v, want 3", updated.FastMultiplier)
+	}
+	if !updated.LongContextEnabled || updated.LongContextThresholdTokens != 200_000 || updated.LongContextInputUSDPerMillion != 2 {
+		t.Fatalf("updated long-context overrides = %#v, want enabled threshold 200000 input 2", updated)
 	}
 }
 
@@ -333,8 +459,12 @@ func TestSyncLiteLLMPricesReplacesLiteLLMSource(t *testing.T) {
 		INSERT INTO model_prices (
 			provider, model, input_usd_per_million, output_usd_per_million,
 			cache_read_usd_per_million, cache_creation_usd_per_million, fast_multiplier,
+			long_context_enabled, long_context_threshold_tokens,
+			long_context_input_usd_per_million, long_context_output_usd_per_million,
+			long_context_cache_read_usd_per_million, long_context_cache_creation_usd_per_million,
 			source, source_model, auto_synced, last_synced_at, updated_at
-		) VALUES ('openai', 'gpt-new-model', 9, 9, 9, 9, 2.5, 'litellm', 'gpt-new-model', 1, ?, ?)
+		) VALUES ('openai', 'gpt-new-model', 9, 9, 9, 9, 2.5, 1, 200000, 3, 6, 0.3, 0.6,
+		          'litellm', 'gpt-new-model', 1, ?, ?)
 	`, now, now); err != nil {
 		t.Fatalf("seed customized LiteLLM price: %v", err)
 	}
@@ -387,12 +517,18 @@ func TestSyncLiteLLMPricesReplacesLiteLLMSource(t *testing.T) {
 	if cacheRead != 0.3 || cacheCreation != 3.75 {
 		t.Fatalf("claude cache prices = read %v creation %v, want 0.3 and 3.75", cacheRead, cacheCreation)
 	}
-	var syncedInput, fastMultiplier float64
-	if err := app.db.QueryRow(`SELECT input_usd_per_million, fast_multiplier FROM model_prices WHERE source = 'litellm' AND model = 'gpt-new-model'`).Scan(&syncedInput, &fastMultiplier); err != nil {
+	var syncedInput, fastMultiplier, longInput float64
+	var longEnabled bool
+	var longThreshold int
+	if err := app.db.QueryRow(`
+		SELECT input_usd_per_million, fast_multiplier, long_context_enabled,
+		       long_context_threshold_tokens, long_context_input_usd_per_million
+		FROM model_prices WHERE source = 'litellm' AND model = 'gpt-new-model'
+	`).Scan(&syncedInput, &fastMultiplier, &longEnabled, &longThreshold, &longInput); err != nil {
 		t.Fatalf("query customized LiteLLM price: %v", err)
 	}
-	if syncedInput != 1 || fastMultiplier != 2.5 {
-		t.Fatalf("synced input/fast multiplier = %v/%v, want refreshed input 1 and preserved multiplier 2.5", syncedInput, fastMultiplier)
+	if syncedInput != 1 || fastMultiplier != 2.5 || !longEnabled || longThreshold != 200_000 || longInput != 3 {
+		t.Fatalf("synced base/local overrides = %v/%v/%v/%v/%v, want 1/2.5/true/200000/3", syncedInput, fastMultiplier, longEnabled, longThreshold, longInput)
 	}
 }
 

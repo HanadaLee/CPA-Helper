@@ -628,6 +628,14 @@ test('all migrated routes render and core controls remain interactive', async ({
     valid: input.validity.valid,
     stepMismatch: input.validity.stepMismatch,
   }))).toEqual({ valid: true, stepMismatch: false })
+  const longContextSwitch = priceDialog.getByRole('switch', { name: /启用长上下文费率|Enable long-context rates/ })
+  await expect(longContextSwitch).toBeVisible()
+  await longContextSwitch.click()
+  await expect(priceDialog.locator('#price-long-context-threshold')).toBeVisible()
+  await expect(priceDialog.locator('#price-long-context-input')).toBeVisible()
+  await expect(priceDialog.locator('#price-long-context-output')).toBeVisible()
+  await expect(priceDialog.locator('#price-long-context-cache-read')).toBeVisible()
+  await expect(priceDialog.locator('#price-long-context-cache-write')).toBeVisible()
   const priceCancelButton = priceDialog.getByRole('button', { name: /取消|Cancel/ })
   await expect(priceCancelButton).toHaveCSS('cursor', 'pointer')
   await expect(priceCancelButton).toHaveCSS('border-top-width', '1px')
@@ -939,6 +947,12 @@ test('available models uses compact price columns and shows the FAST multiplier'
               cache_creation_usd_per_million: 2.5,
               request_usd: null,
               fast_multiplier: 1.8,
+              long_context_enabled: true,
+              long_context_threshold_tokens: 200000,
+              long_context_input_usd_per_million: 4,
+              long_context_output_usd_per_million: 16,
+              long_context_cache_read_usd_per_million: 0.4,
+              long_context_cache_creation_usd_per_million: 4,
               billing_unit: 'token',
             },
           },

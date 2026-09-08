@@ -99,6 +99,10 @@ type PriceFieldName = keyof Pick<
   | 'output_usd_per_million'
   | 'cache_read_usd_per_million'
   | 'cache_creation_usd_per_million'
+  | 'long_context_input_usd_per_million'
+  | 'long_context_output_usd_per_million'
+  | 'long_context_cache_read_usd_per_million'
+  | 'long_context_cache_creation_usd_per_million'
 >
 
 interface PriceDisplayRow {
@@ -142,6 +146,12 @@ const form = reactive<ModelPricePayload>({
   cache_creation_usd_per_million: 0,
   request_usd: null,
   fast_multiplier: 1,
+  long_context_enabled: false,
+  long_context_threshold_tokens: 0,
+  long_context_input_usd_per_million: 0,
+  long_context_output_usd_per_million: 0,
+  long_context_cache_read_usd_per_million: 0,
+  long_context_cache_creation_usd_per_million: 0,
 })
 const proxyForm = reactive<LiteLLMProxySettingsPayload>({
   enabled: false,
@@ -421,6 +431,12 @@ function resetForm() {
   form.cache_creation_usd_per_million = 0
   form.request_usd = null
   form.fast_multiplier = 1
+  form.long_context_enabled = false
+  form.long_context_threshold_tokens = 0
+  form.long_context_input_usd_per_million = 0
+  form.long_context_output_usd_per_million = 0
+  form.long_context_cache_read_usd_per_million = 0
+  form.long_context_cache_creation_usd_per_million = 0
 }
 
 async function refresh() {
@@ -448,6 +464,12 @@ function openCreate(prefill: Partial<ModelPricePayload> = {}) {
   form.cache_creation_usd_per_million = prefill.cache_creation_usd_per_million ?? 0
   form.request_usd = prefill.request_usd ?? null
   form.fast_multiplier = prefill.fast_multiplier ?? 1
+  form.long_context_enabled = prefill.long_context_enabled ?? false
+  form.long_context_threshold_tokens = prefill.long_context_threshold_tokens ?? 0
+  form.long_context_input_usd_per_million = prefill.long_context_input_usd_per_million ?? 0
+  form.long_context_output_usd_per_million = prefill.long_context_output_usd_per_million ?? 0
+  form.long_context_cache_read_usd_per_million = prefill.long_context_cache_read_usd_per_million ?? 0
+  form.long_context_cache_creation_usd_per_million = prefill.long_context_cache_creation_usd_per_million ?? 0
   modalOpen.value = true
 }
 
@@ -468,6 +490,12 @@ function openEdit(row: ModelPrice) {
   form.cache_creation_usd_per_million = row.cache_creation_usd_per_million
   form.request_usd = row.request_usd
   form.fast_multiplier = row.fast_multiplier
+  form.long_context_enabled = row.long_context_enabled
+  form.long_context_threshold_tokens = row.long_context_threshold_tokens
+  form.long_context_input_usd_per_million = row.long_context_input_usd_per_million
+  form.long_context_output_usd_per_million = row.long_context_output_usd_per_million
+  form.long_context_cache_read_usd_per_million = row.long_context_cache_read_usd_per_million
+  form.long_context_cache_creation_usd_per_million = row.long_context_cache_creation_usd_per_million
   modalOpen.value = true
 }
 
@@ -487,6 +515,29 @@ function setRequestPrice(value: string | number) {
   form.request_usd = value === '' ? null : normalizeNumberInput(value)
 }
 
+function setLongContextThreshold(value: string | number) {
+  form.long_context_threshold_tokens = normalizeNumberInput(value)
+}
+
+function toggleLongContext(enabled: boolean) {
+  form.long_context_enabled = enabled
+  if (!enabled) {
+    return
+  }
+  const longContextRates = [
+    form.long_context_input_usd_per_million,
+    form.long_context_output_usd_per_million,
+    form.long_context_cache_read_usd_per_million,
+    form.long_context_cache_creation_usd_per_million,
+  ]
+  if (longContextRates.every((value) => value === 0)) {
+    form.long_context_input_usd_per_million = form.input_usd_per_million
+    form.long_context_output_usd_per_million = form.output_usd_per_million
+    form.long_context_cache_read_usd_per_million = form.cache_read_usd_per_million
+    form.long_context_cache_creation_usd_per_million = form.cache_creation_usd_per_million
+  }
+}
+
 async function savePrice() {
   const requestPriceMode = isRequestPriceForm.value
   const requestUSD = requestPriceMode && typeof form.request_usd === 'number' ? form.request_usd : null
@@ -499,6 +550,12 @@ async function savePrice() {
     cache_creation_usd_per_million: form.cache_creation_usd_per_million,
     request_usd: requestUSD,
     fast_multiplier: form.fast_multiplier,
+    long_context_enabled: !requestPriceMode && form.long_context_enabled,
+    long_context_threshold_tokens: requestPriceMode ? 0 : form.long_context_threshold_tokens,
+    long_context_input_usd_per_million: requestPriceMode ? 0 : form.long_context_input_usd_per_million,
+    long_context_output_usd_per_million: requestPriceMode ? 0 : form.long_context_output_usd_per_million,
+    long_context_cache_read_usd_per_million: requestPriceMode ? 0 : form.long_context_cache_read_usd_per_million,
+    long_context_cache_creation_usd_per_million: requestPriceMode ? 0 : form.long_context_cache_creation_usd_per_million,
   }
   if (!payload.provider || !payload.model) {
     message.error(t('服务商和模型不能为空', 'Provider and model are required'))
@@ -510,6 +567,10 @@ async function savePrice() {
   }
   if (requestPriceMode && requestUSD === null) {
     message.error(t('image 模型需要填写每次调用价格', 'Image models require a per-call price'))
+    return
+  }
+  if (payload.long_context_enabled && (!Number.isInteger(payload.long_context_threshold_tokens) || payload.long_context_threshold_tokens <= 0)) {
+    message.error(t('长上下文 Token 阈值必须是大于 0 的整数', 'Long-context token threshold must be a positive integer'))
     return
   }
   isPriceSaving.value = true
@@ -619,6 +680,13 @@ function requestPriceValue(row: PriceDisplayRow): string {
 
 function fastMultiplierValue(row: PriceDisplayRow): string {
   return row.price ? `×${row.price.fast_multiplier}` : '-'
+}
+
+function longContextBadgeTitle(price: ModelPrice): string {
+  return t(
+    `输入上下文超过 ${formatInteger(price.long_context_threshold_tokens)} Token 后使用长上下文费率`,
+    `Uses long-context rates above ${formatInteger(price.long_context_threshold_tokens)} input tokens`,
+  )
 }
 
 function billingUnitLabel(row: PriceDisplayRow): string {
@@ -778,6 +846,14 @@ onMounted(() => {
                     <span class="model-name" :title="row.id">{{ row.id }}</span>
                     <Badge v-if="row.in_cpa" variant="secondary" class="model-availability-tag">
                       {{ t('CPA 可用模型', 'CPA available model') }}
+                    </Badge>
+                    <Badge
+                      v-if="row.price?.long_context_enabled"
+                      variant="outline"
+                      class="model-availability-tag"
+                      :title="longContextBadgeTitle(row.price)"
+                    >
+                      {{ t('长上下文', 'Long context') }}
                     </Badge>
                   </div>
                   <div v-if="row.name && row.name !== row.id" class="model-sub" :title="row.name">
@@ -954,6 +1030,100 @@ onMounted(() => {
                   @update:model-value="setPriceNumber('cache_creation_usd_per_million', $event)"
                 />
               </Field>
+              <div class="wide-form-item long-context-panel">
+                <Field orientation="horizontal" class="long-context-switch-row">
+                  <FieldContent>
+                    <FieldLabel for="price-long-context-enabled">
+                      {{ t('启用长上下文费率', 'Enable long-context rates') }}
+                    </FieldLabel>
+                    <FieldDescription>
+                      {{
+                        t(
+                          '输入上下文 Token 超出阈值后，整条请求使用长上下文费率；FAST 请求仍会继续应用 FAST 倍率。',
+                          'When input context exceeds the threshold, the entire request uses long-context rates. FAST requests still apply the FAST multiplier.',
+                        )
+                      }}
+                    </FieldDescription>
+                  </FieldContent>
+                  <Switch
+                    id="price-long-context-enabled"
+                    :model-value="form.long_context_enabled"
+                    @update:model-value="toggleLongContext"
+                  />
+                </Field>
+
+                <div v-if="form.long_context_enabled" class="long-context-rate-grid">
+                  <Field class="wide-form-item">
+                    <FieldLabel for="price-long-context-threshold">
+                      {{ t('Token 阈值', 'Token threshold') }}
+                    </FieldLabel>
+                    <Input
+                      id="price-long-context-threshold"
+                      type="number"
+                      min="1"
+                      step="1"
+                      :model-value="form.long_context_threshold_tokens"
+                      :placeholder="t('例如：272000', 'Example: 272000')"
+                      @update:model-value="setLongContextThreshold"
+                    />
+                    <FieldDescription>
+                      {{ t('仅统计完整输入上下文（含缓存 Token），输出 Token 不参与阈值判断。', 'Counts the full input context including cached tokens; output tokens do not affect the threshold.') }}
+                    </FieldDescription>
+                  </Field>
+                  <Field>
+                    <FieldLabel for="price-long-context-input">
+                      {{ t('长上下文输入价格 ($/MTok)', 'Long-context input ($/MTok)') }}
+                    </FieldLabel>
+                    <Input
+                      id="price-long-context-input"
+                      type="number"
+                      min="0"
+                      step="any"
+                      :model-value="form.long_context_input_usd_per_million"
+                      @update:model-value="setPriceNumber('long_context_input_usd_per_million', $event)"
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel for="price-long-context-output">
+                      {{ t('长上下文输出价格 ($/MTok)', 'Long-context output ($/MTok)') }}
+                    </FieldLabel>
+                    <Input
+                      id="price-long-context-output"
+                      type="number"
+                      min="0"
+                      step="any"
+                      :model-value="form.long_context_output_usd_per_million"
+                      @update:model-value="setPriceNumber('long_context_output_usd_per_million', $event)"
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel for="price-long-context-cache-read">
+                      {{ t('长上下文缓存读价格 ($/MTok)', 'Long-context cache read ($/MTok)') }}
+                    </FieldLabel>
+                    <Input
+                      id="price-long-context-cache-read"
+                      type="number"
+                      min="0"
+                      step="any"
+                      :model-value="form.long_context_cache_read_usd_per_million"
+                      @update:model-value="setPriceNumber('long_context_cache_read_usd_per_million', $event)"
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel for="price-long-context-cache-write">
+                      {{ t('长上下文缓存写价格 ($/MTok)', 'Long-context cache write ($/MTok)') }}
+                    </FieldLabel>
+                    <Input
+                      id="price-long-context-cache-write"
+                      type="number"
+                      min="0"
+                      step="any"
+                      :model-value="form.long_context_cache_creation_usd_per_million"
+                      @update:model-value="setPriceNumber('long_context_cache_creation_usd_per_million', $event)"
+                    />
+                  </Field>
+                </div>
+              </div>
             </template>
           </FieldGroup>
 
@@ -1175,6 +1345,27 @@ onMounted(() => {
   grid-column: 1 / -1;
 }
 
+.long-context-panel {
+  display: grid;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+
+.long-context-switch-row {
+  gap: 20px;
+}
+
+.long-context-rate-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
 .proxy-switch-row {
   gap: 20px;
   padding: 14px 16px;
@@ -1237,6 +1428,10 @@ onMounted(() => {
 
   .wide-form-item {
     grid-column: auto;
+  }
+
+  .long-context-rate-grid {
+    grid-template-columns: 1fr;
   }
 
   .price-filters {
