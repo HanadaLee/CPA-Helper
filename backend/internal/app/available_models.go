@@ -46,6 +46,7 @@ type AvailableModelPrice struct {
 	LongContextOutputUSDPerMillion        float64  `json:"long_context_output_usd_per_million"`
 	LongContextCacheReadUSDPerMillion     float64  `json:"long_context_cache_read_usd_per_million"`
 	LongContextCacheCreationUSDPerMillion float64  `json:"long_context_cache_creation_usd_per_million"`
+	LongContextFastUnsupported            bool     `json:"long_context_fast_unsupported"`
 	BillingUnit                           string   `json:"billing_unit"`
 }
 
@@ -177,6 +178,7 @@ func (a *App) availableModelsForUser(ctx context.Context, userID int) (Available
 				LongContextOutputUSDPerMillion:        price.LongContextOutputUSDPerMillion,
 				LongContextCacheReadUSDPerMillion:     price.LongContextCacheReadUSDPerMillion,
 				LongContextCacheCreationUSDPerMillion: price.LongContextCacheCreationUSDPerMillion,
+				LongContextFastUnsupported:            price.LongContextFastUnsupported,
 				BillingUnit:                           price.BillingUnit,
 			}
 		}

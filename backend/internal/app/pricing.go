@@ -34,6 +34,7 @@ type ModelPrice struct {
 	LongContextOutputUSDPerMillion        float64    `json:"long_context_output_usd_per_million"`
 	LongContextCacheReadUSDPerMillion     float64    `json:"long_context_cache_read_usd_per_million"`
 	LongContextCacheCreationUSDPerMillion float64    `json:"long_context_cache_creation_usd_per_million"`
+	LongContextFastUnsupported            bool       `json:"long_context_fast_unsupported"`
 	BillingUnit                           string     `json:"billing_unit"`
 	Source                                string     `json:"source"`
 	SourceModel                           *string    `json:"source_model"`
@@ -57,6 +58,7 @@ type modelPricePayload struct {
 	LongContextOutputUSDPerMillion        float64  `json:"long_context_output_usd_per_million"`
 	LongContextCacheReadUSDPerMillion     float64  `json:"long_context_cache_read_usd_per_million"`
 	LongContextCacheCreationUSDPerMillion float64  `json:"long_context_cache_creation_usd_per_million"`
+	LongContextFastUnsupported            bool     `json:"long_context_fast_unsupported"`
 }
 
 type modelPriceSyncRequest struct {
@@ -276,6 +278,7 @@ func (a *App) listPrices(ctx context.Context) ([]ModelPrice, error) {
 		       long_context_enabled, long_context_threshold_tokens,
 		       long_context_input_usd_per_million, long_context_output_usd_per_million,
 		       long_context_cache_read_usd_per_million, long_context_cache_creation_usd_per_million,
+		       long_context_fast_unsupported,
 		       source, source_model, auto_synced, CAST(last_synced_at AS TEXT), CAST(updated_at AS TEXT)
 		FROM model_prices
 		ORDER BY auto_synced ASC, lower(provider), lower(model)
@@ -518,7 +521,7 @@ func scanPrices(rows *sql.Rows) ([]ModelPrice, error) {
 		var price ModelPrice
 		var sourceModel, lastSynced, updatedAt sql.NullString
 		var requestUSD sql.NullFloat64
-		if err := rows.Scan(&price.ID, &price.Provider, &price.Model, &price.InputUSDPerMillion, &price.OutputUSDPerMillion, &price.CacheReadUSDPerMillion, &price.CacheCreationUSDPerMillion, &requestUSD, &price.FastMultiplier, &price.LongContextEnabled, &price.LongContextThresholdTokens, &price.LongContextInputUSDPerMillion, &price.LongContextOutputUSDPerMillion, &price.LongContextCacheReadUSDPerMillion, &price.LongContextCacheCreationUSDPerMillion, &price.Source, &sourceModel, &price.AutoSynced, &lastSynced, &updatedAt); err != nil {
+		if err := rows.Scan(&price.ID, &price.Provider, &price.Model, &price.InputUSDPerMillion, &price.OutputUSDPerMillion, &price.CacheReadUSDPerMillion, &price.CacheCreationUSDPerMillion, &requestUSD, &price.FastMultiplier, &price.LongContextEnabled, &price.LongContextThresholdTokens, &price.LongContextInputUSDPerMillion, &price.LongContextOutputUSDPerMillion, &price.LongContextCacheReadUSDPerMillion, &price.LongContextCacheCreationUSDPerMillion, &price.LongContextFastUnsupported, &price.Source, &sourceModel, &price.AutoSynced, &lastSynced, &updatedAt); err != nil {
 			return nil, err
 		}
 		if requestUSD.Valid {
@@ -552,9 +555,10 @@ func (a *App) createPrice(ctx context.Context, payload modelPricePayload) (Model
 			long_context_enabled, long_context_threshold_tokens,
 			long_context_input_usd_per_million, long_context_output_usd_per_million,
 			long_context_cache_read_usd_per_million, long_context_cache_creation_usd_per_million,
+			long_context_fast_unsupported,
 			source, source_model, auto_synced, last_synced_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual', NULL, 0, NULL, ?)
-	`, payload.Provider, payload.Model, payload.InputUSDPerMillion, payload.OutputUSDPerMillion, payload.CacheReadUSDPerMillion, payload.CacheCreationUSDPerMillion, nullableFloatArg(payload.RequestUSD), *payload.FastMultiplier, payload.LongContextEnabled, payload.LongContextThresholdTokens, payload.LongContextInputUSDPerMillion, payload.LongContextOutputUSDPerMillion, payload.LongContextCacheReadUSDPerMillion, payload.LongContextCacheCreationUSDPerMillion, now)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual', NULL, 0, NULL, ?)
+	`, payload.Provider, payload.Model, payload.InputUSDPerMillion, payload.OutputUSDPerMillion, payload.CacheReadUSDPerMillion, payload.CacheCreationUSDPerMillion, nullableFloatArg(payload.RequestUSD), *payload.FastMultiplier, payload.LongContextEnabled, payload.LongContextThresholdTokens, payload.LongContextInputUSDPerMillion, payload.LongContextOutputUSDPerMillion, payload.LongContextCacheReadUSDPerMillion, payload.LongContextCacheCreationUSDPerMillion, payload.LongContextFastUnsupported, now)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
 			return ModelPrice{}, conflictError("该 provider/model 价格已存在")
@@ -584,9 +588,10 @@ func (a *App) updatePrice(ctx context.Context, id int, payload modelPricePayload
 			SET fast_multiplier = ?, long_context_enabled = ?, long_context_threshold_tokens = ?,
 			    long_context_input_usd_per_million = ?, long_context_output_usd_per_million = ?,
 			    long_context_cache_read_usd_per_million = ?, long_context_cache_creation_usd_per_million = ?,
+			    long_context_fast_unsupported = ?,
 			    updated_at = ?
 			WHERE id = ?
-		`, *payload.FastMultiplier, payload.LongContextEnabled, payload.LongContextThresholdTokens, payload.LongContextInputUSDPerMillion, payload.LongContextOutputUSDPerMillion, payload.LongContextCacheReadUSDPerMillion, payload.LongContextCacheCreationUSDPerMillion, dbTime(time.Now()), id)
+		`, *payload.FastMultiplier, payload.LongContextEnabled, payload.LongContextThresholdTokens, payload.LongContextInputUSDPerMillion, payload.LongContextOutputUSDPerMillion, payload.LongContextCacheReadUSDPerMillion, payload.LongContextCacheCreationUSDPerMillion, payload.LongContextFastUnsupported, dbTime(time.Now()), id)
 		if err != nil {
 			return ModelPrice{}, err
 		}
@@ -603,10 +608,11 @@ func (a *App) updatePrice(ctx context.Context, id int, payload modelPricePayload
 		    cache_read_usd_per_million = ?, cache_creation_usd_per_million = ?,
 		    request_usd = ?, fast_multiplier = ?, long_context_enabled = ?, long_context_threshold_tokens = ?,
 		    long_context_input_usd_per_million = ?, long_context_output_usd_per_million = ?,
-		    long_context_cache_read_usd_per_million = ?, long_context_cache_creation_usd_per_million = ?, source = 'manual',
+		    long_context_cache_read_usd_per_million = ?, long_context_cache_creation_usd_per_million = ?,
+		    long_context_fast_unsupported = ?, source = 'manual',
 		    source_model = NULL, auto_synced = 0, last_synced_at = NULL, updated_at = ?
 		WHERE id = ?
-	`, payload.Provider, payload.Model, payload.InputUSDPerMillion, payload.OutputUSDPerMillion, payload.CacheReadUSDPerMillion, payload.CacheCreationUSDPerMillion, nullableFloatArg(payload.RequestUSD), *payload.FastMultiplier, payload.LongContextEnabled, payload.LongContextThresholdTokens, payload.LongContextInputUSDPerMillion, payload.LongContextOutputUSDPerMillion, payload.LongContextCacheReadUSDPerMillion, payload.LongContextCacheCreationUSDPerMillion, dbTime(time.Now()), id)
+	`, payload.Provider, payload.Model, payload.InputUSDPerMillion, payload.OutputUSDPerMillion, payload.CacheReadUSDPerMillion, payload.CacheCreationUSDPerMillion, nullableFloatArg(payload.RequestUSD), *payload.FastMultiplier, payload.LongContextEnabled, payload.LongContextThresholdTokens, payload.LongContextInputUSDPerMillion, payload.LongContextOutputUSDPerMillion, payload.LongContextCacheReadUSDPerMillion, payload.LongContextCacheCreationUSDPerMillion, payload.LongContextFastUnsupported, dbTime(time.Now()), id)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
 			return ModelPrice{}, conflictError("该 provider/model 价格已存在")
@@ -641,6 +647,7 @@ func (a *App) getPrice(ctx context.Context, id int) (ModelPrice, error) {
 		       long_context_enabled, long_context_threshold_tokens,
 		       long_context_input_usd_per_million, long_context_output_usd_per_million,
 		       long_context_cache_read_usd_per_million, long_context_cache_creation_usd_per_million,
+		       long_context_fast_unsupported,
 		       source, source_model, auto_synced, CAST(last_synced_at AS TEXT), CAST(updated_at AS TEXT)
 		FROM model_prices WHERE id = ?
 	`, id)
@@ -753,9 +760,10 @@ func (a *App) syncLiteLLMPrices(ctx context.Context, sourceURL string, rawData m
 				long_context_enabled, long_context_threshold_tokens,
 				long_context_input_usd_per_million, long_context_output_usd_per_million,
 				long_context_cache_read_usd_per_million, long_context_cache_creation_usd_per_million,
+				long_context_fast_unsupported,
 				source, source_model, auto_synced, last_synced_at, updated_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'litellm', ?, 1, ?, ?)
-		`, payload.Provider, payload.Model, payload.InputUSDPerMillion, payload.OutputUSDPerMillion, payload.CacheReadUSDPerMillion, payload.CacheCreationUSDPerMillion, nullableFloatArg(payload.RequestUSD), overrides.FastMultiplier, overrides.LongContextEnabled, overrides.LongContextThresholdTokens, overrides.LongContextInputUSDPerMillion, overrides.LongContextOutputUSDPerMillion, overrides.LongContextCacheReadUSDPerMillion, overrides.LongContextCacheCreationUSDPerMillion, row.modelName, now, now)
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'litellm', ?, 1, ?, ?)
+		`, payload.Provider, payload.Model, payload.InputUSDPerMillion, payload.OutputUSDPerMillion, payload.CacheReadUSDPerMillion, payload.CacheCreationUSDPerMillion, nullableFloatArg(payload.RequestUSD), overrides.FastMultiplier, overrides.LongContextEnabled, overrides.LongContextThresholdTokens, overrides.LongContextInputUSDPerMillion, overrides.LongContextOutputUSDPerMillion, overrides.LongContextCacheReadUSDPerMillion, overrides.LongContextCacheCreationUSDPerMillion, overrides.LongContextFastUnsupported, row.modelName, now, now)
 		if err != nil {
 			return nil, err
 		}
@@ -791,6 +799,7 @@ type modelPriceLocalOverrides struct {
 	LongContextOutputUSDPerMillion        float64
 	LongContextCacheReadUSDPerMillion     float64
 	LongContextCacheCreationUSDPerMillion float64
+	LongContextFastUnsupported            bool
 }
 
 func defaultModelPriceLocalOverrides() modelPriceLocalOverrides {
@@ -802,7 +811,8 @@ func loadLiteLLMLocalOverrides(ctx context.Context, tx *sql.Tx) (map[string]mode
 		SELECT provider, model, source_model, fast_multiplier,
 		       long_context_enabled, long_context_threshold_tokens,
 		       long_context_input_usd_per_million, long_context_output_usd_per_million,
-		       long_context_cache_read_usd_per_million, long_context_cache_creation_usd_per_million
+		       long_context_cache_read_usd_per_million, long_context_cache_creation_usd_per_million,
+		       long_context_fast_unsupported
 		FROM model_prices
 		WHERE source = 'litellm'
 	`)
@@ -816,7 +826,7 @@ func loadLiteLLMLocalOverrides(ctx context.Context, tx *sql.Tx) (map[string]mode
 		var provider, model string
 		var sourceModel sql.NullString
 		overrides := defaultModelPriceLocalOverrides()
-		if err := rows.Scan(&provider, &model, &sourceModel, &overrides.FastMultiplier, &overrides.LongContextEnabled, &overrides.LongContextThresholdTokens, &overrides.LongContextInputUSDPerMillion, &overrides.LongContextOutputUSDPerMillion, &overrides.LongContextCacheReadUSDPerMillion, &overrides.LongContextCacheCreationUSDPerMillion); err != nil {
+		if err := rows.Scan(&provider, &model, &sourceModel, &overrides.FastMultiplier, &overrides.LongContextEnabled, &overrides.LongContextThresholdTokens, &overrides.LongContextInputUSDPerMillion, &overrides.LongContextOutputUSDPerMillion, &overrides.LongContextCacheReadUSDPerMillion, &overrides.LongContextCacheCreationUSDPerMillion, &overrides.LongContextFastUnsupported); err != nil {
 			return nil, nil, err
 		}
 		overrides.FastMultiplier = normalizedFastMultiplier(overrides.FastMultiplier)
@@ -1018,6 +1028,9 @@ func usagePromptTokens(record UsageRecord) int {
 
 func usageFastMultiplier(record UsageRecord, price *ModelPrice) float64 {
 	if !isFastServiceTier(record.RequestServiceTier) {
+		return 1
+	}
+	if price.LongContextFastUnsupported && usesLongContextRates(record, price) {
 		return 1
 	}
 	return normalizedFastMultiplier(price.FastMultiplier)

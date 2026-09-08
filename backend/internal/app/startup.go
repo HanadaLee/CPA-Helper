@@ -224,6 +224,7 @@ func requireSchemaShape(ctx context.Context, db *sql.DB) error {
 		{"model_prices", "long_context_output_usd_per_million"},
 		{"model_prices", "long_context_cache_read_usd_per_million"},
 		{"model_prices", "long_context_cache_creation_usd_per_million"},
+		{"model_prices", "long_context_fast_unsupported"},
 		{"usage_records", "request_service_tier"},
 		{"users", "quota_daily_usd"},
 		{"users", "quota_weekly_usd"},

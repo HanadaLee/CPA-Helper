@@ -152,6 +152,7 @@ const form = reactive<ModelPricePayload>({
   long_context_output_usd_per_million: 0,
   long_context_cache_read_usd_per_million: 0,
   long_context_cache_creation_usd_per_million: 0,
+  long_context_fast_unsupported: false,
 })
 const proxyForm = reactive<LiteLLMProxySettingsPayload>({
   enabled: false,
@@ -348,6 +349,9 @@ const catalogNotice = computed(() => {
   return ''
 })
 const isRequestPriceForm = computed(() => billingUnitForModel(form.model) === 'request')
+const showLongContextFastUnsupported = computed(
+  () => form.long_context_enabled && form.fast_multiplier !== 1,
+)
 const priceSaveHint = computed(() =>
   isRequestPriceForm.value
     ? t(
@@ -355,8 +359,8 @@ const priceSaveHint = computed(() =>
         'Image models are charged a fixed amount per successful call. Changing only the FAST multiplier keeps LiteLLM sync enabled.',
       )
     : t(
-        '基础价格修改后会转为手动价格；仅修改 FAST 倍率不会取消 LiteLLM 同步。',
-        'Changing base prices makes them manual. Changing only the FAST multiplier keeps LiteLLM sync enabled.',
+        '基础价格修改后会转为手动价格；仅修改 FAST 倍率或长上下文设置不会取消 LiteLLM 同步。',
+        'Changing base prices makes them manual. Changing only the FAST multiplier or long-context settings keeps LiteLLM sync enabled.',
       ),
 )
 
@@ -437,6 +441,7 @@ function resetForm() {
   form.long_context_output_usd_per_million = 0
   form.long_context_cache_read_usd_per_million = 0
   form.long_context_cache_creation_usd_per_million = 0
+  form.long_context_fast_unsupported = false
 }
 
 async function refresh() {
@@ -470,6 +475,7 @@ function openCreate(prefill: Partial<ModelPricePayload> = {}) {
   form.long_context_output_usd_per_million = prefill.long_context_output_usd_per_million ?? 0
   form.long_context_cache_read_usd_per_million = prefill.long_context_cache_read_usd_per_million ?? 0
   form.long_context_cache_creation_usd_per_million = prefill.long_context_cache_creation_usd_per_million ?? 0
+  form.long_context_fast_unsupported = prefill.long_context_fast_unsupported ?? false
   modalOpen.value = true
 }
 
@@ -496,6 +502,7 @@ function openEdit(row: ModelPrice) {
   form.long_context_output_usd_per_million = row.long_context_output_usd_per_million
   form.long_context_cache_read_usd_per_million = row.long_context_cache_read_usd_per_million
   form.long_context_cache_creation_usd_per_million = row.long_context_cache_creation_usd_per_million
+  form.long_context_fast_unsupported = row.long_context_fast_unsupported
   modalOpen.value = true
 }
 
@@ -556,6 +563,7 @@ async function savePrice() {
     long_context_output_usd_per_million: requestPriceMode ? 0 : form.long_context_output_usd_per_million,
     long_context_cache_read_usd_per_million: requestPriceMode ? 0 : form.long_context_cache_read_usd_per_million,
     long_context_cache_creation_usd_per_million: requestPriceMode ? 0 : form.long_context_cache_creation_usd_per_million,
+    long_context_fast_unsupported: !requestPriceMode && form.long_context_fast_unsupported,
   }
   if (!payload.provider || !payload.model) {
     message.error(t('服务商和模型不能为空', 'Provider and model are required'))
@@ -683,10 +691,14 @@ function fastMultiplierValue(row: PriceDisplayRow): string {
 }
 
 function longContextBadgeTitle(price: ModelPrice): string {
-  return t(
+  const thresholdDescription = t(
     `输入上下文超过 ${formatInteger(price.long_context_threshold_tokens)} Token 后使用长上下文费率`,
     `Uses long-context rates above ${formatInteger(price.long_context_threshold_tokens)} input tokens`,
   )
+  if (!price.long_context_fast_unsupported) {
+    return thresholdDescription
+  }
+  return `${thresholdDescription}${t('；长上下文不支持 FAST 模式', '; long context does not support FAST mode')}`
 }
 
 function billingUnitLabel(row: PriceDisplayRow): string {
@@ -853,7 +865,11 @@ onMounted(() => {
                       class="model-availability-tag"
                       :title="longContextBadgeTitle(row.price)"
                     >
-                      {{ t('长上下文', 'Long context') }}
+                      {{
+                        row.price.long_context_fast_unsupported
+                          ? t('长上下文 · 无 FAST', 'Long context · no FAST')
+                          : t('长上下文', 'Long context')
+                      }}
                     </Badge>
                   </div>
                   <div v-if="row.name && row.name !== row.id" class="model-sub" :title="row.name">
@@ -1039,8 +1055,8 @@ onMounted(() => {
                     <FieldDescription>
                       {{
                         t(
-                          '输入上下文 Token 超出阈值后，整条请求使用长上下文费率；FAST 请求仍会继续应用 FAST 倍率。',
-                          'When input context exceeds the threshold, the entire request uses long-context rates. FAST requests still apply the FAST multiplier.',
+                          '输入上下文 Token 超出阈值后，整条请求使用长上下文费率；FAST 请求默认继续应用倍率，不支持时可在下方标记。',
+                          'When input context exceeds the threshold, the entire request uses long-context rates. FAST requests apply the multiplier by default and can be marked unsupported below.',
                         )
                       }}
                     </FieldDescription>
@@ -1052,7 +1068,7 @@ onMounted(() => {
                   />
                 </Field>
 
-                <div v-if="form.long_context_enabled" class="long-context-rate-grid">
+                <FieldGroup v-if="form.long_context_enabled" class="long-context-rate-grid">
                   <Field class="wide-form-item">
                     <FieldLabel for="price-long-context-threshold">
                       {{ t('Token 阈值', 'Token threshold') }}
@@ -1122,7 +1138,30 @@ onMounted(() => {
                       @update:model-value="setPriceNumber('long_context_cache_creation_usd_per_million', $event)"
                     />
                   </Field>
-                </div>
+                  <Field
+                    v-if="showLongContextFastUnsupported"
+                    orientation="horizontal"
+                    class="wide-form-item long-context-fast-row"
+                  >
+                    <FieldContent>
+                      <FieldLabel for="price-long-context-fast-unsupported">
+                        {{ t('长上下文不支持 FAST 模式', 'FAST mode unavailable for long context') }}
+                      </FieldLabel>
+                      <FieldDescription>
+                        {{
+                          t(
+                            '开启后，超过长上下文阈值的请求不叠加 FAST 倍率；短上下文计费不受影响。',
+                            'When enabled, requests above the long-context threshold do not apply the FAST multiplier. Short-context billing is unchanged.',
+                          )
+                        }}
+                      </FieldDescription>
+                    </FieldContent>
+                    <Switch
+                      id="price-long-context-fast-unsupported"
+                      v-model="form.long_context_fast_unsupported"
+                    />
+                  </Field>
+                </FieldGroup>
               </div>
             </template>
           </FieldGroup>
@@ -1364,6 +1403,13 @@ onMounted(() => {
   gap: 16px;
   padding-top: 16px;
   border-top: 1px solid var(--border);
+}
+
+.long-context-fast-row {
+  gap: 20px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
 }
 
 .proxy-switch-row {

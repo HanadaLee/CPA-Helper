@@ -196,6 +196,45 @@ func TestRecordCostUsesLongContextRatesAboveInputThreshold(t *testing.T) {
 	}
 }
 
+func TestRecordCostSkipsFastMultiplierWhenLongContextDoesNotSupportFast(t *testing.T) {
+	provider := "openai"
+	model := "gpt-long-context-no-fast"
+	serviceTier := "fast"
+	prices := map[[2]string]ModelPrice{
+		priceKey(provider, model): {
+			Provider:                      provider,
+			Model:                         model,
+			InputUSDPerMillion:            2,
+			FastMultiplier:                3,
+			LongContextEnabled:            true,
+			LongContextThresholdTokens:    100,
+			LongContextInputUSDPerMillion: 6,
+			LongContextFastUnsupported:    true,
+		},
+	}
+	record := UsageRecord{
+		Provider:           &provider,
+		Model:              &model,
+		RequestServiceTier: &serviceTier,
+		InputTokens:        101,
+		TotalTokens:        101,
+	}
+
+	amount, unpriced := recordCost(record, prices)
+	wantLong := mathRound(101*6/1_000_000.0, 8)
+	if unpriced || amount != wantLong {
+		t.Fatalf("unsupported long-context FAST cost = %v unpriced=%v, want %v false", amount, unpriced, wantLong)
+	}
+
+	record.InputTokens = 100
+	record.TotalTokens = 100
+	amount, unpriced = recordCost(record, prices)
+	wantShort := mathRound(100*2*3/1_000_000.0, 8)
+	if unpriced || amount != wantShort {
+		t.Fatalf("short-context FAST cost = %v unpriced=%v, want %v false", amount, unpriced, wantShort)
+	}
+}
+
 func TestUsagePromptTokensIncludesSeparatelyReportedCachedInput(t *testing.T) {
 	provider := "openai"
 	record := UsageRecord{
@@ -324,10 +363,12 @@ func TestModelPriceAPIRoundTripsLongContextRates(t *testing.T) {
 		"long_context_output_usd_per_million":         6,
 		"long_context_cache_read_usd_per_million":     0.3,
 		"long_context_cache_creation_usd_per_million": 0.5,
+		"long_context_fast_unsupported":               true,
 	}, cookies, &created)
 	if !created.LongContextEnabled || created.LongContextThresholdTokens != 200_000 ||
 		created.LongContextInputUSDPerMillion != 3 || created.LongContextOutputUSDPerMillion != 6 ||
-		created.LongContextCacheReadUSDPerMillion != 0.3 || created.LongContextCacheCreationUSDPerMillion != 0.5 {
+		created.LongContextCacheReadUSDPerMillion != 0.3 || created.LongContextCacheCreationUSDPerMillion != 0.5 ||
+		!created.LongContextFastUnsupported {
 		t.Fatalf("created long-context price = %#v", created)
 	}
 }
@@ -367,6 +408,7 @@ func TestUpdateAutoSyncedPriceLocalOverridesKeepLiteLLMSync(t *testing.T) {
 		LongContextOutputUSDPerMillion:        4,
 		LongContextCacheReadUSDPerMillion:     0.2,
 		LongContextCacheCreationUSDPerMillion: 0.4,
+		LongContextFastUnsupported:            true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -377,7 +419,7 @@ func TestUpdateAutoSyncedPriceLocalOverridesKeepLiteLLMSync(t *testing.T) {
 	if updated.FastMultiplier != 3 {
 		t.Fatalf("updated fast multiplier = %v, want 3", updated.FastMultiplier)
 	}
-	if !updated.LongContextEnabled || updated.LongContextThresholdTokens != 200_000 || updated.LongContextInputUSDPerMillion != 2 {
+	if !updated.LongContextEnabled || updated.LongContextThresholdTokens != 200_000 || updated.LongContextInputUSDPerMillion != 2 || !updated.LongContextFastUnsupported {
 		t.Fatalf("updated long-context overrides = %#v, want enabled threshold 200000 input 2", updated)
 	}
 }
@@ -462,8 +504,9 @@ func TestSyncLiteLLMPricesReplacesLiteLLMSource(t *testing.T) {
 			long_context_enabled, long_context_threshold_tokens,
 			long_context_input_usd_per_million, long_context_output_usd_per_million,
 			long_context_cache_read_usd_per_million, long_context_cache_creation_usd_per_million,
+			long_context_fast_unsupported,
 			source, source_model, auto_synced, last_synced_at, updated_at
-		) VALUES ('openai', 'gpt-new-model', 9, 9, 9, 9, 2.5, 1, 200000, 3, 6, 0.3, 0.6,
+		) VALUES ('openai', 'gpt-new-model', 9, 9, 9, 9, 2.5, 1, 200000, 3, 6, 0.3, 0.6, 1,
 		          'litellm', 'gpt-new-model', 1, ?, ?)
 	`, now, now); err != nil {
 		t.Fatalf("seed customized LiteLLM price: %v", err)
@@ -518,17 +561,18 @@ func TestSyncLiteLLMPricesReplacesLiteLLMSource(t *testing.T) {
 		t.Fatalf("claude cache prices = read %v creation %v, want 0.3 and 3.75", cacheRead, cacheCreation)
 	}
 	var syncedInput, fastMultiplier, longInput float64
-	var longEnabled bool
+	var longEnabled, longFastUnsupported bool
 	var longThreshold int
 	if err := app.db.QueryRow(`
 		SELECT input_usd_per_million, fast_multiplier, long_context_enabled,
-		       long_context_threshold_tokens, long_context_input_usd_per_million
+		       long_context_threshold_tokens, long_context_input_usd_per_million,
+		       long_context_fast_unsupported
 		FROM model_prices WHERE source = 'litellm' AND model = 'gpt-new-model'
-	`).Scan(&syncedInput, &fastMultiplier, &longEnabled, &longThreshold, &longInput); err != nil {
+	`).Scan(&syncedInput, &fastMultiplier, &longEnabled, &longThreshold, &longInput, &longFastUnsupported); err != nil {
 		t.Fatalf("query customized LiteLLM price: %v", err)
 	}
-	if syncedInput != 1 || fastMultiplier != 2.5 || !longEnabled || longThreshold != 200_000 || longInput != 3 {
-		t.Fatalf("synced base/local overrides = %v/%v/%v/%v/%v, want 1/2.5/true/200000/3", syncedInput, fastMultiplier, longEnabled, longThreshold, longInput)
+	if syncedInput != 1 || fastMultiplier != 2.5 || !longEnabled || longThreshold != 200_000 || longInput != 3 || !longFastUnsupported {
+		t.Fatalf("synced base/local overrides = %v/%v/%v/%v/%v/%v, want 1/2.5/true/200000/3/true", syncedInput, fastMultiplier, longEnabled, longThreshold, longInput, longFastUnsupported)
 	}
 }
 

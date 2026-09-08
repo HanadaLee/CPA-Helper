@@ -563,6 +563,7 @@ export interface ModelPrice {
   long_context_output_usd_per_million: number
   long_context_cache_read_usd_per_million: number
   long_context_cache_creation_usd_per_million: number
+  long_context_fast_unsupported: boolean
   billing_unit: 'token' | 'request' | string
   source: 'manual' | 'litellm' | string
   source_model: string | null
@@ -586,6 +587,7 @@ export interface ModelPricePayload {
   long_context_output_usd_per_million: number
   long_context_cache_read_usd_per_million: number
   long_context_cache_creation_usd_per_million: number
+  long_context_fast_unsupported: boolean
 }
 
 export interface ModelPriceSyncResponse {
@@ -710,6 +712,7 @@ export interface AvailableModelPrice {
   long_context_output_usd_per_million: number
   long_context_cache_read_usd_per_million: number
   long_context_cache_creation_usd_per_million: number
+  long_context_fast_unsupported: boolean
   billing_unit: 'token' | 'request' | string
 }
 

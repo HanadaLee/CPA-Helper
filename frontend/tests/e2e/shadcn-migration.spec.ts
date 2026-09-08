@@ -628,9 +628,18 @@ test('all migrated routes render and core controls remain interactive', async ({
     valid: input.validity.valid,
     stepMismatch: input.validity.stepMismatch,
   }))).toEqual({ valid: true, stepMismatch: false })
+  const longContextFastUnsupported = priceDialog.getByRole('switch', {
+    name: /长上下文不支持 FAST 模式|FAST mode unavailable for long context/,
+  })
+  await expect(longContextFastUnsupported).toHaveCount(0)
   const longContextSwitch = priceDialog.getByRole('switch', { name: /启用长上下文费率|Enable long-context rates/ })
   await expect(longContextSwitch).toBeVisible()
   await longContextSwitch.click()
+  await expect(longContextFastUnsupported).toBeVisible()
+  await fastMultiplierInput.fill('1')
+  await expect(longContextFastUnsupported).toHaveCount(0)
+  await fastMultiplierInput.fill('2')
+  await expect(longContextFastUnsupported).toBeVisible()
   await expect(priceDialog.locator('#price-long-context-threshold')).toBeVisible()
   await expect(priceDialog.locator('#price-long-context-input')).toBeVisible()
   await expect(priceDialog.locator('#price-long-context-output')).toBeVisible()
@@ -953,6 +962,7 @@ test('available models uses compact price columns and shows the FAST multiplier'
               long_context_output_usd_per_million: 16,
               long_context_cache_read_usd_per_million: 0.4,
               long_context_cache_creation_usd_per_million: 4,
+              long_context_fast_unsupported: false,
               billing_unit: 'token',
             },
           },

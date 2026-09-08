@@ -89,6 +89,7 @@ func TestRunMigrationsCreatesGooseVersionAndFinalSchema(t *testing.T) {
 		"long_context_output_usd_per_million",
 		"long_context_cache_read_usd_per_million",
 		"long_context_cache_creation_usd_per_million",
+		"long_context_fast_unsupported",
 	} {
 		if !testColumnExists(t, app.db, "model_prices", column) {
 			t.Fatalf("model_prices.%s was not created", column)
