@@ -364,11 +364,17 @@ func (a *App) resolveCASUser(ctx context.Context, cfg AppConfig, profile casProf
 	nickname := normalizeCASProfileValue(firstNonBlank(profile.DisplayName, profile.Email, profile.Username), 240)
 	email := normalizeCASProfileValue(profile.Email, 320)
 	avatar := normalizeCASProfileValue(profile.Avatar, 2048)
+	lifetimeQuotaUSD, monthlyQuotaUSD, weeklyQuotaUSD, dailyQuotaUSD := newUserQuotaArgs(cfg.NewUserQuota)
 	now := dbTime(time.Now())
 	result, insertErr := a.db.ExecContext(ctx, `
-		INSERT INTO users (username, is_admin, nickname, cas_bound, cas_email, cas_avatar, created_at, updated_at)
-		VALUES (?, 0, ?, 1, ?, ?, ?, ?)
-	`, profile.Username, nickname, email, avatar, now, now)
+		INSERT INTO users (
+			username, is_admin, nickname, cas_bound, cas_email, cas_avatar,
+			quota_lifetime_usd, quota_monthly_usd, quota_weekly_usd, quota_daily_usd,
+			created_at, updated_at
+		)
+		VALUES (?, 0, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, profile.Username, nickname, email, avatar,
+		lifetimeQuotaUSD, monthlyQuotaUSD, weeklyQuotaUSD, dailyQuotaUSD, now, now)
 	if insertErr != nil {
 		user, hash, salt, disabled, err = a.userCredentialsByUsername(ctx, profile.Username)
 		if err != nil {

@@ -74,13 +74,17 @@ func TestCASLoginCallbackAutoCreatesUserAndLogsOut(t *testing.T) {
 	}
 
 	requestJSON(t, handler, http.MethodPut, "/api/settings", map[string]any{
-		"cas_enabled":           true,
-		"cas_default_login":     true,
-		"cas_base_url":          casServer.URL + "/cas/app/",
-		"cas_validation_url":    casServer.URL + "/cas/app/",
-		"cas_validation_host":   "cas.internal.test",
-		"cas_public_url":        "https://helper.example.test/",
-		"cas_auto_create_users": true,
+		"cas_enabled":                 true,
+		"cas_default_login":           true,
+		"cas_base_url":                casServer.URL + "/cas/app/",
+		"cas_validation_url":          casServer.URL + "/cas/app/",
+		"cas_validation_host":         "cas.internal.test",
+		"cas_public_url":              "https://helper.example.test/",
+		"cas_auto_create_users":       true,
+		"new_user_quota_daily_usd":    1,
+		"new_user_quota_weekly_usd":   2,
+		"new_user_quota_monthly_usd":  3,
+		"new_user_quota_lifetime_usd": 4,
 	}, adminCookies, &settings)
 	if !settings.CASEnabled || !settings.CASDefaultLogin {
 		t.Fatal("CAS and default CAS login should be enabled after saving settings")
@@ -173,12 +177,25 @@ func TestCASLoginCallbackAutoCreatesUserAndLogsOut(t *testing.T) {
 
 	var users []struct {
 		Username string `json:"username"`
+		Quota    struct {
+			Unlimited        bool     `json:"unlimited"`
+			LifetimeQuotaUSD *float64 `json:"lifetime_quota_usd"`
+			MonthlyQuotaUSD  *float64 `json:"monthly_quota_usd"`
+			WeeklyQuotaUSD   *float64 `json:"weekly_quota_usd"`
+			DailyQuotaUSD    *float64 `json:"daily_quota_usd"`
+		} `json:"quota"`
 	}
 	requestJSON(t, handler, http.MethodGet, "/api/users", nil, adminCookies, &users)
 	count := 0
 	for _, user := range users {
 		if user.Username == "cas-member" {
 			count++
+			if user.Quota.Unlimited || user.Quota.LifetimeQuotaUSD == nil || *user.Quota.LifetimeQuotaUSD != 4 ||
+				user.Quota.MonthlyQuotaUSD == nil || *user.Quota.MonthlyQuotaUSD != 3 ||
+				user.Quota.WeeklyQuotaUSD == nil || *user.Quota.WeeklyQuotaUSD != 2 ||
+				user.Quota.DailyQuotaUSD == nil || *user.Quota.DailyQuotaUSD != 1 {
+				t.Fatalf("CAS user quota = %#v", user.Quota)
+			}
 		}
 	}
 	if count != 1 {

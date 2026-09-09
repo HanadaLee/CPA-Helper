@@ -129,3 +129,75 @@ func TestSettingsRequireAtLeastThirtyOneRetentionDays(t *testing.T) {
 		t.Fatalf("updated usage detail retention = %d, want 31", settings.UsageDetailRetentionDays)
 	}
 }
+
+func TestSettingsConfigureNewUserQuota(t *testing.T) {
+	t.Setenv("CPA_HELPER_DATA_DIR", t.TempDir())
+
+	app, err := backendApp.New()
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	defer app.Close()
+
+	handler := app.Routes()
+	cookies := requestJSON(t, handler, http.MethodPost, "/api/auth/setup", map[string]any{
+		"username": "admin",
+		"password": "test-password",
+		"nickname": "Admin",
+	}, nil, nil)
+
+	type quotaSettingsResponse struct {
+		Unlimited   bool    `json:"new_user_quota_unlimited"`
+		DailyUSD    float64 `json:"new_user_quota_daily_usd"`
+		WeeklyUSD   float64 `json:"new_user_quota_weekly_usd"`
+		MonthlyUSD  float64 `json:"new_user_quota_monthly_usd"`
+		LifetimeUSD float64 `json:"new_user_quota_lifetime_usd"`
+	}
+	settings := quotaSettingsResponse{}
+	requestJSON(t, handler, http.MethodGet, "/api/settings", nil, cookies, &settings)
+	if settings.Unlimited || settings.DailyUSD != 0 || settings.WeeklyUSD != 0 || settings.MonthlyUSD != 0 || settings.LifetimeUSD != 0 {
+		t.Fatalf("default new-user quota settings = %+v, want four zero quotas", settings)
+	}
+
+	requestJSONExpectStatus(t, handler, http.MethodPut, "/api/settings", map[string]any{
+		"new_user_quota_daily_usd": -0.01,
+	}, cookies, http.StatusUnprocessableEntity)
+
+	requestJSON(t, handler, http.MethodPut, "/api/settings", map[string]any{
+		"new_user_quota_daily_usd":    1.25,
+		"new_user_quota_weekly_usd":   5.5,
+		"new_user_quota_monthly_usd":  20.75,
+		"new_user_quota_lifetime_usd": 100.125,
+	}, cookies, &settings)
+	if settings.Unlimited || settings.DailyUSD != 1.25 || settings.WeeklyUSD != 5.5 || settings.MonthlyUSD != 20.75 || settings.LifetimeUSD != 100.125 {
+		t.Fatalf("updated new-user quota settings = %+v", settings)
+	}
+
+	member := quotaAPIUserResponse{}
+	requestJSON(t, handler, http.MethodPost, "/api/users", map[string]any{
+		"username": "configured-member",
+		"password": "member-password",
+		"nickname": "Configured member",
+		"is_admin": false,
+	}, cookies, &member)
+	if member.Quota.Unlimited || member.Quota.LifetimeQuotaUSD == nil || *member.Quota.LifetimeQuotaUSD != 100.125 ||
+		member.Quota.MonthlyQuotaUSD == nil || *member.Quota.MonthlyQuotaUSD != 20.75 ||
+		member.Quota.WeeklyQuotaUSD == nil || *member.Quota.WeeklyQuotaUSD != 5.5 ||
+		member.Quota.DailyQuotaUSD == nil || *member.Quota.DailyQuotaUSD != 1.25 {
+		t.Fatalf("configured member quota = %#v", member.Quota)
+	}
+
+	requestJSON(t, handler, http.MethodPut, "/api/settings", map[string]any{
+		"new_user_quota_unlimited": true,
+	}, cookies, &settings)
+	unlimitedMember := quotaAPIUserResponse{}
+	requestJSON(t, handler, http.MethodPost, "/api/users", map[string]any{
+		"username": "unlimited-member",
+		"password": "member-password",
+		"nickname": "Unlimited member",
+		"is_admin": false,
+	}, cookies, &unlimitedMember)
+	if !unlimitedMember.Quota.Unlimited || !unlimitedMember.Quota.CanCreateKeys {
+		t.Fatalf("unlimited member quota = %#v", unlimitedMember.Quota)
+	}
+}

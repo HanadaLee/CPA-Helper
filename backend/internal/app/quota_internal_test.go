@@ -361,7 +361,7 @@ func TestQuotaUnlimitedUsageSkipsCharges(t *testing.T) {
 	}
 }
 
-func TestQuotaDefaultsToUnlimited(t *testing.T) {
+func TestQuotaNullFieldsMeanUnlimited(t *testing.T) {
 	t.Setenv("CPA_HELPER_DATA_DIR", t.TempDir())
 	app, err := New()
 	if err != nil {
@@ -375,7 +375,7 @@ func TestQuotaDefaultsToUnlimited(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !status.Unlimited || !status.CanCreateKeys {
-		t.Fatalf("default quota status = %#v, want unlimited and creatable", status)
+		t.Fatalf("null-field quota status = %#v, want unlimited and creatable", status)
 	}
 }
 

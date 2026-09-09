@@ -401,6 +401,17 @@ test('all migrated routes render and core controls remain interactive', async ({
   await expect(collectionSettingsCard.getByText(/^(采集与保留参数|Collection and retention)$/i)).toBeVisible()
   await expect(collectionSettingsCard.getByLabel(/批量读取数|Batch size/i)).toBeVisible()
 
+  await page.getByRole('tab', { name: /认证配置|Authentication/i }).click()
+  await expect(page.getByRole('tab', { name: /CAS 登录|CAS Login/i })).toHaveCount(0)
+  const newUserQuotaCard = page.locator('[data-slot="card"]').filter({
+    has: page.getByText(/新用户默认配额|Default quotas for new users/i, { exact: true }),
+  })
+  await expect(newUserQuotaCard.getByText(/不限制余额|Unlimited balance/i, { exact: true })).toBeVisible()
+  await expect(newUserQuotaCard.getByLabel(/每日|Daily/i)).toHaveValue('0')
+  await expect(newUserQuotaCard.getByLabel(/每周|Weekly/i)).toHaveValue('0')
+  await expect(newUserQuotaCard.getByLabel(/每月|Monthly/i)).toHaveValue('0')
+  await expect(newUserQuotaCard.getByLabel(/不限时|Lifetime/i)).toHaveValue('0')
+
   await page.goto('/admin/usage')
   const headerLayout = await page.locator('.app-header').evaluate((header) => {
     const headerBox = header.getBoundingClientRect()

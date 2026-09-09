@@ -329,6 +329,11 @@ type settingsUpdateRequest struct {
 	CASValidationHost          *string                      `json:"cas_validation_host"`
 	CASPublicURL               *string                      `json:"cas_public_url"`
 	CASAutoCreateUsers         *bool                        `json:"cas_auto_create_users"`
+	NewUserQuotaUnlimited      *bool                        `json:"new_user_quota_unlimited"`
+	NewUserQuotaDailyUSD       *float64                     `json:"new_user_quota_daily_usd"`
+	NewUserQuotaWeeklyUSD      *float64                     `json:"new_user_quota_weekly_usd"`
+	NewUserQuotaMonthlyUSD     *float64                     `json:"new_user_quota_monthly_usd"`
+	NewUserQuotaLifetimeUSD    *float64                     `json:"new_user_quota_lifetime_usd"`
 }
 
 func normalizeBrandingText(value, label string, maxLength int) (string, error) {
@@ -554,6 +559,37 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) error {
 		if payload.CASAutoCreateUsers != nil {
 			cfg.CAS.AutoCreateUsers = *payload.CASAutoCreateUsers
 		}
+		if payload.NewUserQuotaUnlimited != nil {
+			cfg.NewUserQuota.Unlimited = *payload.NewUserQuotaUnlimited
+		}
+		if payload.NewUserQuotaDailyUSD != nil {
+			value, err := normalizedQuotaAmount(payload.NewUserQuotaDailyUSD)
+			if err != nil {
+				return err
+			}
+			cfg.NewUserQuota.DailyUSD = *value
+		}
+		if payload.NewUserQuotaWeeklyUSD != nil {
+			value, err := normalizedQuotaAmount(payload.NewUserQuotaWeeklyUSD)
+			if err != nil {
+				return err
+			}
+			cfg.NewUserQuota.WeeklyUSD = *value
+		}
+		if payload.NewUserQuotaMonthlyUSD != nil {
+			value, err := normalizedQuotaAmount(payload.NewUserQuotaMonthlyUSD)
+			if err != nil {
+				return err
+			}
+			cfg.NewUserQuota.MonthlyUSD = *value
+		}
+		if payload.NewUserQuotaLifetimeUSD != nil {
+			value, err := normalizedQuotaAmount(payload.NewUserQuotaLifetimeUSD)
+			if err != nil {
+				return err
+			}
+			cfg.NewUserQuota.LifetimeUSD = *value
+		}
 		cfg.CAS, err = normalizeCASConfig(cfg.CAS)
 		if err != nil {
 			return err
@@ -596,6 +632,11 @@ func settingsResponse(cfg AppConfig) map[string]any {
 		"cas_validation_host":           cfg.CAS.ValidationHost,
 		"cas_public_url":                cfg.CAS.PublicURL,
 		"cas_auto_create_users":         cfg.CAS.AutoCreateUsers,
+		"new_user_quota_unlimited":      cfg.NewUserQuota.Unlimited,
+		"new_user_quota_daily_usd":      cfg.NewUserQuota.DailyUSD,
+		"new_user_quota_weekly_usd":     cfg.NewUserQuota.WeeklyUSD,
+		"new_user_quota_monthly_usd":    cfg.NewUserQuota.MonthlyUSD,
+		"new_user_quota_lifetime_usd":   cfg.NewUserQuota.LifetimeUSD,
 	}
 }
 

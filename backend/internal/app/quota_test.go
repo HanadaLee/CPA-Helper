@@ -14,6 +14,9 @@ type quotaAPIUserResponse struct {
 		Unlimited        bool     `json:"unlimited"`
 		CanCreateKeys    bool     `json:"can_create_keys"`
 		LifetimeQuotaUSD *float64 `json:"lifetime_quota_usd"`
+		MonthlyQuotaUSD  *float64 `json:"monthly_quota_usd"`
+		WeeklyQuotaUSD   *float64 `json:"weekly_quota_usd"`
+		DailyQuotaUSD    *float64 `json:"daily_quota_usd"`
 	} `json:"quota"`
 }
 
@@ -49,8 +52,12 @@ func TestQuotaAPIPermissionsAndAccountStatus(t *testing.T) {
 		"nickname": "Member",
 		"is_admin": false,
 	}, adminCookies, &member)
-	if !member.Quota.Unlimited || !member.Quota.CanCreateKeys {
-		t.Fatalf("new user quota = %#v, want unlimited and creatable", member.Quota)
+	if member.Quota.Unlimited || member.Quota.CanCreateKeys ||
+		member.Quota.LifetimeQuotaUSD == nil || *member.Quota.LifetimeQuotaUSD != 0 ||
+		member.Quota.MonthlyQuotaUSD == nil || *member.Quota.MonthlyQuotaUSD != 0 ||
+		member.Quota.WeeklyQuotaUSD == nil || *member.Quota.WeeklyQuotaUSD != 0 ||
+		member.Quota.DailyQuotaUSD == nil || *member.Quota.DailyQuotaUSD != 0 {
+		t.Fatalf("new user quota = %#v, want four zero quotas", member.Quota)
 	}
 
 	lifetime := 1.25

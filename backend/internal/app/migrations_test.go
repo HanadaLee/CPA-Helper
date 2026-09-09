@@ -135,6 +135,11 @@ func TestRunMigrationsCreatesGooseVersionAndFinalSchema(t *testing.T) {
 			t.Fatalf("app_settings.%s was not created", column)
 		}
 	}
+	for _, column := range []string{"new_user_quota_unlimited", "new_user_quota_daily_usd", "new_user_quota_weekly_usd", "new_user_quota_monthly_usd", "new_user_quota_lifetime_usd"} {
+		if !testColumnExists(t, app.db, "app_settings", column) {
+			t.Fatalf("app_settings.%s was not created", column)
+		}
+	}
 	for _, column := range []string{"cas_bound", "cas_email", "cas_avatar"} {
 		if !testColumnExists(t, app.db, "users", column) {
 			t.Fatalf("users.%s was not created", column)

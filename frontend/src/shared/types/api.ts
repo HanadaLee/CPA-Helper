@@ -71,6 +71,11 @@ export interface SettingsResponse extends BrandingResponse {
   cas_validation_host: string
   cas_public_url: string
   cas_auto_create_users: boolean
+  new_user_quota_unlimited: boolean
+  new_user_quota_daily_usd: number
+  new_user_quota_weekly_usd: number
+  new_user_quota_monthly_usd: number
+  new_user_quota_lifetime_usd: number
 }
 
 export interface SettingsUpdatePayload {
@@ -98,6 +103,11 @@ export interface SettingsUpdatePayload {
   cas_validation_host?: string
   cas_public_url?: string
   cas_auto_create_users?: boolean
+  new_user_quota_unlimited?: boolean
+  new_user_quota_daily_usd?: number
+  new_user_quota_weekly_usd?: number
+  new_user_quota_monthly_usd?: number
+  new_user_quota_lifetime_usd?: number
 }
 
 export interface ModelRequestGuide {

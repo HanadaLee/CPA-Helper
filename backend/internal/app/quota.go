@@ -512,6 +512,13 @@ func normalizedQuotaAmount(value *float64) (*float64, error) {
 	return &normalized, nil
 }
 
+func newUserQuotaArgs(cfg NewUserQuotaConfig) (lifetime, monthly, weekly, daily any) {
+	if cfg.Unlimited {
+		return nil, nil, nil, nil
+	}
+	return cfg.LifetimeUSD, cfg.MonthlyUSD, cfg.WeeklyUSD, cfg.DailyUSD
+}
+
 func quotaAmountArg(value *float64) any {
 	if value == nil {
 		return nil

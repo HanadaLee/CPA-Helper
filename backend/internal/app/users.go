@@ -400,11 +400,21 @@ func (a *App) createUser(ctx context.Context, payload userPayload) (UserSummaryR
 	if err != nil {
 		return UserSummaryResponse{}, err
 	}
+	cfg, err := a.loadConfig(ctx)
+	if err != nil {
+		return UserSummaryResponse{}, err
+	}
+	lifetimeQuotaUSD, monthlyQuotaUSD, weeklyQuotaUSD, dailyQuotaUSD := newUserQuotaArgs(cfg.NewUserQuota)
 	now := dbTime(time.Now())
 	result, err := a.db.ExecContext(ctx, `
-		INSERT INTO users (username, password_hash, password_salt, is_admin, nickname, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`, username, hashPassword(*payload.Password, salt), salt, payload.IsAdmin, nickname, now, now)
+		INSERT INTO users (
+			username, password_hash, password_salt, is_admin, nickname,
+			quota_lifetime_usd, quota_monthly_usd, quota_weekly_usd, quota_daily_usd,
+			created_at, updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, username, hashPassword(*payload.Password, salt), salt, payload.IsAdmin, nickname,
+		lifetimeQuotaUSD, monthlyQuotaUSD, weeklyQuotaUSD, dailyQuotaUSD, now, now)
 	if err != nil {
 		return UserSummaryResponse{}, err
 	}
