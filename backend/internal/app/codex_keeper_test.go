@@ -1630,6 +1630,15 @@ func TestKeeperRefreshAccountsDisablesBadCredentialAndAppliesPriorityPolicy(t *t
 			"priority":     0,
 			"access_token": "bad-token",
 		},
+		"overloaded.json": {
+			"name":         "overloaded.json",
+			"type":         "codex",
+			"email":        "overloaded@example.com",
+			"account_type": "free",
+			"disabled":     false,
+			"priority":     0,
+			"access_token": "overloaded-token",
+		},
 	}
 	var mu sync.Mutex
 	statusPatchCount := 0
@@ -1643,6 +1652,7 @@ func TestKeeperRefreshAccountsDisablesBadCredentialAndAppliesPriorityPolicy(t *t
 				"files": []map[string]any{
 					{"name": "quota-high.json", "type": "codex"},
 					{"name": "bad-token.json", "type": "codex"},
+					{"name": "overloaded.json", "type": "codex"},
 				},
 			})
 		case r.Method == http.MethodGet && r.URL.Path == "/v0/management/auth-files/download":
@@ -1663,17 +1673,29 @@ func TestKeeperRefreshAccountsDisablesBadCredentialAndAppliesPriorityPolicy(t *t
 				statusCode = 401
 				usedPercent = 0
 			}
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"status_code": statusCode,
-				"body": map[string]any{
-					"plan_type": "free",
-					"rate_limit": map[string]any{
-						"primary_window": map[string]any{
-							"used_percent":        usedPercent,
-							"reset_after_seconds": 3600,
-						},
+			body := map[string]any{
+				"plan_type": "free",
+				"rate_limit": map[string]any{
+					"primary_window": map[string]any{
+						"used_percent":        usedPercent,
+						"reset_after_seconds": 3600,
 					},
 				},
+			}
+			if payload.AuthIndex == "overloaded.json" {
+				statusCode = 401
+				body = map[string]any{
+					"error": map[string]any{
+						"type":    "service_unavailable_error",
+						"code":    "server_is_overloaded",
+						"message": "Our servers are currently overloaded. Please try again later.",
+						"param":   nil,
+					},
+				}
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"status_code": statusCode,
+				"body":        body,
 			})
 		case r.Method == http.MethodPatch && r.URL.Path == "/v0/management/auth-files/status":
 			mu.Lock()
@@ -1717,9 +1739,9 @@ func TestKeeperRefreshAccountsDisablesBadCredentialAndAppliesPriorityPolicy(t *t
 	}, cookies, nil)
 
 	requestJSON(t, handler, http.MethodPost, "/api/codex-keeper/accounts/refresh", map[string]any{
-		"auth_names": []string{"quota-high.json", "bad-token.json"},
+		"auth_names": []string{"quota-high.json", "bad-token.json", "overloaded.json"},
 	}, cookies, nil)
-	response := waitForKeeperAccounts(t, handler, cookies, 2)
+	response := waitForKeeperAccounts(t, handler, cookies, 3)
 
 	items := map[string]struct {
 		Disabled       bool
@@ -1763,6 +1785,19 @@ func TestKeeperRefreshAccountsDisablesBadCredentialAndAppliesPriorityPolicy(t *t
 	}
 	if bad.LatestAction == nil || !strings.Contains(*bad.LatestAction, "禁用凭证") {
 		t.Fatalf("bad-token latest_action = %v, want keeper disable action", bad.LatestAction)
+	}
+	overloaded := items["overloaded.json"]
+	if overloaded.Disabled {
+		t.Fatal("overloaded credential disabled = true, want transient warning to remain enabled")
+	}
+	if overloaded.LastStatusCode == nil || *overloaded.LastStatusCode != 401 {
+		t.Fatalf("overloaded last_status_code = %v, want 401", overloaded.LastStatusCode)
+	}
+	if overloaded.LastError == nil || !strings.Contains(*overloaded.LastError, "server_is_overloaded") {
+		t.Fatalf("overloaded last_error = %v, want overload warning", overloaded.LastError)
+	}
+	if overloaded.LatestAction == nil || strings.Contains(*overloaded.LatestAction, "禁用凭证") {
+		t.Fatalf("overloaded latest_action = %v, want no disable action", overloaded.LatestAction)
 	}
 
 	mu.Lock()

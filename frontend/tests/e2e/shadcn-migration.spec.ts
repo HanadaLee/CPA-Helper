@@ -523,6 +523,24 @@ test('all migrated routes render and core controls remain interactive', async ({
             last_refresh_at: '2026-09-04T12:00:00Z',
             modified_at: '2026-09-04T12:00:00Z',
           },
+          {
+            name: 'overloaded-test.json',
+            provider: 'codex',
+            email: 'overloaded@example.com',
+            account_type: 'oauth',
+            plan_type: 'pro_20x',
+            disabled: false,
+            unavailable: true,
+            runtime_only: false,
+            priority: 0,
+            last_status_code: 503,
+            last_error: null,
+            latest_action: null,
+            status: 'error',
+            status_message: '{"error":{"type":"service_unavailable_error","code":"server_is_overloaded","message":"Our servers are currently overloaded. Please try again later.","param":null}}',
+            last_checked_at: null,
+            last_healthy_at: null,
+          },
         ],
         priority_rules: [],
       },
@@ -557,6 +575,9 @@ test('all migrated routes render and core controls remain interactive', async ({
   await expect(codexCredentialRow.getByText(/不可用|Unavailable/, { exact: true })).toHaveCount(0)
   await expect(codexCredentialRow.getByText('error', { exact: true })).toHaveCount(0)
   await expect(codexCredentialRow.getByText(/状态警告|Status Warning/, { exact: true })).toHaveCount(0)
+  const overloadedCredentialRow = credentialTable.locator('tbody tr').filter({ hasText: 'overloaded-test.json' })
+  await expect(overloadedCredentialRow.getByText(/状态警告|Status Warning/, { exact: true })).toBeVisible()
+  await expect(overloadedCredentialRow.getByText(/不可用|Unavailable/, { exact: true })).toHaveCount(0)
   const accountPagination = page.locator('[data-slot="table-pagination-footer"]')
   await expect(accountPagination.locator('[data-slot="pagination"]')).toBeVisible()
   await expect(accountPagination.getByRole('combobox', { name: /每页数量|Rows per page/ })).toBeVisible()

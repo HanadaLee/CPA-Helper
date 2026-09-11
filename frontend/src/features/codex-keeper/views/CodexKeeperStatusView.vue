@@ -1190,12 +1190,22 @@ function latestActionText(account: CodexKeeperAccount): string {
   return text ? credentialServerText(text, '凭证状态', 'Credential status') : '-'
 }
 
+function isTransientCredentialWarning(account: CodexKeeperAccount): boolean {
+  const text = [account.status_message, account.last_error, account.latest_action]
+    .filter((value): value is string => Boolean(value?.trim()))
+    .join('\n')
+    .toLowerCase()
+  return text.includes('service_unavailable_error') || text.includes('server_is_overloaded')
+}
+
 function accountStatusTags(account: CodexKeeperAccount) {
   const remoteStatus = account.status?.trim().toLowerCase()
   const statusMessage = account.status_message?.trim()
   const healthyStatuses = new Set(['active', 'ok', 'ready', 'healthy', 'success', 'available'])
   const unavailableStatuses = new Set(['error', 'failed', 'unavailable'])
-  const issueTag = account.last_status_code === 401
+  const issueTag = isTransientCredentialWarning(account)
+    ? { label: t('状态警告', 'Status Warning'), tone: 'is-warning' }
+    : account.last_status_code === 401
     ? { label: t('401报错', '401 Error'), tone: 'is-danger' }
     : isQuotaExhaustedAccount(account)
       ? { label: t('额度耗尽', 'Quota Exhausted'), tone: 'is-purple' }

@@ -5089,6 +5089,9 @@ func validateKeeperPriority(priority int, accountType *string, rules map[string]
 }
 
 func isBadKeeperCredential(result keeperHTTPResult) bool {
+	if isKeeperTransientWarning(result) {
+		return false
+	}
 	if result.StatusCode != nil && (*result.StatusCode == 401 || *result.StatusCode == 402) {
 		return true
 	}
@@ -5098,6 +5101,15 @@ func isBadKeeperCredential(result keeperHTTPResult) bool {
 		text += " " + strings.ToLower(string(payload))
 	}
 	return strings.Contains(text, "workspace") && (strings.Contains(text, "disabled") || strings.Contains(text, "deactivated"))
+}
+
+func isKeeperTransientWarning(result keeperHTTPResult) bool {
+	text := strings.ToLower(result.Brief)
+	if result.JSONData != nil {
+		payload, _ := json.Marshal(result.JSONData)
+		text += " " + strings.ToLower(string(payload))
+	}
+	return strings.Contains(text, "service_unavailable_error") || strings.Contains(text, "server_is_overloaded")
 }
 
 func (a *App) preserveKeeperBadCredentialDiagnosis(ctx context.Context, result *keeperAccountResult) {
