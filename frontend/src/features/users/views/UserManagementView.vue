@@ -30,14 +30,6 @@ import {
   FieldSet,
 } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
-import {
-  Pagination,
-  PaginationContent,
-  PaginationEllipsis,
-  PaginationItem,
-  PaginationNext,
-  PaginationPrevious,
-} from '@/components/ui/pagination'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
@@ -71,6 +63,7 @@ import {
 } from '@/features/users/api/usersApi'
 import { useI18n } from '@/shared/i18n'
 import type { UserSummary } from '@/shared/types/api'
+import TablePaginationFooter from '@/shared/ui/TablePaginationFooter.vue'
 import { formatCompact, formatDateTime, formatInteger, formatUsd } from '@/shared/utils/format'
 
 const message = toast
@@ -92,7 +85,8 @@ const quotaMonthlyUsd = ref(0)
 const quotaWeeklyUsd = ref(0)
 const quotaDailyUsd = ref(0)
 const page = ref(1)
-const pageSize = 12
+const pageSize = ref(10)
+const pageSizeOptions = [10, 20, 50, 100]
 const isEditingFirstUser = computed(() => editingUserId.value === 1)
 
 interface UserMetricCard {
@@ -234,12 +228,17 @@ function setQuotaDailyUsd(value: string | number) {
 }
 
 const pagedUsers = computed(() => {
-  const start = (page.value - 1) * pageSize
-  return users.value.slice(start, start + pageSize)
+  const start = (page.value - 1) * pageSize.value
+  return users.value.slice(start, start + pageSize.value)
 })
 
 function handlePageChange(value: number) {
   page.value = value
+}
+
+function handlePageSizeChange(value: number) {
+  pageSize.value = value
+  page.value = 1
 }
 
 function resetEditor() {
@@ -283,7 +282,7 @@ async function refresh() {
   isLoading.value = true
   try {
     users.value = await listUsers()
-    const lastPage = Math.max(1, Math.ceil(users.value.length / pageSize))
+    const lastPage = Math.max(1, Math.ceil(users.value.length / pageSize.value))
     page.value = Math.min(page.value, lastPage)
   } catch (error) {
     message.error(errorText(error, '加载用户列表失败', 'Failed to load users'))
@@ -503,31 +502,14 @@ onMounted(refresh)
         </Table>
       </div>
 
-      <div v-if="users.length > pageSize" class="user-pagination">
-        <span>{{ t(`共 ${formatInteger(users.length)} 个用户`, `${formatInteger(users.length)} users total`) }}</span>
-        <Pagination
-          :page="page"
-          :items-per-page="pageSize"
-          :total="users.length"
-          :sibling-count="1"
-          @update:page="handlePageChange"
-        >
-          <PaginationContent v-slot="{ items }">
-            <PaginationPrevious />
-            <template v-for="(item, index) in items" :key="index">
-              <PaginationItem
-                v-if="item.type === 'page'"
-                :value="item.value"
-                :is-active="item.value === page"
-              >
-                {{ item.value }}
-              </PaginationItem>
-              <PaginationEllipsis v-else :index="index" />
-            </template>
-            <PaginationNext />
-          </PaginationContent>
-        </Pagination>
-      </div>
+      <TablePaginationFooter
+        :page="page"
+        :page-size="pageSize"
+        :page-size-options="pageSizeOptions"
+        :total="users.length"
+        @update:page="handlePageChange"
+        @update:page-size="handlePageSizeChange"
+      />
     </section>
 
     <Dialog v-model:open="editorVisible">
@@ -719,18 +701,9 @@ onMounted(refresh)
 .user-table {
   min-width: 0;
   overflow: auto;
-}
-
-.user-pagination {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 16px;
-  border-top: 1px solid var(--border);
-  color: var(--muted-foreground);
-  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: var(--card);
 }
 
 .identity-fields,
@@ -824,9 +797,5 @@ onMounted(refresh)
     grid-column: auto;
   }
 
-  .user-pagination {
-    justify-content: flex-start;
-    overflow-x: auto;
-  }
 }
 </style>
