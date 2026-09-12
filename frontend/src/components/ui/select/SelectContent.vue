@@ -22,7 +22,7 @@ const props = withDefaults(
     align: 'start',
     side: 'bottom',
     sideOffset: 4,
-    avoidCollisions: false,
+    avoidCollisions: true,
   },
 )
 const emits = defineEmits<SelectContentEmits>()
