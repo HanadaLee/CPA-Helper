@@ -124,14 +124,14 @@ func TestSaveUsageMessageUsesAliasForStoredModelAndCost(t *testing.T) {
 			provider, model, input_usd_per_million, output_usd_per_million,
 			cache_read_usd_per_million, cache_creation_usd_per_million, source, updated_at
 		) VALUES
-			('openai', 'client-model', 2, 0, 0, 0, 'manual', ?),
+			('deepseek', 'client-model', 2, 0, 0, 0, 'manual', ?),
 			('openai', 'upstream-model', 9, 0, 0, 0, 'manual', ?)
 	`, now, now); err != nil {
 		t.Fatalf("insert model prices: %v", err)
 	}
 
 	record, created, err := app.saveUsageMessage(context.Background(), []byte(`{
-		"provider":"openai",
+		"provider":"openai-compatible-opencode",
 		"model":"upstream-model",
 		"alias":"client-model",
 		"request_id":"alias-priced-request",
@@ -144,8 +144,11 @@ func TestSaveUsageMessageUsesAliasForStoredModelAndCost(t *testing.T) {
 	if record.Model == nil || *record.Model != "client-model" {
 		t.Fatalf("stored model = %#v, want client-model alias", record.Model)
 	}
+	if record.Provider == nil || *record.Provider != "openai-compatible-opencode" {
+		t.Fatalf("stored provider = %#v, want original request provider", record.Provider)
+	}
 	if record.CostUSD != 2 || record.Unpriced {
-		t.Fatalf("stored cost = %v unpriced=%v, want alias price 2/false", record.CostUSD, record.Unpriced)
+		t.Fatalf("stored cost = %v unpriced=%v, want model-only alias price 2/false", record.CostUSD, record.Unpriced)
 	}
 }
 

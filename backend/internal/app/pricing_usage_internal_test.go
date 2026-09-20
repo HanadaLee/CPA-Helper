@@ -77,6 +77,46 @@ func TestRecordCostTruncatesGenericCachedTokens(t *testing.T) {
 	}
 }
 
+func TestRecordCostMatchesModelAcrossDifferentProviders(t *testing.T) {
+	requestProvider := "openai-compatible-opencode"
+	model := "deepseek-flash"
+	prices := pricesByKey([]ModelPrice{{
+		ID:                     1,
+		Provider:               "deepseek",
+		Model:                  model,
+		InputUSDPerMillion:     0.3,
+		OutputUSDPerMillion:    1.2,
+		CacheReadUSDPerMillion: 0.006,
+	}})
+
+	amount, unpriced := recordCost(UsageRecord{
+		Provider:     &requestProvider,
+		Model:        &model,
+		InputTokens:  1_000_000,
+		OutputTokens: 1_000_000,
+		TotalTokens:  2_000_000,
+	}, prices)
+	if unpriced || amount != 1.5 {
+		t.Fatalf("cross-provider model cost = %v unpriced=%v, want 1.5/false", amount, unpriced)
+	}
+}
+
+func TestPricesByKeyPrefersManualAndMostRecentlyUpdatedModelPrice(t *testing.T) {
+	model := "shared-model"
+	older := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	newer := older.Add(time.Hour)
+	prices := pricesByKey([]ModelPrice{
+		{ID: 1, Provider: "provider-a", Model: model, InputUSDPerMillion: 1, UpdatedAt: older},
+		{ID: 2, Provider: "provider-b", Model: model, InputUSDPerMillion: 2, UpdatedAt: newer},
+		{ID: 3, Provider: "provider-c", Model: model, InputUSDPerMillion: 9, AutoSynced: true, UpdatedAt: newer.Add(time.Hour)},
+	})
+
+	matched := findMatchingPrice(prices, &model)
+	if matched == nil || matched.ID != 2 || matched.InputUSDPerMillion != 2 {
+		t.Fatalf("matched price = %#v, want newest manual price", matched)
+	}
+}
+
 func TestRecordCostUsesRequestPriceForImageModels(t *testing.T) {
 	provider := "openai"
 	model := "gpt-image-2"

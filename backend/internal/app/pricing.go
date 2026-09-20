@@ -299,11 +299,7 @@ func (a *App) loadPriceMap(ctx context.Context) (map[[2]string]ModelPrice, error
 	if err != nil {
 		return nil, err
 	}
-	result := make(map[[2]string]ModelPrice, len(prices))
-	for _, price := range prices {
-		result[priceKey(price.Provider, price.Model)] = price
-	}
-	return result, nil
+	return pricesByKey(prices), nil
 }
 
 func (a *App) modelPriceCatalog(ctx context.Context) (ModelPriceCatalogResponse, error) {
@@ -365,7 +361,7 @@ func (a *App) modelPriceCatalog(ctx context.Context) (ModelPriceCatalogResponse,
 	}
 	for _, model := range modelsByID {
 		suggestedProvider := suggestedPriceProvider(model)
-		price := findCatalogPrice(priceLookup, prices, suggestedProvider, model.Owner, model.ID)
+		price := findCatalogPrice(priceLookup, model.ID)
 		item := ModelPriceCatalogItem{
 			ID:                model.ID,
 			Name:              model.Name,
@@ -427,11 +423,28 @@ func (a *App) modelCatalogAPIKeys(ctx context.Context) ([]modelCatalogAPIKey, er
 }
 
 func pricesByKey(prices []ModelPrice) map[[2]string]ModelPrice {
-	result := make(map[[2]string]ModelPrice, len(prices))
+	result := make(map[[2]string]ModelPrice, len(prices)*2)
 	for _, price := range prices {
 		result[priceKey(price.Provider, price.Model)] = price
+		modelKey := modelPriceKey(price.Model)
+		if existing, ok := result[modelKey]; !ok || preferModelPrice(price, existing) {
+			result[modelKey] = price
+		}
 	}
 	return result
+}
+
+// preferModelPrice resolves legacy duplicate provider/model entries without
+// involving the provider in billing. Explicit manual prices take precedence;
+// otherwise the most recently updated entry wins.
+func preferModelPrice(candidate, existing ModelPrice) bool {
+	if candidate.AutoSynced != existing.AutoSynced {
+		return !candidate.AutoSynced
+	}
+	if !candidate.UpdatedAt.Equal(existing.UpdatedAt) {
+		return candidate.UpdatedAt.After(existing.UpdatedAt)
+	}
+	return candidate.ID > existing.ID
 }
 
 func catalogAvailableModelSource(binding modelCatalogAPIKey) AvailableModelSource {
@@ -465,42 +478,14 @@ func suggestedPriceProvider(model AvailableModelItem) string {
 	return ""
 }
 
-func findCatalogPrice(prices map[[2]string]ModelPrice, allPrices []ModelPrice, suggestedProvider string, owner *string, modelID string) *ModelPrice {
-	providers := []string{}
-	if owner != nil {
-		providers = append(providers, *owner)
-	}
-	if strings.TrimSpace(suggestedProvider) != "" {
-		providers = append(providers, suggestedProvider)
-	}
+func findCatalogPrice(prices map[[2]string]ModelPrice, modelID string) *ModelPrice {
 	modelCandidates := catalogModelCandidates(modelID)
-	for _, provider := range providers {
-		for _, candidate := range modelCandidates {
-			if price := findMatchingPrice(prices, &provider, &candidate); price != nil {
-				return price
-			}
+	for _, candidate := range modelCandidates {
+		if price := findMatchingPrice(prices, &candidate); price != nil {
+			return price
 		}
 	}
-	var matched *ModelPrice
-	for _, price := range allPrices {
-		priceModel := strings.ToLower(strings.TrimSpace(price.Model))
-		modelMatches := false
-		for _, candidate := range modelCandidates {
-			if priceModel == strings.ToLower(strings.TrimSpace(candidate)) {
-				modelMatches = true
-				break
-			}
-		}
-		if !modelMatches {
-			continue
-		}
-		if matched != nil {
-			return nil
-		}
-		candidate := price
-		matched = &candidate
-	}
-	return matched
+	return nil
 }
 
 func catalogModelCandidates(modelID string) []string {
@@ -912,28 +897,35 @@ func priceKey(provider, model string) [2]string {
 	return [2]string{strings.ToLower(strings.TrimSpace(provider)), strings.ToLower(strings.TrimSpace(model))}
 }
 
-func findMatchingPrice(prices map[[2]string]ModelPrice, provider, model *string) *ModelPrice {
-	if provider == nil || model == nil {
+func modelPriceKey(model string) [2]string {
+	return [2]string{"", strings.ToLower(strings.TrimSpace(model))}
+}
+
+func findMatchingPrice(prices map[[2]string]ModelPrice, model *string) *ModelPrice {
+	if model == nil {
 		return nil
 	}
-	providerKey := strings.ToLower(strings.TrimSpace(*provider))
 	modelKey := strings.ToLower(strings.TrimSpace(*model))
-	if providerKey == "" || modelKey == "" {
+	if modelKey == "" {
 		return nil
 	}
-	candidates := []string{providerKey}
-	if providerKey == "codex" {
-		candidates = append(candidates, "openai")
+	if price, ok := prices[modelPriceKey(modelKey)]; ok {
+		return &price
 	}
-	if providerKey == "claude" {
-		candidates = append(candidates, "anthropic")
-	}
-	for _, candidate := range candidates {
-		if price, ok := prices[[2]string{candidate, modelKey}]; ok {
-			return &price
+
+	// Unit callers may construct a provider-keyed map directly. Keep that path
+	// model-only as well, with the same deterministic duplicate resolution.
+	var matched *ModelPrice
+	for key, price := range prices {
+		if key[0] == "" || strings.ToLower(strings.TrimSpace(price.Model)) != modelKey {
+			continue
+		}
+		if matched == nil || preferModelPrice(price, *matched) {
+			candidate := price
+			matched = &candidate
 		}
 	}
-	return nil
+	return matched
 }
 
 func recordCost(record UsageRecord, prices map[[2]string]ModelPrice) (float64, bool) {
@@ -944,7 +936,7 @@ func recordCost(record UsageRecord, prices map[[2]string]ModelPrice) (float64, b
 }
 
 func calculateRecordCost(record UsageRecord, prices map[[2]string]ModelPrice) (float64, bool) {
-	price := findMatchingPrice(prices, record.Provider, record.Model)
+	price := findMatchingPrice(prices, record.Model)
 	if billingUnitForModelPtr(record.Model) == modelBillingUnitRequest {
 		if record.Failed {
 			return 0, false
