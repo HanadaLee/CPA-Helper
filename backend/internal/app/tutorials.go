@@ -14,8 +14,7 @@ type Tutorial struct {
 	ID         int64  `json:"id"`
 	Title      string `json:"title"`
 	TitleEN    string `json:"title_en"`
-	Client     string `json:"client"`
-	Platform   string `json:"platform"`
+	Category   string `json:"category"`
 	Markdown   string `json:"markdown"`
 	MarkdownEN string `json:"markdown_en"`
 	SortOrder  int    `json:"sort_order"`
@@ -24,7 +23,7 @@ type Tutorial struct {
 }
 
 func (a *App) listTutorials(ctx context.Context, publishedOnly bool) ([]Tutorial, error) {
-	query := `SELECT id, title, title_en, client, platform, markdown, markdown_en, sort_order, published, updated_at FROM tutorials`
+	query := `SELECT id, title, title_en, category, markdown, markdown_en, sort_order, published, updated_at FROM tutorials`
 	if publishedOnly {
 		query += ` WHERE published = 1`
 	}
@@ -36,7 +35,7 @@ func (a *App) listTutorials(ctx context.Context, publishedOnly bool) ([]Tutorial
 	items := []Tutorial{}
 	for rows.Next() {
 		var item Tutorial
-		if err := rows.Scan(&item.ID, &item.Title, &item.TitleEN, &item.Client, &item.Platform, &item.Markdown, &item.MarkdownEN, &item.SortOrder, &item.Published, &item.UpdatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.Title, &item.TitleEN, &item.Category, &item.Markdown, &item.MarkdownEN, &item.SortOrder, &item.Published, &item.UpdatedAt); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -63,19 +62,14 @@ func (a *App) handleTutorials(w http.ResponseWriter, r *http.Request) error {
 func validateTutorial(item *Tutorial) error {
 	item.Title = strings.TrimSpace(item.Title)
 	item.TitleEN = strings.TrimSpace(item.TitleEN)
-	item.Client = strings.TrimSpace(item.Client)
+	item.Category = strings.TrimSpace(item.Category)
 	item.Markdown = strings.TrimSpace(item.Markdown)
 	item.MarkdownEN = strings.TrimSpace(item.MarkdownEN)
-	if item.Title == "" || item.Client == "" || item.Markdown == "" {
-		return validationError("教程标题、客户端和正文不能为空")
+	if item.Title == "" || item.Category == "" || item.Markdown == "" {
+		return validationError("教程标题、分类和正文不能为空")
 	}
-	if utf8.RuneCountInString(item.Title) > 120 || utf8.RuneCountInString(item.TitleEN) > 120 || utf8.RuneCountInString(item.Client) > 64 || len(item.Markdown) > 128*1024 || len(item.MarkdownEN) > 128*1024 {
+	if utf8.RuneCountInString(item.Title) > 120 || utf8.RuneCountInString(item.TitleEN) > 120 || utf8.RuneCountInString(item.Category) > 128 || len(item.Markdown) > 128*1024 || len(item.MarkdownEN) > 128*1024 {
 		return validationError("教程内容超出长度限制")
-	}
-	switch item.Platform {
-	case "all", "windows", "macos", "linux", "ios", "android":
-	default:
-		return validationError("教程平台无效")
 	}
 	if item.SortOrder < 0 || item.SortOrder > 10000 {
 		return validationError("教程排序必须在 0 到 10000 之间")
@@ -119,11 +113,11 @@ func (a *App) handleTutorialManagement(w http.ResponseWriter, r *http.Request) e
 		}
 		item.ID = id
 		item.UpdatedAt = apiDateTime(time.Now())
-		args := []any{item.Title, item.TitleEN, item.Client, item.Platform, item.Markdown, item.MarkdownEN, item.SortOrder, item.Published, item.UpdatedAt}
+		args := []any{item.Title, item.TitleEN, item.Category, item.Markdown, item.MarkdownEN, item.SortOrder, item.Published, item.UpdatedAt}
 		if id == 0 {
-			result, err = a.db.ExecContext(r.Context(), `INSERT INTO tutorials (title, title_en, client, platform, markdown, markdown_en, sort_order, published, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, args...)
+			result, err = a.db.ExecContext(r.Context(), `INSERT INTO tutorials (title, title_en, category, markdown, markdown_en, sort_order, published, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, args...)
 		} else {
-			result, err = a.db.ExecContext(r.Context(), `UPDATE tutorials SET title = ?, title_en = ?, client = ?, platform = ?, markdown = ?, markdown_en = ?, sort_order = ?, published = ?, updated_at = ? WHERE id = ?`, append(args, id)...)
+			result, err = a.db.ExecContext(r.Context(), `UPDATE tutorials SET title = ?, title_en = ?, category = ?, markdown = ?, markdown_en = ?, sort_order = ?, published = ?, updated_at = ? WHERE id = ?`, append(args, id)...)
 		}
 	case r.Method == http.MethodDelete && id > 0:
 		result, err = a.db.ExecContext(r.Context(), `DELETE FROM tutorials WHERE id = ?`, id)

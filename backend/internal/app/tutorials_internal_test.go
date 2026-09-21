@@ -2,12 +2,18 @@ package app
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
+
+	backendMigrations "cpa-helper/backend/migrations"
+	"github.com/pressly/goose/v3"
 )
 
 func TestTutorialsCRUDAndPermissions(t *testing.T) {
@@ -39,12 +45,15 @@ func TestTutorialsCRUDAndPermissions(t *testing.T) {
 	if len(initial) != 3 {
 		t.Fatalf("seed count = %d", len(initial))
 	}
-	for _, item := range initial {
+	for i, item := range initial {
 		if !item.Published || !strings.Contains(item.Markdown, "{{api_key}}") || !strings.Contains(item.MarkdownEN, "{{api_base_url}}") {
 			t.Fatalf("invalid seed: %+v", item)
 		}
+		if want := []string{"Codex CLI Windows", "Codex CLI macOS", "Codex CLI Linux"}[i]; item.Category != want {
+			t.Fatalf("category = %q, want %q", item.Category, want)
+		}
 	}
-	payload := Tutorial{Title: "测试", Client: "Other CLI", Platform: "all", Markdown: "# Draft\n{{api_key}}", SortOrder: 0}
+	payload := Tutorial{Title: "测试", Category: "Codex Windows Desktop", Markdown: "# Draft\n{{api_key}}", SortOrder: 0}
 	request("GET", "/api/tutorials", nil, nil, 401)
 	request("GET", "/api/settings/tutorials", nil, reader, 403)
 	request("POST", "/api/settings/tutorials", payload, reader, 403)
@@ -79,9 +88,9 @@ func TestTutorialsCRUDAndPermissions(t *testing.T) {
 	request("DELETE", "/api/settings/tutorials/bad-id", nil, admin, 404)
 	for _, mutate := range []func(*Tutorial){
 		func(v *Tutorial) { v.Title = " " },
-		func(v *Tutorial) { v.Client = " " },
+		func(v *Tutorial) { v.Category = " " },
 		func(v *Tutorial) { v.Markdown = " " },
-		func(v *Tutorial) { v.Platform = "invalid" },
+		func(v *Tutorial) { v.Category = strings.Repeat("中", 129) },
 		func(v *Tutorial) { v.SortOrder = -1 },
 		func(v *Tutorial) { v.SortOrder = 10001 },
 		func(v *Tutorial) { v.Markdown = strings.Repeat("x", 128*1024+1) },
@@ -104,4 +113,79 @@ func TestTutorialsCRUDAndPermissions(t *testing.T) {
 	if err != nil || len(managed) != 2 || managed[1].Title != "Edited seed" {
 		t.Fatalf("restart lost changes: %#v, %v", managed, err)
 	}
+}
+
+func TestTutorialCategoryMigrationPreservesArticles(t *testing.T) {
+	ctx := t.Context()
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "tutorial-upgrade.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	goose.SetBaseFS(backendMigrations.FS)
+	if err := goose.SetDialect("sqlite3"); err != nil {
+		t.Fatal(err)
+	}
+	if err := goose.UpToContext(ctx, db, ".", 202609210001); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE tutorials SET title = 'Custom title', title_en = 'Custom EN', markdown = 'custom {{api_key}}', markdown_en = 'custom {{api_base_url}}', published = 0, sort_order = 88 WHERE id = 1;
+		DELETE FROM tutorials WHERE id = 2;`); err != nil {
+		t.Fatal(err)
+	}
+	platformLabels := map[string]string{"all": "", "windows": " Windows", "macos": " macOS", "linux": " Linux", "ios": " iOS", "android": " Android"}
+	for _, platform := range []string{"all", "windows", "macos", "linux", "ios", "android"} {
+		if _, err := db.Exec(`INSERT INTO tutorials (title, title_en, client, platform, markdown, markdown_en, sort_order, published, updated_at)
+			VALUES ('Custom article', 'EN article', 'My Client', ?, 'body {{api_key}}', 'EN {{responses_url}}', 5, 1, '2026-09-21T01:00:00Z')`, platform); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rows, err := db.Query(`SELECT id, title, title_en, client, platform, markdown, markdown_en, sort_order, published, updated_at FROM tutorials ORDER BY sort_order, id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var expected []Tutorial
+	for rows.Next() {
+		var item Tutorial
+		var client, platform string
+		if err := rows.Scan(&item.ID, &item.Title, &item.TitleEN, &client, &platform, &item.Markdown, &item.MarkdownEN, &item.SortOrder, &item.Published, &item.UpdatedAt); err != nil {
+			t.Fatal(err)
+		}
+		item.Category = client + platformLabels[platform]
+		expected = append(expected, item)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	rows.Close()
+	a := &App{db: db}
+	verify := func() {
+		t.Helper()
+		if !testColumnExists(t, db, "tutorials", "category") || testColumnExists(t, db, "tutorials", "platform") || testColumnExists(t, db, "tutorials", "client") {
+			t.Fatal("tutorial schema still has multiple dimensions")
+		}
+		actual, err := a.listTutorials(ctx, false)
+		if err != nil || !reflect.DeepEqual(actual, expected) {
+			t.Fatalf("migration changed article data: got %+v, want %+v; err=%v", actual, expected, err)
+		}
+		if !testIndexExists(t, db, "ix_tutorials_published_order") {
+			t.Fatal("migration removed the tutorial listing index")
+		}
+	}
+	for range 2 {
+		if err := a.runMigrations(ctx); err != nil {
+			t.Fatal(err)
+		}
+		verify()
+	}
+	// A downgrade preserves the merged name as a general client. Re-upgrading
+	// must not append a second OS suffix or alter any article content.
+	if err := goose.DownToContext(ctx, db, ".", 202609210001); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.runMigrations(ctx); err != nil {
+		t.Fatal(err)
+	}
+	verify()
 }

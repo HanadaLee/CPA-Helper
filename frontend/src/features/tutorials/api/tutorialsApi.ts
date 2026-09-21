@@ -4,8 +4,7 @@ export interface Tutorial {
   id: number
   title: string
   title_en: string
-  client: string
-  platform: string
+  category: string
   markdown: string
   markdown_en: string
   sort_order: number

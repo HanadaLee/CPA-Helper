@@ -43,8 +43,9 @@ test('tutorials show below API keys and single choices copy without popovers', a
   const guide = page.locator('[data-tutorial-guide]')
   await expect(guide.locator('[data-tutorial-loading]')).toBeVisible()
   release()
-  await expect(guide.getByRole('tab', { name: 'Windows', exact: true })).toBeVisible()
-  await guide.getByRole('tab', { name: 'Windows', exact: true }).click()
+  await expect(guide.getByRole('tablist')).toHaveCount(1)
+  await expect(guide.getByRole('tab', { name: 'Codex CLI Windows', exact: true })).toBeVisible()
+  await guide.getByRole('tab', { name: 'Codex CLI Windows', exact: true }).click()
   await expect(guide.locator('article')).toContainText('Codex CLI')
   const panel = await page.locator('.api-key-panel-shell').boundingBox()
   const guideBox = await guide.boundingBox()
@@ -64,6 +65,9 @@ test('tutorials show below API keys and single choices copy without popovers', a
   await page.setViewportSize({ width: 390, height: 844 })
   await guide.scrollIntoViewIfNeeded()
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy()
+  for (const label of await guide.getByRole('tab').locator('span').all()) {
+    await expect.poll(() => label.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBeTruthy()
+  }
   await page.screenshot({ path: 'test-results/tutorials-mobile.png' })
   await page.setViewportSize({ width: 1440, height: 1000 })
   await page.evaluate(() => localStorage.setItem('cpa-helper-language', 'zh'))
@@ -78,7 +82,7 @@ test('multiple keys/endpoints prompt and code copy resolves both variables', asy
   await mockKeys(page, 2)
   await mockEndpoints(page, true)
   await page.route('**/api/tutorials', (route) => route.fulfill({ json: [{
-    id: 101, title: '变量复制测试', title_en: 'Variable copy test', client: 'Test CLI', platform: 'all',
+    id: 101, title: '变量复制测试', title_en: 'Variable copy test', category: 'Test CLI',
     markdown: 'Key: {{api_key}}\n\nURL: {{api_base_url}}\n\n```text\nKEY={{api_key}}\nURL={{responses_url}}\n```\n\n<script>window.tutorialXss = true</script>\n\n[unsafe](javascript:alert(1))',
     markdown_en: '', sort_order: 0, published: true,
   }] }))
@@ -103,6 +107,32 @@ test('multiple keys/endpoints prompt and code copy resolves both variables', asy
   await expect(guide.locator('script, a[href^="javascript:"]')).toHaveCount(0)
   expect(await page.evaluate(() => 'tutorialXss' in window)).toBe(false)
   await expect(guide).not.toContainText('sk-e2e-test-0')
+})
+
+test('tutorial categories use one tab row and keep selection across refresh', async ({ page }) => {
+  await login(page)
+  const article = (id: number, category: string) => ({
+    id, category, title: `Article ${id}`, title_en: `Article ${id}`,
+    markdown: `Content ${id}`, markdown_en: '', published: true, sort_order: id,
+  })
+  let articles = [article(1, 'Codex Windows Desktop'), article(2, 'Codex Windows Desktop'), article(3, 'Claude Code')]
+  await page.route('**/api/tutorials', (route) => route.fulfill({ json: articles }))
+  await page.goto('/account/keys')
+  const guide = page.locator('[data-tutorial-guide]')
+  await expect(guide.getByRole('tablist')).toHaveCount(1)
+  await expect(guide.getByRole('tab')).toHaveText(['Codex Windows Desktop', 'Claude Code'])
+  await expect(guide.locator('article')).toHaveCount(2)
+  await guide.getByRole('tab', { name: 'Claude Code', exact: true }).click()
+  await expect(guide.locator('article')).toHaveCount(1)
+  await expect(guide.locator('article')).toContainText('Content 3')
+  await page.locator('.page-toolbar').getByRole('button', { name: /^(刷新|Refresh)$/ }).click()
+  await expect(guide.getByRole('tab', { name: 'Claude Code', exact: true })).toHaveAttribute('data-state', 'active')
+  articles = articles.slice(0, 2)
+  await expect(page.locator('.page-toolbar').getByRole('button', { name: /^(刷新|Refresh)$/ })).toBeEnabled()
+  await page.locator('.page-toolbar').getByRole('button', { name: /^(刷新|Refresh)$/ }).click()
+  await expect(guide.getByRole('tab')).toHaveText(['Codex Windows Desktop'])
+  await expect(guide.locator('article')).toHaveCount(2)
+  await expect(guide.getByRole('tab')).toHaveAttribute('data-state', 'active')
 })
 
 test('unavailable keys cannot be copied and a failed tutorial request can be retried', async ({ page }) => {
@@ -143,7 +173,8 @@ test('tutorial management saves drafts, inserts variables, previews, publishes a
   await manager.getByRole('button', { name: /新建教程|New tutorial/ }).click()
   const dialog = page.getByRole('dialog')
   await dialog.locator('#tutorial-title').fill('E2E temporary tutorial')
-  await dialog.locator('#tutorial-client').fill('E2E CLI')
+  await expect(dialog.locator('#tutorial-platform, #tutorial-client')).toHaveCount(0)
+  await dialog.locator('#tutorial-category').fill('Codex Windows Desktop')
   await dialog.locator('#tutorial-body').fill('## Example\n\nUse ')
   await dialog.getByRole('button', { name: 'api_key', exact: true }).click()
   await expect(dialog.locator('#tutorial-body')).toHaveValue('## Example\n\nUse {{api_key}}')
@@ -155,6 +186,7 @@ test('tutorial management saves drafts, inserts variables, previews, publishes a
   await expect(dialog).toBeHidden()
   const row = manager.getByRole('row').filter({ hasText: 'E2E temporary tutorial' })
   await expect(row).toContainText(/草稿|Draft/)
+  await expect(row).toContainText('Codex Windows Desktop')
   const all = await (await page.request.get('/api/settings/tutorials')).json() as { id: number; title: string }[]
   const id = all.find((item) => item.title === 'E2E temporary tutorial')!.id
   try {

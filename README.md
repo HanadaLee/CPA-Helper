@@ -57,7 +57,7 @@ For clarity, model requests initiated by an Agent are still sent directly from t
 
 ## Setup Tutorials
 
-Published tutorials appear below the key list and endpoints on **API Keys**. Administrators manage them in **System Settings → Tutorial management**, with client/platform categories, ordering, drafts, Markdown preview and optional English translations. Each article saves independently. The database migration seeds Codex CLI guides for Windows, macOS and Linux only once; subsequent edits or deletions are preserved.
+Published tutorials appear below the key list and endpoints on **API Keys**. Administrators manage them in **System Settings → Tutorial management**, with a single free-form category (for example, `Codex Windows Desktop`), ordering, drafts, Markdown preview and optional English translations. Each article saves independently. Software and operating system are not separate filters. Existing client/platform pairs are merged into category names such as `Codex CLI Windows`, preserving all article content and publication settings. The database migration seeds Codex CLI guides for Windows, macOS and Linux only once; subsequent edits or deletions are preserved.
 
 Insert these variables in prose or code blocks using the editor toolbar:
 
