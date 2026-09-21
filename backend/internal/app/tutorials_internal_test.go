@@ -49,11 +49,20 @@ func TestTutorialsCRUDAndPermissions(t *testing.T) {
 		if !item.Published || !strings.Contains(item.Markdown, "{{api_key}}") || !strings.Contains(item.MarkdownEN, "{{api_base_url}}") {
 			t.Fatalf("invalid seed: %+v", item)
 		}
-		if want := []string{"Codex CLI Windows", "Codex CLI macOS", "Codex CLI Linux"}[i]; item.Category != want {
-			t.Fatalf("category = %q, want %q", item.Category, want)
+		if want := []string{"Codex CLI Windows", "Codex CLI macOS", "Codex CLI Linux"}[i]; item.Title != want || item.TitleEN != want {
+			t.Fatalf("seed titles = %q / %q, want %q", item.Title, item.TitleEN, want)
 		}
 	}
-	payload := Tutorial{Title: "测试", Category: "Codex Windows Desktop", Markdown: "# Draft\n{{api_key}}", SortOrder: 0}
+	var response []map[string]any
+	requestJSONForPricingTest(t, handler, "GET", "/api/tutorials", nil, reader, &response)
+	for _, item := range response {
+		for _, field := range []string{"category", "client", "platform"} {
+			if _, exists := item[field]; exists {
+				t.Fatalf("removed field %q still present in API", field)
+			}
+		}
+	}
+	payload := Tutorial{Title: "Codex Windows Desktop", Markdown: "# Draft\n{{api_key}}", SortOrder: 0}
 	request("GET", "/api/tutorials", nil, nil, 401)
 	request("GET", "/api/settings/tutorials", nil, reader, 403)
 	request("POST", "/api/settings/tutorials", payload, reader, 403)
@@ -63,6 +72,23 @@ func TestTutorialsCRUDAndPermissions(t *testing.T) {
 	var created Tutorial
 	requestJSONForPricingTest(t, handler, "POST", "/api/settings/tutorials", payload, admin, &created)
 	path := "/api/settings/tutorials/" + strconv.FormatInt(created.ID, 10)
+	// Both creation and editing reject duplicate labels, even for drafts.
+	request("POST", "/api/settings/tutorials", payload, admin, 409)
+	duplicate := payload
+	duplicate.Title = "  " + payload.Title + "  "
+	request("POST", "/api/settings/tutorials", duplicate, admin, 409)
+	duplicate.Title = "Another tutorial"
+	duplicate.TitleEN = payload.Title // Collides with the English fallback.
+	request("POST", "/api/settings/tutorials", duplicate, admin, 409)
+	duplicate.Title = initial[0].Title
+	duplicate.TitleEN = ""
+	request("PUT", path, duplicate, admin, 409)
+	// An unchanged title must remain editable, and an English title must not
+	// collide with a later article's fallback label either.
+	payload.TitleEN = "Windows Desktop guide"
+	requestJSONForPricingTest(t, handler, "PUT", path, payload, admin, &created)
+	duplicate.Title = payload.TitleEN
+	request("POST", "/api/settings/tutorials", duplicate, admin, 409)
 	var published, managed []Tutorial
 	requestJSONForPricingTest(t, handler, "GET", "/api/tutorials", nil, reader, &published)
 	requestJSONForPricingTest(t, handler, "GET", "/api/settings/tutorials", nil, admin, &managed)
@@ -88,13 +114,12 @@ func TestTutorialsCRUDAndPermissions(t *testing.T) {
 	request("DELETE", "/api/settings/tutorials/bad-id", nil, admin, 404)
 	for _, mutate := range []func(*Tutorial){
 		func(v *Tutorial) { v.Title = " " },
-		func(v *Tutorial) { v.Category = " " },
 		func(v *Tutorial) { v.Markdown = " " },
-		func(v *Tutorial) { v.Category = strings.Repeat("中", 129) },
 		func(v *Tutorial) { v.SortOrder = -1 },
 		func(v *Tutorial) { v.SortOrder = 10001 },
 		func(v *Tutorial) { v.Markdown = strings.Repeat("x", 128*1024+1) },
 		func(v *Tutorial) { v.Title = strings.Repeat("中", 121) },
+		func(v *Tutorial) { v.TitleEN = strings.Repeat("中", 121) },
 	} {
 		invalid := payload
 		mutate(&invalid)
@@ -145,9 +170,13 @@ func TestTutorialCategoryMigrationPreservesArticles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var expected []Tutorial
+	type categorizedTutorial struct {
+		Tutorial
+		Category string
+	}
+	var expected []categorizedTutorial
 	for rows.Next() {
-		var item Tutorial
+		var item categorizedTutorial
 		var client, platform string
 		if err := rows.Scan(&item.ID, &item.Title, &item.TitleEN, &client, &platform, &item.Markdown, &item.MarkdownEN, &item.SortOrder, &item.Published, &item.UpdatedAt); err != nil {
 			t.Fatal(err)
@@ -159,13 +188,26 @@ func TestTutorialCategoryMigrationPreservesArticles(t *testing.T) {
 		t.Fatal(err)
 	}
 	rows.Close()
-	a := &App{db: db}
 	verify := func() {
 		t.Helper()
 		if !testColumnExists(t, db, "tutorials", "category") || testColumnExists(t, db, "tutorials", "platform") || testColumnExists(t, db, "tutorials", "client") {
 			t.Fatal("tutorial schema still has multiple dimensions")
 		}
-		actual, err := a.listTutorials(ctx, false)
+		rows, err := db.Query(`SELECT id, title, title_en, category, markdown, markdown_en, sort_order, published, updated_at FROM tutorials ORDER BY sort_order, id`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		var actual []categorizedTutorial
+		for rows.Next() {
+			var item categorizedTutorial
+			if err := rows.Scan(&item.ID, &item.Title, &item.TitleEN, &item.Category, &item.Markdown, &item.MarkdownEN, &item.SortOrder, &item.Published, &item.UpdatedAt); err != nil {
+				t.Fatal(err)
+			}
+			actual = append(actual, item)
+		}
+		err = rows.Err()
+		rows.Close()
 		if err != nil || !reflect.DeepEqual(actual, expected) {
 			t.Fatalf("migration changed article data: got %+v, want %+v; err=%v", actual, expected, err)
 		}
@@ -174,7 +216,7 @@ func TestTutorialCategoryMigrationPreservesArticles(t *testing.T) {
 		}
 	}
 	for range 2 {
-		if err := a.runMigrations(ctx); err != nil {
+		if err := goose.UpToContext(ctx, db, ".", 202609210002); err != nil {
 			t.Fatal(err)
 		}
 		verify()
@@ -182,6 +224,90 @@ func TestTutorialCategoryMigrationPreservesArticles(t *testing.T) {
 	// A downgrade preserves the merged name as a general client. Re-upgrading
 	// must not append a second OS suffix or alter any article content.
 	if err := goose.DownToContext(ctx, db, ".", 202609210001); err != nil {
+		t.Fatal(err)
+	}
+	if err := goose.UpToContext(ctx, db, ".", 202609210002); err != nil {
+		t.Fatal(err)
+	}
+	verify()
+}
+
+func TestTutorialTitleMigrationPreservesArticles(t *testing.T) {
+	ctx := t.Context()
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "tutorial-titles.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	goose.SetBaseFS(backendMigrations.FS)
+	if err := goose.SetDialect("sqlite3"); err != nil {
+		t.Fatal(err)
+	}
+	if err := goose.UpToContext(ctx, db, ".", 202609210002); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE tutorials SET title = 'My Windows guide', title_en = 'Custom EN', markdown = 'custom {{api_key}}', markdown_en = 'custom {{api_base_url}}', published = 0, sort_order = 88 WHERE id = 1;
+		DELETE FROM tutorials WHERE id = 2;
+		INSERT INTO tutorials (title, title_en, category, markdown, markdown_en, sort_order, published, updated_at) VALUES
+		('Shared title', 'Shared EN', 'Same category', 'Article one', '{{api_key}}', 5, 1, '2026-09-21T01:00:00Z'),
+		('Shared title', 'Shared EN', 'Same category', 'Article two', '{{responses_url}}', 6, 0, '2026-09-21T01:00:00Z'),
+		('Codex CLI 接入教程', 'Codex CLI setup', 'Codex CLI Windows', 'User-created article', '', 7, 1, '2026-09-21T01:00:00Z');`); err != nil {
+		t.Fatal(err)
+	}
+	a := &App{db: db}
+	// The new reader does not depend on category, so it can snapshot the old
+	// schema before upgrading, including duplicate titles and draft articles.
+	expected, err := a.listTutorials(ctx, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range expected {
+		if expected[i].ID == 3 {
+			expected[i].Title = "Codex CLI Linux"
+			expected[i].TitleEN = "Codex CLI Linux"
+		}
+		if expected[i].ID == 5 {
+			expected[i].Title = "Shared title (2)"
+			expected[i].TitleEN = "Shared EN (2)"
+		}
+	}
+	verify := func() {
+		t.Helper()
+		for _, field := range []string{"category", "platform", "client"} {
+			if testColumnExists(t, db, "tutorials", field) {
+				t.Fatalf("removed field %q still present in schema", field)
+			}
+		}
+		actual, err := a.listTutorials(ctx, false)
+		if err != nil || !reflect.DeepEqual(actual, expected) {
+			t.Fatalf("migration changed articles: got %+v, want %+v; err=%v", actual, expected, err)
+		}
+		if !testIndexExists(t, db, "ix_tutorials_published_order") {
+			t.Fatal("migration removed the tutorial listing index")
+		}
+		for _, index := range []string{"ux_tutorials_title", "ux_tutorials_english_title"} {
+			if !testIndexExists(t, db, index) {
+				t.Fatalf("missing unique title index %q", index)
+			}
+		}
+		for _, query := range []string{
+			`UPDATE tutorials SET title = 'Shared title' WHERE id = 5`,
+			`UPDATE tutorials SET title_en = 'Shared EN' WHERE id = 5`,
+			`UPDATE tutorials SET title = 'Shared EN', title_en = '' WHERE id = 5`,
+		} {
+			if _, err := db.Exec(query); err == nil || !isUniqueConstraintError(err) {
+				t.Fatalf("database accepted a duplicate tutorial title: %v", err)
+			}
+		}
+	}
+	for range 2 {
+		if err := a.runMigrations(ctx); err != nil {
+			t.Fatal(err)
+		}
+		verify()
+	}
+	if err := goose.DownToContext(ctx, db, ".", 202609210002); err != nil {
 		t.Fatal(err)
 	}
 	if err := a.runMigrations(ctx); err != nil {

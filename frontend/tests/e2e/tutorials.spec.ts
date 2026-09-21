@@ -46,7 +46,7 @@ test('tutorials show below API keys and single choices copy without popovers', a
   await expect(guide.getByRole('tablist')).toHaveCount(1)
   await expect(guide.getByRole('tab', { name: 'Codex CLI Windows', exact: true })).toBeVisible()
   await guide.getByRole('tab', { name: 'Codex CLI Windows', exact: true }).click()
-  await expect(guide.locator('article')).toContainText('Codex CLI')
+  await expect(guide.locator('article')).toContainText('1. Prepare')
   const panel = await page.locator('.api-key-panel-shell').boundingBox()
   const guideBox = await guide.boundingBox()
   expect(guideBox!.y).toBeGreaterThan(panel!.y + panel!.height)
@@ -72,7 +72,8 @@ test('tutorials show below API keys and single choices copy without popovers', a
   await page.setViewportSize({ width: 1440, height: 1000 })
   await page.evaluate(() => localStorage.setItem('cpa-helper-language', 'zh'))
   await page.reload()
-  await expect(guide.locator('article')).toContainText('Codex CLI 接入教程')
+  await expect(guide.getByRole('tab').first()).toHaveText('Codex CLI Windows')
+  await expect(guide.locator('article')).toContainText('准备密钥与模型')
   await guide.scrollIntoViewIfNeeded()
   await page.screenshot({ path: 'test-results/tutorials-desktop.png' })
 })
@@ -82,7 +83,7 @@ test('multiple keys/endpoints prompt and code copy resolves both variables', asy
   await mockKeys(page, 2)
   await mockEndpoints(page, true)
   await page.route('**/api/tutorials', (route) => route.fulfill({ json: [{
-    id: 101, title: '变量复制测试', title_en: 'Variable copy test', category: 'Test CLI',
+    id: 101, title: '变量复制测试', title_en: 'Variable copy test',
     markdown: 'Key: {{api_key}}\n\nURL: {{api_base_url}}\n\n```text\nKEY={{api_key}}\nURL={{responses_url}}\n```\n\n<script>window.tutorialXss = true</script>\n\n[unsafe](javascript:alert(1))',
     markdown_en: '', sort_order: 0, published: true,
   }] }))
@@ -109,30 +110,43 @@ test('multiple keys/endpoints prompt and code copy resolves both variables', asy
   await expect(guide).not.toContainText('sk-e2e-test-0')
 })
 
-test('tutorial categories use one tab row and keep selection across refresh', async ({ page }) => {
+test('each tutorial title has its own tab and keeps selection by ID across refresh', async ({ page }) => {
   await login(page)
-  const article = (id: number, category: string) => ({
-    id, category, title: `Article ${id}`, title_en: `Article ${id}`,
+  const article = (id: number, title: string) => ({
+    id, title, title_en: '',
     markdown: `Content ${id}`, markdown_en: '', published: true, sort_order: id,
   })
-  let articles = [article(1, 'Codex Windows Desktop'), article(2, 'Codex Windows Desktop'), article(3, 'Claude Code')]
+  let articles = [article(1, 'Codex Windows Desktop'), article(2, 'Codex macOS Desktop'), article(3, 'Claude Code')]
   await page.route('**/api/tutorials', (route) => route.fulfill({ json: articles }))
   await page.goto('/account/keys')
   const guide = page.locator('[data-tutorial-guide]')
   await expect(guide.getByRole('tablist')).toHaveCount(1)
-  await expect(guide.getByRole('tab')).toHaveText(['Codex Windows Desktop', 'Claude Code'])
-  await expect(guide.locator('article')).toHaveCount(2)
+  await expect(guide.getByRole('tab')).toHaveText(['Codex Windows Desktop', 'Codex macOS Desktop', 'Claude Code'])
+  await expect(guide.locator('article')).toHaveCount(1)
+  await expect(guide.locator('article')).toHaveText('Content 1')
+  await guide.getByRole('tab').nth(1).click()
+  await expect(guide.locator('article')).toHaveCount(1)
+  await expect(guide.locator('article')).toHaveText('Content 2')
   await guide.getByRole('tab', { name: 'Claude Code', exact: true }).click()
   await expect(guide.locator('article')).toHaveCount(1)
   await expect(guide.locator('article')).toContainText('Content 3')
+  articles[2] = { ...articles[2]!, title: 'Claude Code 中文', title_en: 'Claude Code English' }
   await page.locator('.page-toolbar').getByRole('button', { name: /^(刷新|Refresh)$/ }).click()
-  await expect(guide.getByRole('tab', { name: 'Claude Code', exact: true })).toHaveAttribute('data-state', 'active')
+  await expect(guide.getByRole('tab', { name: 'Claude Code English', exact: true })).toHaveAttribute('data-state', 'active')
+  await expect(guide.locator('article')).toHaveText('Content 3')
   articles = articles.slice(0, 2)
   await expect(page.locator('.page-toolbar').getByRole('button', { name: /^(刷新|Refresh)$/ })).toBeEnabled()
   await page.locator('.page-toolbar').getByRole('button', { name: /^(刷新|Refresh)$/ }).click()
-  await expect(guide.getByRole('tab')).toHaveText(['Codex Windows Desktop'])
-  await expect(guide.locator('article')).toHaveCount(2)
-  await expect(guide.getByRole('tab')).toHaveAttribute('data-state', 'active')
+  await expect(guide.getByRole('tab')).toHaveText(['Codex Windows Desktop', 'Codex macOS Desktop'])
+  await expect(guide.locator('article')).toHaveCount(1)
+  await expect(guide.locator('article')).toHaveText('Content 1')
+  await expect(guide.getByRole('tab').first()).toHaveAttribute('data-state', 'active')
+  articles = []
+  await expect(page.locator('.page-toolbar').getByRole('button', { name: /^(刷新|Refresh)$/ })).toBeEnabled()
+  await page.locator('.page-toolbar').getByRole('button', { name: /^(刷新|Refresh)$/ }).click()
+  await expect(guide.getByRole('tab')).toHaveCount(0)
+  await expect(guide.locator('article')).toHaveCount(0)
+  await expect(guide).toContainText('No tutorials yet')
 })
 
 test('unavailable keys cannot be copied and a failed tutorial request can be retried', async ({ page }) => {
@@ -173,25 +187,37 @@ test('tutorial management saves drafts, inserts variables, previews, publishes a
   await manager.getByRole('button', { name: /新建教程|New tutorial/ }).click()
   const dialog = page.getByRole('dialog')
   await dialog.locator('#tutorial-title').fill('E2E temporary tutorial')
-  await expect(dialog.locator('#tutorial-platform, #tutorial-client')).toHaveCount(0)
-  await dialog.locator('#tutorial-category').fill('Codex Windows Desktop')
+  await expect(dialog.locator('#tutorial-platform, #tutorial-client, #tutorial-category')).toHaveCount(0)
   await dialog.locator('#tutorial-body').fill('## Example\n\nUse ')
   await dialog.getByRole('button', { name: 'api_key', exact: true }).click()
   await expect(dialog.locator('#tutorial-body')).toHaveValue('## Example\n\nUse {{api_key}}')
+  await page.screenshot({ path: 'test-results/tutorials-editor.png' })
   await dialog.getByRole('tab', { name: /预览|Preview/ }).click()
   await expect(dialog.getByRole('heading', { name: 'Example' })).toBeVisible()
   await expect(dialog.getByRole('button', { name: /API 密钥|API key/, exact: true })).toBeDisabled()
   await expect(dialog.locator('[data-slot="dialog-footer"]')).toHaveCSS('box-shadow', 'none')
+  // A duplicate must keep the editor open and preserve the unsaved body.
+  await dialog.locator('#tutorial-title').fill('Codex CLI Windows')
+  await dialog.getByRole('button', { name: /保存教程|Save tutorial/ }).click()
+  await expect(page.locator('[data-sonner-toast]').last()).toContainText(/教程标题重复|already uses this title/)
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByRole('heading', { name: 'Example' })).toBeVisible()
+  await dialog.locator('#tutorial-title').fill('E2E temporary tutorial')
   await dialog.getByRole('button', { name: /保存教程|Save tutorial/ }).click()
   await expect(dialog).toBeHidden()
   const row = manager.getByRole('row').filter({ hasText: 'E2E temporary tutorial' })
   await expect(row).toContainText(/草稿|Draft/)
-  await expect(row).toContainText('Codex Windows Desktop')
+  await expect(manager.getByRole('columnheader')).toHaveText(['Title', 'Order', 'Status', 'Actions'])
   const all = await (await page.request.get('/api/settings/tutorials')).json() as { id: number; title: string }[]
   const id = all.find((item) => item.title === 'E2E temporary tutorial')!.id
   try {
     expect(await (await page.request.get('/api/tutorials')).text()).not.toContain('E2E temporary tutorial')
     await row.getByRole('button', { name: /编辑|Edit/, exact: true }).click()
+    await dialog.locator('#tutorial-title-en').fill('Codex CLI Windows')
+    await dialog.getByRole('button', { name: /保存教程|Save tutorial/ }).click()
+    await expect(page.locator('[data-sonner-toast]').last()).toContainText(/教程标题重复|already uses this title/)
+    await expect(dialog).toBeVisible()
+    await dialog.locator('#tutorial-title-en').fill('')
     await dialog.locator('#tutorial-published').click()
     await dialog.getByRole('button', { name: /保存教程|Save tutorial/ }).click()
     await expect(dialog).toBeHidden()

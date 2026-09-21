@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button'
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
 import { Empty, EmptyHeader, EmptyTitle, EmptyDescription } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Separator } from '@/components/ui/separator'
 import { useI18n } from '@/shared/i18n'
 import { listTutorials, type Tutorial } from '../api/tutorialsApi'
 import type { TutorialContext } from '../tutorialVariables'
@@ -18,11 +17,10 @@ const { t, isEnglish, errorText } = useI18n()
 const items = ref<Tutorial[]>([])
 const loading = ref(true)
 const error = ref('')
-const category = ref('')
-const categories = computed(() => [...new Set(items.value.map((item) => item.category))])
-const selected = computed(() => items.value.filter((item) => item.category === category.value))
-watch(categories, (values) => {
-  if (!values.includes(category.value)) category.value = values[0] ?? ''
+const selectedID = ref('')
+const selected = computed(() => items.value.find((item) => String(item.id) === selectedID.value))
+watch(items, (values) => {
+  if (!values.some((item) => String(item.id) === selectedID.value)) selectedID.value = values[0] ? String(values[0].id) : ''
 })
 
 async function reload() {
@@ -40,7 +38,7 @@ defineExpose({ reload })
   <Card data-tutorial-guide>
     <CardHeader>
       <CardTitle class="flex items-center gap-2"><BookOpenIcon class="size-4" />{{ t('接入教程', 'Setup tutorials') }}</CardTitle>
-      <CardDescription>{{ t('选择教程分类查看接入步骤，点击文章中的变量可选择并复制自己的密钥或 Endpoint。', 'Choose a tutorial category. Click variables to select and copy your own key or endpoint.') }}</CardDescription>
+      <CardDescription>{{ t('选择教程查看接入步骤，点击文章中的变量可选择并复制自己的密钥或 Endpoint。', 'Choose a tutorial. Click variables to select and copy your own key or endpoint.') }}</CardDescription>
     </CardHeader>
     <CardContent class="min-w-0">
       <div v-if="loading" class="flex flex-col gap-4" data-tutorial-loading>
@@ -51,15 +49,13 @@ defineExpose({ reload })
         <AlertDescription>{{ error }}<Button variant="outline" size="sm" @click="reload"><RefreshCwIcon data-icon="inline-start" />{{ t('重试', 'Retry') }}</Button></AlertDescription>
       </Alert>
       <Empty v-else-if="!items.length"><EmptyHeader><EmptyTitle>{{ t('暂无教程', 'No tutorials yet') }}</EmptyTitle><EmptyDescription>{{ t('管理员发布后将在此展示。', 'Published tutorials will appear here.') }}</EmptyDescription></EmptyHeader></Empty>
-      <Tabs v-else v-model="category" class="tutorial-tabs">
-        <TabsList class="max-w-full flex-wrap h-auto w-fit justify-start gap-1" :aria-label="t('教程分类', 'Tutorial category')">
-          <TabsTrigger v-for="name in categories" :key="name" :value="name" :title="name" class="h-8 min-w-0 max-w-full flex-none"><span class="truncate">{{ name }}</span></TabsTrigger>
+      <Tabs v-else v-model="selectedID" class="tutorial-tabs">
+        <TabsList class="max-w-full flex-wrap h-auto w-fit justify-start gap-1" :aria-label="t('教程', 'Tutorials')">
+          <TabsTrigger v-for="item in items" :key="item.id" :value="String(item.id)" :title="isEnglish && item.title_en ? item.title_en : item.title" class="h-8 min-w-0 max-w-full flex-none"><span class="truncate">{{ isEnglish && item.title_en ? item.title_en : item.title }}</span></TabsTrigger>
         </TabsList>
-        <TabsContent :value="category" class="min-w-0">
-          <article v-for="(item, index) in selected" :key="item.id" class="py-3">
-            <Separator v-if="index" class="mb-6" />
-            <h3 class="mb-5 text-lg font-semibold">{{ isEnglish && item.title_en ? item.title_en : item.title }}</h3>
-            <TutorialMarkdown :content="isEnglish && item.markdown_en ? item.markdown_en : item.markdown" :context="context" />
+        <TabsContent v-if="selected" :key="selected.id" :value="String(selected.id)" class="min-w-0">
+          <article class="py-3">
+            <TutorialMarkdown :content="isEnglish && selected.markdown_en ? selected.markdown_en : selected.markdown" :context="context" />
           </article>
         </TabsContent>
       </Tabs>

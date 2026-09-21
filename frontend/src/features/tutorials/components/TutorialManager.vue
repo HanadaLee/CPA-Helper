@@ -38,7 +38,7 @@ const page = ref(1)
 const pageSize = ref(20)
 const visibleItems = computed(() => items.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
 watch([pageSize, items], () => { page.value = Math.min(page.value, Math.max(1, Math.ceil(items.value.length / pageSize.value))) })
-const emptyForm = (): TutorialInput => ({ title: '', title_en: '', category: '', markdown: '', markdown_en: '', sort_order: 0, published: false })
+const emptyForm = (): TutorialInput => ({ title: '', title_en: '', markdown: '', markdown_en: '', sort_order: 0, published: false })
 const form = reactive(emptyForm())
 const body = computed({ get: () => language.value === 'en' ? form.markdown_en : form.markdown, set: (value: string) => { if (language.value === 'en') form.markdown_en = value; else form.markdown = value } })
 
@@ -53,7 +53,7 @@ async function reload() {
 function edit(item?: Tutorial) {
   editingID.value = item?.id ?? null
   Object.assign(form, item ? {
-    title: item.title, title_en: item.title_en, category: item.category,
+    title: item.title, title_en: item.title_en,
     markdown: item.markdown, markdown_en: item.markdown_en, sort_order: item.sort_order, published: item.published,
   } : emptyForm())
   editorMode.value = 'edit'
@@ -63,8 +63,8 @@ function edit(item?: Tutorial) {
 
 async function save() {
   if (saving.value) return
-  if (!form.title.trim() || !form.category.trim() || !form.markdown.trim()) {
-    toast.error(t('请填写标题、分类和中文正文', 'Enter a title, category and Chinese content.'))
+  if (!form.title.trim() || !form.markdown.trim()) {
+    toast.error(t('请填写标题和中文正文', 'Enter a title and Chinese content.'))
     return
   }
   saving.value = true
@@ -114,7 +114,7 @@ defineExpose({ reload })
   <Card data-tutorial-manager>
     <CardHeader>
       <CardTitle>{{ t('教程管理', 'Tutorial management') }}</CardTitle>
-      <CardDescription>{{ t('发布的教程展示在 API 密钥页下方。每篇独立保存，支持 Markdown、中英文和动态复制变量。', 'Published tutorials appear below API keys. Each article saves independently and supports Markdown, translations and copy variables.') }}</CardDescription>
+      <CardDescription>{{ t('发布的教程展示在 API 密钥页下方，每篇以标题作为独立标签。支持 Markdown、中英文和动态复制变量。', 'Published tutorials appear below API keys, each in its own title tab. Supports Markdown, translations and copy variables.') }}</CardDescription>
       <CardAction><Button @click="edit()"><PlusIcon data-icon="inline-start" />{{ t('新建教程', 'New tutorial') }}</Button></CardAction>
     </CardHeader>
     <CardContent>
@@ -125,13 +125,13 @@ defineExpose({ reload })
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>{{ t('标题', 'Title') }}</TableHead><TableHead>{{ t('分类', 'Category') }}</TableHead><TableHead>{{ t('排序', 'Order') }}</TableHead><TableHead>{{ t('状态', 'Status') }}</TableHead><TableHead class="text-right">{{ t('操作', 'Actions') }}</TableHead>
+              <TableHead>{{ t('标题', 'Title') }}</TableHead><TableHead>{{ t('排序', 'Order') }}</TableHead><TableHead>{{ t('状态', 'Status') }}</TableHead><TableHead class="text-right">{{ t('操作', 'Actions') }}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             <TableRow v-for="item in visibleItems" :key="item.id">
               <TableCell class="max-w-64 truncate" :title="item.title">{{ isEnglish && item.title_en ? item.title_en : item.title }}</TableCell>
-              <TableCell class="max-w-64 truncate" :title="item.category">{{ item.category }}</TableCell><TableCell>{{ item.sort_order }}</TableCell>
+              <TableCell>{{ item.sort_order }}</TableCell>
               <TableCell><Badge :variant="item.published ? 'secondary' : 'outline'">{{ item.published ? t('已发布', 'Published') : t('草稿', 'Draft') }}</Badge></TableCell>
               <TableCell>
                 <div class="flex justify-end gap-1">
@@ -150,15 +150,14 @@ defineExpose({ reload })
     <DialogContent class="sm:max-w-4xl max-h-[90dvh] overflow-y-auto" @interact-outside.prevent>
       <DialogHeader>
         <DialogTitle>{{ editingID ? t('编辑教程', 'Edit tutorial') : t('新建教程', 'New tutorial') }}</DialogTitle>
-        <DialogDescription>{{ t('真实密钥不写入文章；使用变量让读者选择并复制自己的密钥。英文留空时使用中文。', 'Never save real keys in articles. Variables let readers copy their own keys. Empty English fields fall back to Chinese.') }}</DialogDescription>
+        <DialogDescription>{{ t('教程标题不能重名。真实密钥不写入文章；使用变量让读者选择并复制自己的密钥。英文留空时使用中文。', 'Tutorial titles must be unique. Never save real keys in articles; use variables instead. Empty English fields fall back to Chinese.') }}</DialogDescription>
       </DialogHeader>
       <form class="flex flex-col gap-5" @submit.prevent="save">
         <FieldGroup class="grid gap-4 sm:grid-cols-2">
-          <Field><FieldLabel for="tutorial-title">{{ t('标题（中文）', 'Title (Chinese)') }}</FieldLabel><Input id="tutorial-title" v-model="form.title" required maxlength="120" /></Field>
+          <Field><FieldLabel for="tutorial-title">{{ t('标题（中文）', 'Title (Chinese)') }}</FieldLabel><Input id="tutorial-title" v-model="form.title" required maxlength="120" :placeholder="t('例如 Codex Windows Desktop', 'e.g. Codex Windows Desktop')" /></Field>
           <Field><FieldLabel for="tutorial-title-en">{{ t('标题（英文，可选）', 'Title (English, optional)') }}</FieldLabel><Input id="tutorial-title-en" v-model="form.title_en" maxlength="120" /></Field>
-          <Field><FieldLabel for="tutorial-category">{{ t('分类名称', 'Category name') }}</FieldLabel><Input id="tutorial-category" v-model="form.category" required maxlength="128" :placeholder="t('例如 Codex Windows Desktop', 'e.g. Codex Windows Desktop')" /></Field>
           <Field><FieldLabel for="tutorial-order">{{ t('排序（越小越靠前）', 'Order (lowest first)') }}</FieldLabel><Input id="tutorial-order" v-model.number="form.sort_order" type="number" min="0" max="10000" step="1" required /></Field>
-          <Field orientation="horizontal" class="rounded-lg border border-border p-3 sm:col-span-2"><FieldLabel for="tutorial-published">{{ t('发布教程', 'Publish tutorial') }}</FieldLabel><Switch id="tutorial-published" v-model="form.published" /></Field>
+          <Field orientation="horizontal" class="self-end rounded-lg border border-border p-3"><FieldLabel for="tutorial-published">{{ t('发布教程', 'Publish tutorial') }}</FieldLabel><Switch id="tutorial-published" v-model="form.published" /></Field>
         </FieldGroup>
         <Tabs v-model="language" class="flex flex-col gap-3">
           <TabsList><TabsTrigger value="zh">{{ t('中文正文', 'Chinese content') }}</TabsTrigger><TabsTrigger value="en">{{ t('英文正文', 'English content') }}</TabsTrigger></TabsList>

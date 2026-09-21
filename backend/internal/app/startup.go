@@ -199,7 +199,7 @@ func requireSchemaShape(ctx context.Context, db *sql.DB) error {
 		column string
 	}{
 		{"tutorials", "markdown"},
-		{"tutorials", "category"},
+		{"tutorials", "title"},
 		{"tutorials", "published"},
 		{"app_settings", "session_secret"},
 		{"app_settings", "cas_enabled"},
