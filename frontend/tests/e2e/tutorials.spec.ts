@@ -42,6 +42,108 @@ function model(id: string, keyIndexes = [0]) {
   return { id, name: `Display name for ${id}`, sources: keyIndexes.map((index) => ({ api_key_hash: `test-hash-${index}` })) }
 }
 
+const illustratedTutorial = `# Illustrated tutorial
+
+![Install **screen**](https://images.example.test/install.png "Install step")
+
+![Reference screenshot][screen]
+
+![](/tutorial-test-image.svg)
+
+[![Linked screenshot](https://images.example.test/linked.webp)](https://guide.example.test/)
+
+[screen]: https://images.example.test/reference.svg "Reference image"
+
+<div class="tutorial-html-layout">
+<details open><summary>HTML instructions</summary><p><strong>Formatted HTML</strong><br><em>HTML emphasis</em><img src="https://images.example.test/html-image" alt="HTML screenshot" width="320"><span>{{api_base_url}}</span></p></details>
+</div>
+
+1. First step
+2. Second step
+
+> A useful note with ~~old text~~.
+
+| Field | Value |
+| --- | --- |
+| Example | Enabled |
+
+\`\`\`html
+<img src="example.png" alt="A & B">
+{{api_key}}
+\`\`\`
+`
+
+async function mockTutorialImages(page: Page) {
+  const image = '<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="450"><rect width="1800" height="450" fill="#dcfce7"/><text x="60" y="240" font-size="70" fill="#166534">Tutorial image</text></svg>'
+  for (const url of ['https://images.example.test/**', '**/tutorial-test-image.svg']) {
+    await page.route(url, (route) => route.fulfill({ contentType: 'image/svg+xml', body: image }))
+  }
+}
+
+test('published tutorials render standard Markdown images and trusted HTML without breaking copy controls', async ({ page }) => {
+  await login(page)
+  await mockKeys(page, 1)
+  await mockEndpoints(page)
+  await mockTutorialImages(page)
+  await mockModelTutorial(page, illustratedTutorial)
+  await page.goto('/account/keys')
+  const article = page.locator('[data-tutorial-guide] article')
+  await expect(article.getByRole('heading', { name: 'Illustrated tutorial' })).toBeVisible()
+  await expect(article.locator('img')).toHaveCount(5)
+  for (const image of await article.locator('img').all()) {
+    await expect(image).toBeVisible()
+    await expect.poll(() => image.evaluate((element) => (element as HTMLImageElement).naturalWidth)).toBe(1800)
+  }
+  await expect(article.getByRole('img', { name: 'Install screen', exact: true })).toHaveAttribute('title', 'Install step')
+  await expect(article.getByRole('img', { name: 'Reference screenshot', exact: true })).toHaveAttribute('title', 'Reference image')
+  await expect(article.locator('img[alt=""]')).toHaveAttribute('src', '/tutorial-test-image.svg')
+  await expect(article.getByRole('link', { name: 'Linked screenshot', exact: true })).toHaveAttribute('href', 'https://guide.example.test/')
+  await expect(article.locator('details')).toHaveAttribute('open', '')
+  await expect(article.locator('.tutorial-html-layout details p strong')).toHaveText('Formatted HTML')
+  await expect(article.locator('.tutorial-html-layout details p em')).toHaveText('HTML emphasis')
+  await expect(article.locator('ol > li')).toHaveText(['First step', 'Second step'])
+  await expect(article.locator('blockquote s')).toHaveText('old text')
+  await expect(article.locator('table tbody td')).toHaveText(['Example', 'Enabled'])
+  await expect(article.locator('pre img')).toHaveCount(0)
+  await expect(article.locator('pre')).toContainText('<img src="example.png" alt="A & B">')
+  await article.getByRole('button', { name: 'Base URL', exact: true }).click()
+  await expect.poll(() => clipboard(page)).toBe('https://gateway.example/v1')
+  await article.getByRole('button', { name: 'Copy code', exact: true }).click()
+  await expect.poll(() => clipboard(page)).toBe('<img src="example.png" alt="A & B">\nsk-e2e-test-0\n')
+  await article.scrollIntoViewIfNeeded()
+  await page.screenshot({ path: 'test-results/tutorial-images-desktop.png' })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await article.getByRole('heading', { name: 'Illustrated tutorial' }).scrollIntoViewIfNeeded()
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy()
+  const articleBox = await article.boundingBox()
+  for (const image of await article.locator('img').all()) {
+    const imageBox = await image.boundingBox()
+    expect(imageBox!.width).toBeLessThanOrEqual(articleBox!.width)
+  }
+  await page.screenshot({ path: 'test-results/tutorial-images-mobile.png' })
+})
+
+test('tutorial editor preview renders the same images and trusted HTML as published articles', async ({ page }) => {
+  await login(page)
+  await mockTutorialImages(page)
+  await page.goto('/admin/settings')
+  await page.getByRole('tab', { name: 'Tutorial management', exact: true }).click()
+  await page.locator('[data-tutorial-manager]').getByRole('button', { name: 'New tutorial' }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.locator('#tutorial-title').fill('Image preview')
+  await dialog.locator('#tutorial-body').fill(illustratedTutorial)
+  await dialog.getByRole('tab', { name: 'Preview', exact: true }).click()
+  await expect(dialog.locator('.tutorial-prose img')).toHaveCount(5)
+  await expect(dialog.getByRole('img', { name: 'Install screen', exact: true })).toBeVisible()
+  await expect.poll(() => dialog.getByRole('img', { name: 'Install screen', exact: true }).evaluate((element) => (element as HTMLImageElement).naturalWidth)).toBe(1800)
+  await expect(dialog.locator('.tutorial-html-layout details p strong')).toHaveText('Formatted HTML')
+  await expect(dialog.getByRole('button', { name: 'Base URL', exact: true })).toBeDisabled()
+  await expect(dialog.getByRole('button', { name: 'Copy code', exact: true })).toBeDisabled()
+  await page.screenshot({ path: 'test-results/tutorial-images-preview.png' })
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await expect(dialog).toBeHidden()
+})
+
 test('model ID loads on demand, copies the ID and deduplicates single choices', async ({ page }) => {
   await login(page)
   await mockKeys(page, 1)
@@ -195,7 +297,7 @@ test('multiple keys/endpoints prompt and code copy resolves both variables', asy
   await mockEndpoints(page, true)
   await page.route('**/api/tutorials', (route) => route.fulfill({ json: [{
     id: 101, title: '变量复制测试', title_en: 'Variable copy test',
-    markdown: 'Key: {{api_key}}\n\nURL: {{api_base_url}}\n\n```text\nKEY={{api_key}}\nURL={{responses_url}}\n```\n\n<script>window.tutorialXss = true</script>\n\n[unsafe](javascript:alert(1))',
+    markdown: 'Key: {{api_key}}\n\nURL: {{api_base_url}}\n\n```text\nKEY={{api_key}}\nURL={{responses_url}}\n```\n\n[unsafe](javascript:alert(1))',
     markdown_en: '', sort_order: 0, published: true,
   }] }))
   await page.goto('/account/keys')
@@ -216,8 +318,7 @@ test('multiple keys/endpoints prompt and code copy resolves both variables', asy
   await expect(popover).toContainText(/endpoint/i)
   await popover.getByRole('button', { name: /Backup endpoint/ }).click()
   await expect.poll(() => clipboard(page)).toBe('KEY=sk-e2e-test-0\nURL=https://backup.example/prefix/v1/responses\n')
-  await expect(guide.locator('script, a[href^="javascript:"]')).toHaveCount(0)
-  expect(await page.evaluate(() => 'tutorialXss' in window)).toBe(false)
+  await expect(guide.locator('a[href^="javascript:"]')).toHaveCount(0)
   await expect(guide).not.toContainText('sk-e2e-test-0')
 })
 

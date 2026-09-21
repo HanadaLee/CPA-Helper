@@ -10,11 +10,14 @@ const props = withDefaults(defineProps<{ content: string; context?: TutorialCont
   context: () => emptyTutorialContext, preview: false,
 })
 const { t } = useI18n()
-// No raw HTML, executable links, or remote tracking images. Render tokens as Vue nodes,
-// not v-html, so variables can use the same accessible Popover as the rest of the app.
-const markdown = new MarkdownIt({ html: false, linkify: true }).disable('image')
-type Token = ReturnType<typeof markdown.parse>[number]
-const tokens = computed(() => markdown.parse(props.content, {}))
+// Tutorials are administrator-authored, trusted content. Let markdown-it render
+// its full Markdown syntax and embedded HTML, then add interactive copy variables.
+const markdown = new MarkdownIt({ html: true, linkify: true })
+const documentFragment = computed(() => {
+  const template = document.createElement('template')
+  template.innerHTML = markdown.render(props.content)
+  return template.content
+})
 
 function variableText(text: string): VNodeChild[] {
   const output: VNodeChild[] = []
@@ -33,35 +36,33 @@ function variableText(text: string): VNodeChild[] {
   return output
 }
 
-function renderTokens(items: Token[]): VNodeChild[] {
-  let index = 0
-  function walk(): VNodeChild[] {
-    const nodes: VNodeChild[] = []
-    while (index < items.length) {
-      const token = items[index++]!
-      if (token.nesting === -1) break
-      if (token.type === 'inline') nodes.push(...renderTokens(token.children ?? []))
-      else if (token.type === 'text') nodes.push(...variableText(token.content))
-      else if (token.type === 'softbreak') nodes.push('\n')
-      else if (token.type === 'code_inline') nodes.push(h('code', variableText(token.content)))
-      else if (token.type === 'fence' || token.type === 'code_block') {
-        nodes.push(h('div', { class: 'tutorial-code' }, [
-          h('div', { class: 'tutorial-code-header' }, [h('span', token.info.trim()), h(TutorialCopy, { text: token.content, context: props.context, preview: props.preview })]),
-          h('pre', [h('code', variableText(token.content))]),
-        ]))
-      } else if (token.type === 'hr') nodes.push(h(Separator))
-      else if (token.tag) {
-        const attrs = Object.fromEntries(token.attrs ?? [])
-        if (token.tag === 'a') Object.assign(attrs, { target: '_blank', rel: 'noopener noreferrer' })
-        nodes.push(h(token.tag, attrs, token.nesting === 1 ? walk() : token.content))
-      } else nodes.push(token.content)
+function renderNodes(items: globalThis.NodeListOf<globalThis.ChildNode>): VNodeChild[] {
+  return Array.from(items).flatMap((node): VNodeChild[] => {
+    if (node.nodeType === Node.TEXT_NODE) return variableText(node.textContent ?? '')
+    if (node.nodeType !== Node.ELEMENT_NODE) return []
+    const element = node as Element
+    const tag = element.localName
+    const attrs = Object.fromEntries(Array.from(element.attributes, (attr) => [attr.name, attr.value]))
+    if (tag === 'pre' && element.firstElementChild?.localName === 'code') {
+      const code = element.firstElementChild
+      const language = Array.from(code.classList).find((name) => name.startsWith('language-'))?.slice(9) ?? ''
+      return [h('div', { class: 'tutorial-code' }, [
+        h('div', { class: 'tutorial-code-header' }, [h('span', language), h(TutorialCopy, { text: code.textContent ?? '', context: props.context, preview: props.preview })]),
+        h('pre', attrs, renderNodes(element.childNodes)),
+      ])]
     }
-    return nodes
-  }
-  return walk()
+    if (tag === 'hr') return [h(Separator, attrs)]
+    if (tag === 'a') {
+      attrs.target ??= '_blank'
+      attrs.rel ??= 'noopener noreferrer'
+    }
+    // Preserve raw-text HTML elements without inserting Vue controls into them.
+    if (['script', 'style', 'textarea', 'title'].includes(tag)) return [h(tag, attrs, element.textContent)]
+    return [h(tag, attrs, element.childNodes.length ? renderNodes(element.childNodes) : undefined)]
+  })
 }
 
-const Content = defineComponent({ setup: () => () => h('div', { class: 'tutorial-prose' }, renderTokens(tokens.value)) })
+const Content = defineComponent({ setup: () => () => h('div', { class: 'tutorial-prose' }, renderNodes(documentFragment.value.childNodes)) })
 </script>
 
 <template><Content /></template>
@@ -86,5 +87,6 @@ const Content = defineComponent({ setup: () => () => h('div', { class: 'tutorial
 .tutorial-prose pre code { background: transparent; }
 .tutorial-prose table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; }
 .tutorial-prose th, .tutorial-prose td { padding: .5rem .75rem; border: 1px solid var(--border); }
+.tutorial-prose img { max-width: 100%; height: auto; }
 .tutorial-prose button { vertical-align: middle; }
 </style>

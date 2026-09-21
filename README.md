@@ -66,7 +66,7 @@ Insert these variables in prose or code blocks using the editor toolbar:
 - `{{api_base_url}}` (alias `{{api_endpoint}}`): an endpoint base URL, including `/v1`.
 - `{{responses_url}}`, `{{chat_completions_url}}`, `{{claude_messages_url}}`: the matching request URL.
 
-Click a variable to copy its value. One available option copies immediately; multiple options open a picker, with search for longer lists. **Copy code** fills all variables, selecting a key, endpoint and/or model as needed. Models load on demand from the same API as **Available Models**; refreshing API Keys clears the local model cache. When copying a key and model together, model choices are limited to that key. Disabled/missing keys are excluded. Actual keys are never saved in article content or automatically shown in the tutorial. Raw HTML and remote images are not rendered.
+Click a variable to copy its value. One available option copies immediately; multiple options open a picker, with search for longer lists. **Copy code** fills all variables, selecting a key, endpoint and/or model as needed. Models load on demand from the same API as **Available Models**; refreshing API Keys clears the local model cache. When copying a key and model together, model choices are limited to that key. Disabled/missing keys are excluded. Actual keys are never saved in article content or automatically shown in the tutorial. Administrator-authored tutorials are trusted content: standard Markdown images and embedded HTML are supported in both preview and published articles, without additional image domain or format restrictions. Images scale down to fit the article width.
 
 ## Screenshots
 
