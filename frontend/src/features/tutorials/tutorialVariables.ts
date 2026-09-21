@@ -1,24 +1,26 @@
-import type { UserApiKeySummary } from '@/shared/types/api'
+import type { AvailableModel, UserApiKeySummary } from '@/shared/types/api'
 
 export interface TutorialEndpoint { label: string; baseURL: string }
 export interface TutorialContext {
   apiKeys: Pick<UserApiKeySummary, 'api_key' | 'api_key_hash' | 'description' | 'disabled'>[]
   endpoints: TutorialEndpoint[]
+  models: Pick<AvailableModel, 'id' | 'name' | 'sources'>[]
+  ensureModels?: () => Promise<void>
 }
 
-export const emptyTutorialContext: TutorialContext = { apiKeys: [], endpoints: [] }
-export const tutorialVariables = ['api_key', 'api_base_url', 'responses_url', 'chat_completions_url', 'claude_messages_url'] as const
-export const variablePattern = /\{\{\s*(api_key|api_base_url|api_endpoint|responses_url|chat_completions_url|claude_messages_url)\s*\}\}/g
+export const emptyTutorialContext: TutorialContext = { apiKeys: [], endpoints: [], models: [] }
+export const tutorialVariables = ['api_key', 'model_id', 'api_base_url', 'responses_url', 'chat_completions_url', 'claude_messages_url'] as const
+export const variablePattern = /\{\{\s*(api_key|model_id|api_base_url|api_endpoint|responses_url|chat_completions_url|claude_messages_url)\s*\}\}/g
 
 export function variableRequirements(text: string) {
   const names = [...text.matchAll(new RegExp(variablePattern))].map((match) => match[1])
-  return { key: names.includes('api_key'), endpoint: names.some((name) => name !== 'api_key') }
+  return { key: names.includes('api_key'), model: names.includes('model_id'), endpoint: names.some((name) => name !== 'api_key' && name !== 'model_id') }
 }
 
-export function resolveTutorialVariables(text: string, key: string, baseURL: string) {
+export function resolveTutorialVariables(text: string, key: string, baseURL: string, modelID = '') {
   const base = baseURL.replace(/\/$/, '')
   const values: Record<string, string> = {
-    api_key: key, api_base_url: base, api_endpoint: base,
+    api_key: key, model_id: modelID, api_base_url: base, api_endpoint: base,
     responses_url: `${base}/responses`,
     chat_completions_url: `${base}/chat/completions`,
     claude_messages_url: `${base}/messages`,

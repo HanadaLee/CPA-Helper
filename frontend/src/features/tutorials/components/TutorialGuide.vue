@@ -38,7 +38,7 @@ defineExpose({ reload })
   <Card data-tutorial-guide>
     <CardHeader>
       <CardTitle class="flex items-center gap-2"><BookOpenIcon class="size-4" />{{ t('接入教程', 'Setup tutorials') }}</CardTitle>
-      <CardDescription>{{ t('选择教程查看接入步骤，点击文章中的变量可选择并复制自己的密钥或 Endpoint。', 'Choose a tutorial. Click variables to select and copy your own key or endpoint.') }}</CardDescription>
+      <CardDescription>{{ t('选择教程查看接入步骤，点击文章中的变量可选择并复制密钥、Endpoint 或可用模型。', 'Choose a tutorial. Click variables to select and copy a key, endpoint or available model.') }}</CardDescription>
     </CardHeader>
     <CardContent class="min-w-0">
       <div v-if="loading" class="flex flex-col gap-4" data-tutorial-loading>

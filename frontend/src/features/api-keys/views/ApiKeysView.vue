@@ -600,15 +600,31 @@ async function loadModelRequestGuide() {
   }
 }
 
-async function loadAvailableModelsForTest() {
+let availableModelsRequest: Promise<void> | null = null
+async function fetchAvailableModels(force = false): Promise<void> {
+  if (availableModelsRequest) return availableModelsRequest
+  if (!force && availableModels.value) return
   isAvailableModelsLoading.value = true
+  availableModelsRequest = (async () => {
+    try {
+      availableModels.value = await listAvailableModels()
+      ensureRequestTestModel()
+    } catch (error) {
+      availableModels.value = null
+      throw error
+    } finally {
+      isAvailableModelsLoading.value = false
+      availableModelsRequest = null
+    }
+  })()
+  return availableModelsRequest
+}
+
+async function loadAvailableModelsForTest() {
   try {
-    availableModels.value = await listAvailableModels()
-    ensureRequestTestModel()
+    await fetchAvailableModels(true)
   } catch (error) {
     message.error(errorText(error, '加载可用模型失败', 'Failed to load available models'))
-  } finally {
-    isAvailableModelsLoading.value = false
   }
 }
 
@@ -758,6 +774,7 @@ async function refresh() {
       getModelRequestGuide(),
     ])
     apiKeys.value = nextApiKeys
+    availableModels.value = null
     page.value = Math.min(page.value, Math.max(1, Math.ceil(nextApiKeys.length / pageSize)))
     usageSummary.value = overview.summary
     quotaStatus.value = quota
@@ -839,6 +856,8 @@ const tutorialGuide = ref<InstanceType<typeof TutorialGuide> | null>(null)
 const tutorialContext = computed(() => ({
   apiKeys: apiKeys.value,
   endpoints: modelRequestGuide.value ? publicRequestEndpoints.value : [],
+  models: availableModels.value?.models ?? [],
+  ensureModels: () => fetchAvailableModels(),
 }))
 
 onMounted(refresh)

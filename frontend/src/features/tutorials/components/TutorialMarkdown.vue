@@ -23,7 +23,7 @@ function variableText(text: string): VNodeChild[] {
     output.push(text.slice(cursor, match.index))
     output.push(h(TutorialCopy, {
       text: match[0], context: props.context, preview: props.preview,
-      label: match[1] === 'api_key' ? t('API 密钥', 'API key') : match[1] === 'responses_url' ? 'Responses URL'
+      label: match[1] === 'api_key' ? t('API 密钥', 'API key') : match[1] === 'model_id' ? t('模型 ID', 'Model ID') : match[1] === 'responses_url' ? 'Responses URL'
         : match[1] === 'chat_completions_url' ? t('聊天 URL', 'Chat URL')
           : match[1] === 'claude_messages_url' ? 'Claude URL' : t('基础 URL', 'Base URL'),
     }))

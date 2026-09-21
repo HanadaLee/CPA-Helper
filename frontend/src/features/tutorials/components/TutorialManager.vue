@@ -169,7 +169,7 @@ defineExpose({ reload })
                   <Field>
                     <FieldLabel for="tutorial-body">{{ t('正文', 'Content') }}</FieldLabel>
                     <div class="flex flex-wrap gap-1" role="group" :aria-label="t('插入变量', 'Insert variable')"><Button v-for="name in tutorialVariables" :key="name" type="button" size="sm" variant="outline" @click="insertVariable(name)">{{ name }}</Button></div>
-                    <FieldDescription>{{ t('点击上方插入变量。读者点击变量或复制代码时，单个选项直接复制，多个选项弹出选择框。', 'Insert a variable above. Copying selects your key or endpoint; a single option copies immediately.') }}</FieldDescription>
+                    <FieldDescription>{{ t('点击上方插入变量。读者可选择自己的密钥、Endpoint 或可用模型；单个选项直接复制，多个选项弹出选择框。', 'Insert a variable above. Readers select their key, endpoint or available model; a single option copies immediately.') }}</FieldDescription>
                     <Textarea id="tutorial-body" v-model="body" class="min-h-72 font-mono" />
                   </Field>
                 </FieldGroup>

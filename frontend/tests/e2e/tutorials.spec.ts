@@ -32,6 +32,117 @@ async function mockEndpoints(page: Page, extra = false) {
   } }))
 }
 
+async function mockModelTutorial(page: Page, markdown: string) {
+  await page.route('**/api/tutorials', (route) => route.fulfill({ json: [{
+    id: 101, title: '模型选择', title_en: 'Model selection', markdown, markdown_en: '', sort_order: 0, published: true,
+  }] }))
+}
+
+function model(id: string, keyIndexes = [0]) {
+  return { id, name: `Display name for ${id}`, sources: keyIndexes.map((index) => ({ api_key_hash: `test-hash-${index}` })) }
+}
+
+test('model ID loads on demand, copies the ID and deduplicates single choices', async ({ page }) => {
+  await login(page)
+  await mockKeys(page, 1)
+  await mockEndpoints(page)
+  await mockModelTutorial(page, '{{model_id}}\n\n```toml\nmodel = "{{model_id}}"\nfallback = "{{ model_id }}"\n```')
+  let requests = 0
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => { release = resolve })
+  await page.route('**/api/account/models', async (route) => {
+    requests++
+    await gate
+    await route.fulfill({ json: { models: [model('test-model-id'), model('test-model-id')] } })
+  })
+  await page.goto('/account/keys')
+  const guide = page.locator('[data-tutorial-guide]')
+  const button = guide.getByRole('button', { name: 'Model ID', exact: true }).first()
+  await expect(button).toBeVisible()
+  expect(requests).toBe(0)
+  await button.click()
+  await expect.poll(() => requests).toBe(1)
+  await expect(button).toBeDisabled()
+  expect(await clipboard(page)).toBe('')
+  release()
+  await expect.poll(() => clipboard(page)).toBe('test-model-id')
+  await expect(page.locator('[data-slot="popover-content"]')).toHaveCount(0)
+  await guide.getByRole('button', { name: 'Copy code', exact: true }).click()
+  await expect.poll(() => clipboard(page)).toBe('model = "test-model-id"\nfallback = "test-model-id"\n')
+  expect(requests).toBe(1)
+})
+
+test('model choices are searchable and code resolves key, endpoint and matching model', async ({ page }) => {
+  await login(page)
+  await mockKeys(page, 2)
+  await mockEndpoints(page, true)
+  await mockModelTutorial(page, '{{model_id}}\n\n```text\nKEY={{api_key}}\nURL={{api_base_url}}\nMODEL={{model_id}}\n```')
+  const models = Array.from({ length: 7 }, (_, index) => model(`test-model-${index + 1}`, index < 5 ? [0] : [1]))
+  await page.route('**/api/account/models', (route) => route.fulfill({ json: { models } }))
+  await page.goto('/account/keys')
+  const guide = page.locator('[data-tutorial-guide]')
+  const popover = page.locator('[data-slot="popover-content"]')
+  await guide.getByRole('button', { name: 'Model ID', exact: true }).first().click()
+  await expect(popover.getByRole('button')).toHaveCount(7)
+  await popover.getByRole('textbox', { name: 'Search options' }).fill('model-7')
+  await expect(popover.getByRole('button')).toHaveCount(1)
+  await page.screenshot({ path: 'test-results/tutorial-model-picker.png' })
+  await popover.getByRole('button', { name: /test-model-7/ }).click()
+  await expect.poll(() => clipboard(page)).toBe('test-model-7')
+  await guide.getByRole('button', { name: 'Copy code', exact: true }).click()
+  await popover.getByRole('button', { name: /Test key 2/ }).click()
+  await popover.getByRole('button', { name: /Backup endpoint/ }).click()
+  await expect(popover).toContainText('Select a model')
+  await expect(popover.getByRole('button')).toHaveCount(2)
+  await expect(popover).not.toContainText('test-model-1')
+  await popover.getByRole('button', { name: /test-model-6/ }).click()
+  await expect.poll(() => clipboard(page)).toBe('KEY=sk-e2e-test-1\nURL=https://backup.example/prefix/v1\nMODEL=test-model-6\n')
+})
+
+test('a key without models cannot be copied as a model-key pair', async ({ page }) => {
+  await login(page)
+  await mockKeys(page, 2)
+  await mockEndpoints(page)
+  await mockModelTutorial(page, '```text\n{{api_key}} {{model_id}}\n```')
+  await page.route('**/api/account/models', (route) => route.fulfill({ json: { models: [model('only-key-2', [1])] } }))
+  await page.goto('/account/keys')
+  const copy = page.locator('[data-tutorial-guide]').getByRole('button', { name: 'Copy code', exact: true })
+  const popover = page.locator('[data-slot="popover-content"]')
+  await copy.click()
+  await popover.getByRole('button', { name: /Test key 1/ }).click()
+  await expect(page.locator('[data-sonner-toast]').filter({ hasText: 'No available models' })).toBeVisible()
+  expect(await clipboard(page)).toBe('')
+  await copy.click()
+  await popover.getByRole('button', { name: /Test key 2/ }).click()
+  await expect.poll(() => clipboard(page)).toBe('sk-e2e-test-1 only-key-2\n')
+  await expect(popover).toHaveCount(0)
+})
+
+test('failed or empty model lists do not copy and refresh reloads available models', async ({ page }) => {
+  await login(page)
+  await mockKeys(page, 1)
+  await mockEndpoints(page)
+  await mockModelTutorial(page, '{{model_id}}')
+  let fail = true
+  let models: ReturnType<typeof model>[] = []
+  await page.route('**/api/account/models', (route) => route.fulfill(fail
+    ? { status: 503, json: { detail: { message: 'Models temporarily unavailable' } } }
+    : { json: { models } }))
+  await page.goto('/account/keys')
+  const button = page.locator('[data-tutorial-guide]').getByRole('button', { name: 'Model ID', exact: true })
+  await button.click()
+  await expect(page.locator('[data-sonner-toast]').last()).toContainText('Models temporarily unavailable')
+  expect(await clipboard(page)).toBe('')
+  fail = false
+  await button.click()
+  await expect(page.locator('[data-sonner-toast]').filter({ hasText: 'No available models' })).toBeVisible()
+  expect(await clipboard(page)).toBe('')
+  models = [model('newly-available')]
+  await page.locator('.page-toolbar').getByRole('button', { name: 'Refresh', exact: true }).click()
+  await button.click()
+  await expect.poll(() => clipboard(page)).toBe('newly-available')
+})
+
 test('tutorials show below API keys and single choices copy without popovers', async ({ page }) => {
   await login(page)
   await mockKeys(page, 1)
@@ -191,10 +302,13 @@ test('tutorial management saves drafts, inserts variables, previews, publishes a
   await dialog.locator('#tutorial-body').fill('## Example\n\nUse ')
   await dialog.getByRole('button', { name: 'api_key', exact: true }).click()
   await expect(dialog.locator('#tutorial-body')).toHaveValue('## Example\n\nUse {{api_key}}')
+  await dialog.getByRole('button', { name: 'model_id', exact: true }).click()
+  await expect(dialog.locator('#tutorial-body')).toHaveValue('## Example\n\nUse {{api_key}}{{model_id}}')
   await page.screenshot({ path: 'test-results/tutorials-editor.png' })
   await dialog.getByRole('tab', { name: /预览|Preview/ }).click()
   await expect(dialog.getByRole('heading', { name: 'Example' })).toBeVisible()
   await expect(dialog.getByRole('button', { name: /API 密钥|API key/, exact: true })).toBeDisabled()
+  await expect(dialog.getByRole('button', { name: /模型 ID|Model ID/, exact: true })).toBeDisabled()
   await expect(dialog.locator('[data-slot="dialog-footer"]')).toHaveCSS('box-shadow', 'none')
   // A duplicate must keep the editor open and preserve the unsaved body.
   await dialog.locator('#tutorial-title').fill('Codex CLI Windows')
