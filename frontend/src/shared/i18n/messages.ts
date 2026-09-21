@@ -4,6 +4,11 @@ type MessagePair = readonly [zh: string, en: string]
 type ServerMessagePattern = readonly [RegExp, (match: RegExpMatchArray) => string]
 
 const exactServerMessages: MessagePair[] = [
+  ['教程标题、客户端和正文不能为空', 'Tutorial title, client and content are required'],
+  ['教程内容超出长度限制', 'Tutorial content exceeds the length limit'],
+  ['教程平台无效', 'Invalid tutorial platform'],
+  ['教程排序必须在 0 到 10000 之间', 'Tutorial order must be between 0 and 10000'],
+  ['教程不存在', 'Tutorial not found'],
   ['请求失败', 'Request failed'],
   ['复制失败', 'Copy failed'],
   ['没有可复制的内容', 'Nothing to copy'],

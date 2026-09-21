@@ -28,6 +28,7 @@ For clarity, model requests initiated by an Agent are still sent directly from t
 ## Table of Contents
 
 - [Features](#features)
+- [Setup Tutorials](#setup-tutorials)
 - [Screenshots](#screenshots)
 - [Tech Stack](#tech-stack)
 - [Project Structure](#project-structure)
@@ -53,6 +54,18 @@ For clarity, model requests initiated by an Agent are still sent directly from t
 - **Codex auth file inspection**: Support Cron scheduling, quota thresholds, check-only mode, conditional scanning, concurrent workers, priority rules, account enable/disable and deletion.
 - **Local-first data storage**: Use SQLite and the `data/` directory by default, with `CPA_HELPER_DATA_DIR` available for overriding the runtime data path.
 - **Modern admin interface**: Built with Vue 3, Naive UI, ECharts and lucide icons, with light, dark and system theme modes.
+
+## Setup Tutorials
+
+Published tutorials appear below the key list and endpoints on **API Keys**. Administrators manage them in **System Settings → Tutorial management**, with client/platform categories, ordering, drafts, Markdown preview and optional English translations. Each article saves independently. The database migration seeds Codex CLI guides for Windows, macOS and Linux only once; subsequent edits or deletions are preserved.
+
+Insert these variables in prose or code blocks using the editor toolbar:
+
+- `{{api_key}}`: an enabled API key belonging to the reader.
+- `{{api_base_url}}` (alias `{{api_endpoint}}`): an endpoint base URL, including `/v1`.
+- `{{responses_url}}`, `{{chat_completions_url}}`, `{{claude_messages_url}}`: the matching request URL.
+
+Click a variable to copy its value. One available option copies immediately; multiple options open a picker. **Copy code** fills all variables, selecting a key and/or endpoint as needed. Disabled/missing keys are excluded. Actual keys are never saved in article content or automatically shown in the tutorial. Raw HTML and remote images are not rendered.
 
 ## Screenshots
 

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Component } from 'vue'
 import { computed, onMounted, ref, watch } from 'vue'
+import TutorialGuide from '@/features/tutorials/components/TutorialGuide.vue'
 import { toast } from 'vue-sonner'
 import {
   Alert,
@@ -834,6 +835,12 @@ function confirmDelete(row: UserApiKeySummary) {
   })
 }
 
+const tutorialGuide = ref<InstanceType<typeof TutorialGuide> | null>(null)
+const tutorialContext = computed(() => ({
+  apiKeys: apiKeys.value,
+  endpoints: modelRequestGuide.value ? publicRequestEndpoints.value : [],
+}))
+
 onMounted(refresh)
 </script>
 
@@ -842,7 +849,7 @@ onMounted(refresh)
     <div class="page-toolbar">
       <h1 data-page-title class="page-title">{{ t('API 密钥', 'API keys') }}</h1>
       <div class="flex items-center gap-2">
-        <Button variant="outline" :disabled="isLoading" @click="refresh">
+        <Button variant="outline" :disabled="isLoading" @click="refresh(); tutorialGuide?.reload()">
           <Spinner v-if="isLoading" data-icon="inline-start" />
           <RefreshCw v-else data-icon="inline-start" />
           {{ t('刷新', 'Refresh') }}
@@ -1095,6 +1102,8 @@ onMounted(refresh)
         </CardContent>
       </Card>
     </div>
+
+    <TutorialGuide ref="tutorialGuide" :context="tutorialContext" />
 
     <Dialog v-model:open="editorVisible">
       <DialogContent

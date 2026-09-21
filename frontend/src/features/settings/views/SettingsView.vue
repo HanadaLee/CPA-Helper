@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   Activity,
+  BookOpenIcon,
   Database,
   EyeIcon,
   EyeOffIcon,
@@ -40,6 +41,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 import CodexKeeperSettingsPanel from '@/features/codex-keeper/components/CodexKeeperSettingsPanel.vue'
 import CPAConfigPanel from '@/features/settings/components/CPAConfigPanel.vue'
+import TutorialManager from '@/features/tutorials/components/TutorialManager.vue'
 import {
   getCollectorStatus,
   getSettings,
@@ -56,6 +58,8 @@ const isSaving = ref(false)
 const collectorStatus = ref<CollectorStatus | null>(null)
 const keeperSettingsPanel = ref<InstanceType<typeof CodexKeeperSettingsPanel> | null>(null)
 const cpaConfigPanel = ref<InstanceType<typeof CPAConfigPanel> | null>(null)
+const tutorialManager = ref<InstanceType<typeof TutorialManager> | null>(null)
+const activeTab = ref('general')
 const showManagementKey = ref(false)
 
 const settingsForm = reactive({
@@ -133,6 +137,10 @@ function updateNumericSetting(
 }
 
 async function refresh(reloadPanels = false) {
+  if (reloadPanels && activeTab.value === 'tutorials') {
+    await tutorialManager.value?.reload()
+    return
+  }
   isLoading.value = true
   try {
     const panelReloads: Promise<void>[] = []
@@ -271,7 +279,7 @@ onMounted(() => refresh(false))
           <RefreshCwIcon v-else data-icon="inline-start" />
           {{ t('刷新', 'Refresh') }}
         </Button>
-        <Button :disabled="isSaving" @click="saveSettings">
+        <Button v-if="activeTab !== 'tutorials'" :disabled="isSaving" @click="saveSettings">
           <Spinner v-if="isSaving" data-icon="inline-start" />
           <SaveIcon v-else data-icon="inline-start" />
           {{ t('保存设置', 'Save settings') }}
@@ -279,7 +287,7 @@ onMounted(() => refresh(false))
       </div>
     </div>
 
-    <Tabs default-value="general" class="settings-tabs">
+    <Tabs v-model="activeTab" class="settings-tabs">
       <TabsList class="settings-tabs-list">
         <TabsTrigger value="general">
           <Settings2Icon data-icon="inline-start" />
@@ -300,6 +308,10 @@ onMounted(() => refresh(false))
         <TabsTrigger value="cpa">
           <Server data-icon="inline-start" />
           {{ t('CPA 配置', 'CPA Configuration') }}
+        </TabsTrigger>
+        <TabsTrigger value="tutorials">
+          <BookOpenIcon data-icon="inline-start" />
+          {{ t('教程管理', 'Tutorial management') }}
         </TabsTrigger>
       </TabsList>
 
@@ -678,6 +690,9 @@ onMounted(() => refresh(false))
 
       <TabsContent value="cpa" force-mount class="settings-tab-content">
         <CPAConfigPanel ref="cpaConfigPanel" />
+      </TabsContent>
+      <TabsContent value="tutorials" class="settings-tab-content">
+        <TutorialManager ref="tutorialManager" />
       </TabsContent>
     </Tabs>
   </section>
