@@ -116,7 +116,12 @@ type PriceFieldName = keyof Pick<
   | 'long_context_off_peak_cache_creation_usd_per_million'
 >
 
-type PriceTier = { key: string; label: string; prefix: '' | 'long_context_' | 'off_peak_' | 'long_context_off_peak_' }
+type PriceTier = {
+  key: string
+  label: string
+  prefix: '' | 'long_context_' | 'off_peak_' | 'long_context_off_peak_'
+  multiplier: number
+}
 
 const offPeakRateFields: Array<{ key: PriceFieldName; zh: string; en: string }> = [
   { key: 'off_peak_input_usd_per_million', zh: '空闲输入 ($/MTok)', en: 'Off-peak input ($/MTok)' },
@@ -181,6 +186,7 @@ const form = reactive<ModelPricePayload>({
   cache_read_usd_per_million: 0,
   cache_creation_usd_per_million: 0,
   request_usd: null,
+  fast_enabled: false,
   fast_multiplier: 1,
   long_context_enabled: false,
   long_context_threshold_tokens: 0,
@@ -396,16 +402,16 @@ const catalogNotice = computed(() => {
 })
 const isRequestPriceForm = computed(() => billingUnitForModel(form.model) === 'request')
 const showLongContextFastUnsupported = computed(
-  () => form.long_context_enabled && form.fast_multiplier !== 1,
+  () => form.long_context_enabled && form.fast_enabled,
 )
 const priceSaveHint = computed(() =>
   isRequestPriceForm.value
     ? t(
-        'image 模型按每次成功调用固定金额计费；仅修改 FAST 倍率或峰谷价格不会取消 LiteLLM 同步。',
-        'Image models are charged per successful call. Changing only the FAST multiplier or peak/off-peak settings keeps LiteLLM sync enabled.',
+        'image 模型按每次成功调用固定金额计费；仅修改 FAST 或峰谷设置不会取消 LiteLLM 同步。',
+        'Image models are charged per successful call. Changing only FAST or peak/off-peak settings keeps LiteLLM sync enabled.',
       )
     : t(
-        '基础价格修改后会转为手动价格；仅修改 FAST 倍率、长上下文或峰谷设置不会取消 LiteLLM 同步。',
+        '基础价格修改后会转为手动价格；仅修改 FAST、长上下文或峰谷设置不会取消 LiteLLM 同步。',
         'Changing base prices makes them manual. Changing only FAST, long-context or peak/off-peak settings keeps LiteLLM sync enabled.',
       ),
 )
@@ -480,6 +486,7 @@ function resetForm() {
   form.cache_read_usd_per_million = 0
   form.cache_creation_usd_per_million = 0
   form.request_usd = null
+  form.fast_enabled = false
   form.fast_multiplier = 1
   form.long_context_enabled = false
   form.long_context_threshold_tokens = 0
@@ -524,6 +531,7 @@ function openCreate(prefill: Partial<ModelPricePayload> = {}) {
   form.cache_read_usd_per_million = prefill.cache_read_usd_per_million ?? 0
   form.cache_creation_usd_per_million = prefill.cache_creation_usd_per_million ?? 0
   form.request_usd = prefill.request_usd ?? null
+  form.fast_enabled = prefill.fast_enabled ?? false
   form.fast_multiplier = prefill.fast_multiplier ?? 1
   form.long_context_enabled = prefill.long_context_enabled ?? false
   form.long_context_threshold_tokens = prefill.long_context_threshold_tokens ?? 0
@@ -552,6 +560,7 @@ function openEdit(row: ModelPrice) {
   form.cache_read_usd_per_million = row.cache_read_usd_per_million
   form.cache_creation_usd_per_million = row.cache_creation_usd_per_million
   form.request_usd = row.request_usd
+  form.fast_enabled = row.fast_enabled
   form.fast_multiplier = row.fast_multiplier
   form.long_context_enabled = row.long_context_enabled
   form.long_context_threshold_tokens = row.long_context_threshold_tokens
@@ -646,14 +655,15 @@ async function savePrice() {
     cache_read_usd_per_million: form.cache_read_usd_per_million,
     cache_creation_usd_per_million: form.cache_creation_usd_per_million,
     request_usd: requestUSD,
-    fast_multiplier: form.fast_multiplier,
+    fast_enabled: form.fast_enabled,
+    fast_multiplier: form.fast_enabled ? form.fast_multiplier : 1,
     long_context_enabled: !requestPriceMode && form.long_context_enabled,
     long_context_threshold_tokens: requestPriceMode ? 0 : form.long_context_threshold_tokens,
     long_context_input_usd_per_million: requestPriceMode ? 0 : form.long_context_input_usd_per_million,
     long_context_output_usd_per_million: requestPriceMode ? 0 : form.long_context_output_usd_per_million,
     long_context_cache_read_usd_per_million: requestPriceMode ? 0 : form.long_context_cache_read_usd_per_million,
     long_context_cache_creation_usd_per_million: requestPriceMode ? 0 : form.long_context_cache_creation_usd_per_million,
-    long_context_fast_unsupported: !requestPriceMode && form.long_context_fast_unsupported,
+    long_context_fast_unsupported: !requestPriceMode && form.fast_enabled && form.long_context_fast_unsupported,
     off_peak_enabled: form.off_peak_enabled,
     off_peak_input_usd_per_million: form.off_peak_input_usd_per_million,
     off_peak_output_usd_per_million: form.off_peak_output_usd_per_million,
@@ -779,28 +789,39 @@ function formatPriceValue(value: number | null | undefined): string {
 
 function priceTiers(row: PriceDisplayRow): PriceTier[] {
   const price = row.price
-  if (!price) return [{ key: 'base', label: '-', prefix: '' }]
-  const tiers: PriceTier[] = [
-    { key: 'base', label: price.off_peak_enabled ? t('常规 · 高峰', 'Standard · peak') : t('常规', 'Standard'), prefix: '' },
-  ]
-  if (price.off_peak_enabled) tiers.push({ key: 'off-peak', label: t('常规 · 空闲', 'Standard · off-peak'), prefix: 'off_peak_' })
+  if (!price) return [{ key: 'base', label: '-', prefix: '', multiplier: 1 }]
+  const tiers: PriceTier[] = []
+  const addTier = (key: string, label: string, prefix: PriceTier['prefix'], supportsFast = true) => {
+    tiers.push({ key, label, prefix, multiplier: 1 })
+    if (supportsFast && price.fast_enabled) {
+      tiers.push({ key: `${key}-fast`, label: `${label} · FAST ×${price.fast_multiplier}`, prefix, multiplier: price.fast_multiplier })
+    }
+  }
+  addTier('base', price.off_peak_enabled ? t('常规 · 高峰', 'Standard · peak') : t('常规', 'Standard'), '')
+  if (price.off_peak_enabled) addTier('off-peak', t('常规 · 空闲', 'Standard · off-peak'), 'off_peak_')
   if (price.long_context_enabled) {
-    const fastSuffix = price.long_context_fast_unsupported ? t(' · 无 FAST', ' · no FAST') : ''
-    tiers.push({ key: 'long', label: (price.off_peak_enabled ? t('长上下文 · 高峰', 'Long context · peak') : t('长上下文', 'Long context')) + fastSuffix, prefix: 'long_context_' })
-    if (price.off_peak_enabled) tiers.push({ key: 'long-off-peak', label: t('长上下文 · 空闲', 'Long context · off-peak') + fastSuffix, prefix: 'long_context_off_peak_' })
+    const fastSuffix = price.fast_enabled && price.long_context_fast_unsupported ? t(' · 无 FAST', ' · no FAST') : ''
+    addTier('long', (price.off_peak_enabled ? t('长上下文 · 高峰', 'Long context · peak') : t('长上下文', 'Long context')) + fastSuffix, 'long_context_', !price.long_context_fast_unsupported)
+    if (price.off_peak_enabled) addTier('long-off-peak', t('长上下文 · 空闲', 'Long context · off-peak') + fastSuffix, 'long_context_off_peak_', !price.long_context_fast_unsupported)
   }
   return tiers
+}
+
+function multipliedPriceValue(value: number | null | undefined, multiplier: number): string {
+  if (typeof value !== 'number') return '-'
+  return formatPriceValue(Number((value * multiplier).toPrecision(12)))
 }
 
 function tierPriceValue(row: PriceDisplayRow, tier: PriceTier, field: 'input' | 'output' | 'cache_read' | 'cache_creation' | 'request'): string {
   if (!row.price) return '-'
   if (field === 'request') {
     if (row.billing_unit !== 'request') return '-'
-    return formatPriceValue(tier.prefix === 'off_peak_' ? row.price.off_peak_request_usd : row.price.request_usd)
+    const requestPrice = tier.prefix === 'off_peak_' ? row.price.off_peak_request_usd ?? row.price.request_usd : row.price.request_usd
+    return multipliedPriceValue(requestPrice, tier.multiplier)
   }
   if (row.billing_unit === 'request') return '-'
   const key = `${tier.prefix}${field}_usd_per_million` as PriceFieldName
-  return formatPriceValue(row.price[key])
+  return multipliedPriceValue(row.price[key], tier.multiplier)
 }
 
 async function loadCalendarYear() {
@@ -853,10 +874,6 @@ async function saveCalendarSettings() {
   } finally {
     isCalendarSaving.value = false
   }
-}
-
-function fastMultiplierValue(row: PriceDisplayRow): string {
-  return row.price ? `×${row.price.fast_multiplier}` : '-'
 }
 
 function billingUnitLabel(row: PriceDisplayRow): string {
@@ -984,12 +1001,15 @@ onMounted(() => {
         <Table class="table-fixed">
           <TableHeader class="sticky top-0 bg-card">
             <TableRow>
-              <TableHead class="w-[35%]">{{ t('模型', 'Model') }}</TableHead>
-              <TableHead class="w-[16%]">{{ t('服务商', 'Provider') }}</TableHead>
-              <TableHead class="w-[12%]">{{ t('定价', 'Pricing') }}</TableHead>
-              <TableHead class="w-[12%]">{{ t('计费方式', 'Billing') }}</TableHead>
-              <TableHead class="w-[10%] whitespace-normal text-right">{{ t('FAST 倍率', 'FAST multiplier') }}</TableHead>
-              <TableHead class="w-[15%]">
+              <TableHead class="price-model-column w-[190px]">{{ t('模型', 'Model') }}</TableHead>
+              <TableHead class="price-secondary-column w-[70px]">{{ t('服务商', 'Provider') }}</TableHead>
+              <TableHead class="w-[175px]">{{ t('费率档位', 'Rate tier') }}</TableHead>
+              <TableHead class="w-[65px] whitespace-normal text-right">{{ t('每次 ($)', 'Per call ($)') }}</TableHead>
+              <TableHead class="w-[75px] whitespace-normal text-right">{{ t('输入 ($/MTok)', 'Input ($/MTok)') }}</TableHead>
+              <TableHead class="w-[75px] whitespace-normal text-right">{{ t('输出 ($/MTok)', 'Output ($/MTok)') }}</TableHead>
+              <TableHead class="price-secondary-column w-[75px] whitespace-normal text-right">{{ t('缓存读 ($/MTok)', 'Cache read ($/MTok)') }}</TableHead>
+              <TableHead class="price-secondary-column w-[75px] whitespace-normal text-right">{{ t('缓存写 ($/MTok)', 'Cache write ($/MTok)') }}</TableHead>
+              <TableHead class="w-[100px]">
                 <span class="sr-only">{{ t('操作', 'Actions') }}</span>
               </TableHead>
             </TableRow>
@@ -997,101 +1017,78 @@ onMounted(() => {
           <TableBody>
             <template v-if="isLoading && filteredPrices.length === 0">
               <TableRow v-for="rowIndex in 8" :key="`price-skeleton-${rowIndex}`">
-                <TableCell v-for="columnIndex in 6" :key="columnIndex">
+                <TableCell v-for="columnIndex in 9" :key="columnIndex" :class="{ 'price-secondary-column': [2, 7, 8].includes(columnIndex) }">
                   <Skeleton class="h-4 w-full" />
                 </TableCell>
               </TableRow>
             </template>
 
-            <TableEmpty v-else-if="filteredPrices.length === 0" :colspan="6">
+            <TableEmpty v-else-if="filteredPrices.length === 0" :colspan="9">
               {{ t('暂无模型价格', 'No model prices') }}
             </TableEmpty>
 
-            <template v-for="row in pagedPrices" v-else :key="row.key">
-              <TableRow class="border-0">
-                <TableCell>
-                  <div class="model-cell">
-                    <div class="model-title-row">
-                      <span class="model-name" :title="row.id">{{ row.id }}</span>
-                      <Badge v-if="row.in_cpa" variant="secondary" class="model-availability-tag">
-                        {{ t('CPA 可用模型', 'CPA available model') }}
-                      </Badge>
-                    </div>
-                    <div v-if="row.name && row.name !== row.id" class="model-sub" :title="row.name">
-                      {{ row.name }}
-                    </div>
+            <TableRow v-for="row in pagedPrices" v-else :key="row.key">
+              <TableCell>
+                <div class="model-cell">
+                  <div class="model-title-row">
+                    <span class="model-name" :title="row.id">{{ row.id }}</span>
                   </div>
-                </TableCell>
-                <TableCell>
-                  <div class="provider-cell">
-                    <div class="provider-main" :title="row.provider || '-'">{{ row.provider || '-' }}</div>
-                    <div v-if="row.owner && row.owner !== row.provider" class="model-sub">
-                      {{ t('所有者', 'Owner') }}: {{ row.owner }}
-                    </div>
+                  <div v-if="row.name && row.name !== row.id" class="model-sub" :title="row.name">
+                    {{ row.name }}
                   </div>
-                </TableCell>
-                <TableCell>
-                  <Badge :variant="priceStatusVariant(row)">{{ priceStatusLabel(row) }}</Badge>
-                </TableCell>
-                <TableCell>
-                  <Badge :variant="billingUnitVariant(row)">{{ billingUnitLabel(row) }}</Badge>
-                </TableCell>
-                <TableCell class="text-right tabular-nums">{{ fastMultiplierValue(row) }}</TableCell>
-                <TableCell class="text-right">
-                  <div class="flex items-center justify-end gap-1">
-                    <Button variant="ghost" size="sm" @click="row.price ? openEdit(row.price) : openCreateForRow(row)">
-                      {{ row.price ? t('改价', 'Edit') : t('设价', 'Set') }}
-                    </Button>
-                    <DropdownMenu v-if="row.price">
-                      <DropdownMenuTrigger as-child>
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          class="price-actions-trigger"
-                          :aria-label="t(`打开 ${row.id} 的操作菜单`, `Open actions for ${row.id}`)"
-                        >
-                          <MoreHorizontal />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" :side-offset="4" class="w-40">
-                        <DropdownMenuGroup>
-                          <DropdownMenuItem variant="destructive" @select="confirmDelete(row.price)">
-                            <Trash2 />
-                            <span>{{ t('删除', 'Delete') }}</span>
-                          </DropdownMenuItem>
-                        </DropdownMenuGroup>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                  <div class="model-price-badges">
+                    <Badge :variant="priceStatusVariant(row)">{{ priceStatusLabel(row) }}</Badge>
+                    <Badge :variant="billingUnitVariant(row)">{{ billingUnitLabel(row) }}</Badge>
+                    <Badge v-if="row.in_cpa" variant="secondary" :title="t('CPA 可用模型', 'CPA available model')">CPA</Badge>
                   </div>
-                </TableCell>
-              </TableRow>
-              <TableRow class="rate-detail-row">
-                <TableCell :colspan="6" class="rate-detail-cell">
-                  <Table class="table-fixed">
-                    <TableHeader class="bg-muted/40">
-                      <TableRow>
-                        <TableHead class="w-[29%]">{{ t('费率档位', 'Rate tier') }}</TableHead>
-                        <TableHead class="w-[14%] whitespace-normal text-right">{{ t('每次 ($)', 'Per call ($)') }}</TableHead>
-                        <TableHead class="w-[14%] whitespace-normal text-right">{{ t('输入 ($/MTok)', 'Input ($/MTok)') }}</TableHead>
-                        <TableHead class="w-[14%] whitespace-normal text-right">{{ t('输出 ($/MTok)', 'Output ($/MTok)') }}</TableHead>
-                        <TableHead class="w-[14.5%] whitespace-normal text-right">{{ t('缓存读 ($/MTok)', 'Cache read ($/MTok)') }}</TableHead>
-                        <TableHead class="w-[14.5%] whitespace-normal text-right">{{ t('缓存写 ($/MTok)', 'Cache write ($/MTok)') }}</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      <TableRow v-for="tier in priceTiers(row)" :key="tier.key">
-                        <TableCell>{{ tier.label }}</TableCell>
-                        <TableCell class="text-right tabular-nums">{{ tierPriceValue(row, tier, 'request') }}</TableCell>
-                        <TableCell class="text-right tabular-nums">{{ tierPriceValue(row, tier, 'input') }}</TableCell>
-                        <TableCell class="text-right tabular-nums">{{ tierPriceValue(row, tier, 'output') }}</TableCell>
-                        <TableCell class="text-right tabular-nums">{{ tierPriceValue(row, tier, 'cache_read') }}</TableCell>
-                        <TableCell class="text-right tabular-nums">{{ tierPriceValue(row, tier, 'cache_creation') }}</TableCell>
-                      </TableRow>
-                    </TableBody>
-                  </Table>
-                </TableCell>
-              </TableRow>
-            </template>
+                </div>
+              </TableCell>
+              <TableCell class="price-secondary-column">
+                <div class="provider-cell">
+                  <div class="provider-main" :title="row.provider || '-'">{{ row.provider || '-' }}</div>
+                  <div v-if="row.owner && row.owner !== row.provider" class="model-sub">
+                    {{ t('所有者', 'Owner') }}: {{ row.owner }}
+                  </div>
+                </div>
+              </TableCell>
+              <TableCell>
+                <div class="rate-tier-stack">
+                  <div v-for="tier in priceTiers(row)" :key="tier.key" class="rate-tier-line" :title="tier.label">{{ tier.label }}</div>
+                </div>
+              </TableCell>
+              <TableCell class="text-right tabular-nums"><div class="rate-tier-stack"><div v-for="tier in priceTiers(row)" :key="tier.key" class="rate-tier-line">{{ tierPriceValue(row, tier, 'request') }}</div></div></TableCell>
+              <TableCell class="text-right tabular-nums"><div class="rate-tier-stack"><div v-for="tier in priceTiers(row)" :key="tier.key" class="rate-tier-line">{{ tierPriceValue(row, tier, 'input') }}</div></div></TableCell>
+              <TableCell class="text-right tabular-nums"><div class="rate-tier-stack"><div v-for="tier in priceTiers(row)" :key="tier.key" class="rate-tier-line">{{ tierPriceValue(row, tier, 'output') }}</div></div></TableCell>
+              <TableCell class="price-secondary-column text-right tabular-nums"><div class="rate-tier-stack"><div v-for="tier in priceTiers(row)" :key="tier.key" class="rate-tier-line">{{ tierPriceValue(row, tier, 'cache_read') }}</div></div></TableCell>
+              <TableCell class="price-secondary-column text-right tabular-nums"><div class="rate-tier-stack"><div v-for="tier in priceTiers(row)" :key="tier.key" class="rate-tier-line">{{ tierPriceValue(row, tier, 'cache_creation') }}</div></div></TableCell>
+              <TableCell class="text-right">
+                <div class="flex items-center justify-end gap-1">
+                  <Button variant="ghost" size="sm" @click="row.price ? openEdit(row.price) : openCreateForRow(row)">
+                    {{ row.price ? t('改价', 'Edit') : t('设价', 'Set') }}
+                  </Button>
+                  <DropdownMenu v-if="row.price">
+                    <DropdownMenuTrigger as-child>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        class="price-actions-trigger"
+                        :aria-label="t(`打开 ${row.id} 的操作菜单`, `Open actions for ${row.id}`)"
+                      >
+                        <MoreHorizontal />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" :side-offset="4" class="w-40">
+                      <DropdownMenuGroup>
+                        <DropdownMenuItem variant="destructive" @select="confirmDelete(row.price)">
+                          <Trash2 />
+                          <span>{{ t('删除', 'Delete') }}</span>
+                        </DropdownMenuItem>
+                      </DropdownMenuGroup>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </TableCell>
+            </TableRow>
           </TableBody>
         </Table>
 
@@ -1128,7 +1125,14 @@ onMounted(() => {
               <FieldLabel for="price-model">{{ t('模型', 'Model') }}</FieldLabel>
               <Input id="price-model" v-model="form.model" required />
             </Field>
-            <Field class="wide-form-item">
+            <Field orientation="horizontal" class="wide-form-item long-context-switch-row">
+              <FieldContent>
+                <FieldLabel for="price-fast-enabled">{{ t('支持 FAST 模式', 'Supports FAST mode') }}</FieldLabel>
+                <FieldDescription>{{ t('仅支持 FAST 的模型才会按倍率计费并展示 FAST 档位。', 'Only supported models use the multiplier and show FAST rate tiers.') }}</FieldDescription>
+              </FieldContent>
+              <Switch id="price-fast-enabled" v-model="form.fast_enabled" />
+            </Field>
+            <Field v-if="form.fast_enabled" class="wide-form-item">
               <FieldLabel for="price-fast-multiplier">{{ t('FAST 倍率', 'FAST multiplier') }}</FieldLabel>
               <Input
                 id="price-fast-multiplier"
@@ -1295,20 +1299,21 @@ onMounted(() => {
                   >
                     <FieldContent>
                       <FieldLabel for="price-long-context-fast-unsupported">
-                        {{ t('长上下文不支持 FAST 模式', 'FAST mode unavailable for long context') }}
+                        {{ t('长上下文支持 FAST 模式', 'FAST mode available for long context') }}
                       </FieldLabel>
                       <FieldDescription>
                         {{
                           t(
-                            '开启后，超过长上下文阈值的请求不叠加 FAST 倍率；短上下文计费不受影响。',
-                            'When enabled, requests above the long-context threshold do not apply the FAST multiplier. Short-context billing is unchanged.',
+                            '开启后，长上下文请求也可叠加 FAST 倍率；关闭时仅短上下文支持 FAST。',
+                            'When enabled, long-context requests also use the FAST multiplier; otherwise only short-context requests do.',
                           )
                         }}
                       </FieldDescription>
                     </FieldContent>
                     <Switch
                       id="price-long-context-fast-unsupported"
-                      v-model="form.long_context_fast_unsupported"
+                      :model-value="!form.long_context_fast_unsupported"
+                      @update:model-value="form.long_context_fast_unsupported = !$event"
                     />
                   </Field>
                 </FieldGroup>
@@ -1485,6 +1490,30 @@ onMounted(() => {
   min-width: 0;
 }
 
+.rate-tier-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.rate-tier-line {
+  min-height: 1.5rem;
+  overflow: hidden;
+  line-height: 1.5rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 1100px) {
+  .price-secondary-column {
+    display: none;
+  }
+
+  .price-model-column {
+    width: 170px;
+  }
+}
+
 .price-metric-card :deep([data-slot="card-header"]) {
   padding-bottom: 10px;
 }
@@ -1569,17 +1598,6 @@ onMounted(() => {
   overscroll-behavior: contain;
 }
 
-.rate-detail-cell {
-  padding-top: 0;
-  padding-bottom: 12px;
-}
-
-.price-table .rate-detail-cell :deep([data-slot="table-container"]) {
-  height: auto;
-  max-height: none;
-  overflow: visible;
-}
-
 .table-loading-overlay {
   position: absolute;
   inset: 0;
@@ -1604,8 +1622,11 @@ onMounted(() => {
   min-width: 0;
 }
 
-.model-availability-tag {
-  flex: 0 0 auto;
+.model-price-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
 }
 
 .model-name,

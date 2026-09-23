@@ -39,6 +39,7 @@ type AvailableModelPrice struct {
 	CacheReadUSDPerMillion                float64  `json:"cache_read_usd_per_million"`
 	CacheCreationUSDPerMillion            float64  `json:"cache_creation_usd_per_million"`
 	RequestUSD                            *float64 `json:"request_usd"`
+	FastEnabled                           bool     `json:"fast_enabled"`
 	FastMultiplier                        float64  `json:"fast_multiplier"`
 	LongContextEnabled                    bool     `json:"long_context_enabled"`
 	LongContextThresholdTokens            int      `json:"long_context_threshold_tokens"`
@@ -172,6 +173,7 @@ func (a *App) availableModelsForUser(ctx context.Context, userID int) (Available
 				CacheCreationUSDPerMillion:            price.CacheCreationUSDPerMillion,
 				RequestUSD:                            price.RequestUSD,
 				FastMultiplier:                        price.FastMultiplier,
+				FastEnabled:                           price.FastEnabled,
 				LongContextEnabled:                    price.LongContextEnabled,
 				LongContextThresholdTokens:            price.LongContextThresholdTokens,
 				LongContextInputUSDPerMillion:         price.LongContextInputUSDPerMillion,

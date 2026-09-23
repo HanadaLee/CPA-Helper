@@ -159,6 +159,7 @@ func TestRecordCostAppliesFastMultiplierToPriorityAndFastRequests(t *testing.T) 
 			Provider:           provider,
 			Model:              model,
 			InputUSDPerMillion: 2,
+			FastEnabled:        true,
 			FastMultiplier:     2.5,
 		},
 	}
@@ -186,6 +187,22 @@ func TestRecordCostAppliesFastMultiplierToPriorityAndFastRequests(t *testing.T) 
 	}
 }
 
+func TestRecordCostDoesNotApplyFastMultiplierWhenDisabled(t *testing.T) {
+	provider, model, serviceTier := "openai", "gpt-no-fast", "fast"
+	price := ModelPrice{
+		Provider: provider, Model: model, InputUSDPerMillion: 2,
+		FastEnabled: false, FastMultiplier: 2.5,
+	}
+	record := UsageRecord{
+		Provider: &provider, Model: &model, RequestServiceTier: &serviceTier,
+		InputTokens: 1_000_000, TotalTokens: 1_000_000,
+	}
+	amount, unpriced := recordCost(record, pricesByKey([]ModelPrice{price}))
+	if unpriced || amount != 2 {
+		t.Fatalf("disabled FAST cost = %v unpriced=%v, want 2 false", amount, unpriced)
+	}
+}
+
 func TestRecordCostUsesLongContextRatesAboveInputThreshold(t *testing.T) {
 	provider := "openai"
 	model := "gpt-long-context-test"
@@ -196,6 +213,7 @@ func TestRecordCostUsesLongContextRatesAboveInputThreshold(t *testing.T) {
 			InputUSDPerMillion:                    2,
 			OutputUSDPerMillion:                   4,
 			CacheReadUSDPerMillion:                1,
+			FastEnabled:                           true,
 			FastMultiplier:                        2,
 			LongContextEnabled:                    true,
 			LongContextThresholdTokens:            100,
@@ -245,6 +263,7 @@ func TestRecordCostSkipsFastMultiplierWhenLongContextDoesNotSupportFast(t *testi
 			Provider:                      provider,
 			Model:                         model,
 			InputUSDPerMillion:            2,
+			FastEnabled:                   true,
 			FastMultiplier:                3,
 			LongContextEnabled:            true,
 			LongContextThresholdTokens:    100,
@@ -397,6 +416,7 @@ func TestModelPriceAPIRoundTripsLongContextRates(t *testing.T) {
 		"cache_creation_usd_per_million":              0,
 		"request_usd":                                 nil,
 		"fast_multiplier":                             1.5,
+		"fast_enabled":                                true,
 		"long_context_enabled":                        true,
 		"long_context_threshold_tokens":               200000,
 		"long_context_input_usd_per_million":          3,
@@ -405,7 +425,8 @@ func TestModelPriceAPIRoundTripsLongContextRates(t *testing.T) {
 		"long_context_cache_creation_usd_per_million": 0.5,
 		"long_context_fast_unsupported":               true,
 	}, cookies, &created)
-	if !created.LongContextEnabled || created.LongContextThresholdTokens != 200_000 ||
+	if !created.FastEnabled || created.FastMultiplier != 1.5 ||
+		!created.LongContextEnabled || created.LongContextThresholdTokens != 200_000 ||
 		created.LongContextInputUSDPerMillion != 3 || created.LongContextOutputUSDPerMillion != 6 ||
 		created.LongContextCacheReadUSDPerMillion != 0.3 || created.LongContextCacheCreationUSDPerMillion != 0.5 ||
 		!created.LongContextFastUnsupported {
@@ -442,6 +463,7 @@ func TestUpdateAutoSyncedPriceLocalOverridesKeepLiteLLMSync(t *testing.T) {
 		CacheReadUSDPerMillion:                0.1,
 		CacheCreationUSDPerMillion:            0.2,
 		FastMultiplier:                        &fastMultiplier,
+		FastEnabled:                           true,
 		LongContextEnabled:                    true,
 		LongContextThresholdTokens:            200_000,
 		LongContextInputUSDPerMillion:         2,
@@ -561,13 +583,13 @@ func TestSyncLiteLLMPricesReplacesLiteLLMSource(t *testing.T) {
 	if _, err := app.db.Exec(`
 		INSERT INTO model_prices (
 			provider, model, input_usd_per_million, output_usd_per_million,
-			cache_read_usd_per_million, cache_creation_usd_per_million, fast_multiplier,
+			cache_read_usd_per_million, cache_creation_usd_per_million, fast_enabled, fast_multiplier,
 			long_context_enabled, long_context_threshold_tokens,
 			long_context_input_usd_per_million, long_context_output_usd_per_million,
 			long_context_cache_read_usd_per_million, long_context_cache_creation_usd_per_million,
 			long_context_fast_unsupported,
 			source, source_model, auto_synced, last_synced_at, updated_at
-		) VALUES ('openai', 'gpt-new-model', 9, 9, 9, 9, 2.5, 1, 200000, 3, 6, 0.3, 0.6, 1,
+		) VALUES ('openai', 'gpt-new-model', 9, 9, 9, 9, 1, 2.5, 1, 200000, 3, 6, 0.3, 0.6, 1,
 		          'litellm', 'gpt-new-model', 1, ?, ?)
 	`, now, now); err != nil {
 		t.Fatalf("seed customized LiteLLM price: %v", err)
@@ -622,18 +644,18 @@ func TestSyncLiteLLMPricesReplacesLiteLLMSource(t *testing.T) {
 		t.Fatalf("claude cache prices = read %v creation %v, want 0.3 and 3.75", cacheRead, cacheCreation)
 	}
 	var syncedInput, fastMultiplier, longInput float64
-	var longEnabled, longFastUnsupported bool
+	var fastEnabled, longEnabled, longFastUnsupported bool
 	var longThreshold int
 	if err := app.db.QueryRow(`
-		SELECT input_usd_per_million, fast_multiplier, long_context_enabled,
+		SELECT input_usd_per_million, fast_enabled, fast_multiplier, long_context_enabled,
 		       long_context_threshold_tokens, long_context_input_usd_per_million,
 		       long_context_fast_unsupported
 		FROM model_prices WHERE source = 'litellm' AND model = 'gpt-new-model'
-	`).Scan(&syncedInput, &fastMultiplier, &longEnabled, &longThreshold, &longInput, &longFastUnsupported); err != nil {
+	`).Scan(&syncedInput, &fastEnabled, &fastMultiplier, &longEnabled, &longThreshold, &longInput, &longFastUnsupported); err != nil {
 		t.Fatalf("query customized LiteLLM price: %v", err)
 	}
-	if syncedInput != 1 || fastMultiplier != 2.5 || !longEnabled || longThreshold != 200_000 || longInput != 3 || !longFastUnsupported {
-		t.Fatalf("synced base/local overrides = %v/%v/%v/%v/%v/%v, want 1/2.5/true/200000/3/true", syncedInput, fastMultiplier, longEnabled, longThreshold, longInput, longFastUnsupported)
+	if syncedInput != 1 || !fastEnabled || fastMultiplier != 2.5 || !longEnabled || longThreshold != 200_000 || longInput != 3 || !longFastUnsupported {
+		t.Fatalf("synced base/local overrides = %v/%v/%v/%v/%v/%v/%v, want 1/true/2.5/true/200000/3/true", syncedInput, fastEnabled, fastMultiplier, longEnabled, longThreshold, longInput, longFastUnsupported)
 	}
 }
 

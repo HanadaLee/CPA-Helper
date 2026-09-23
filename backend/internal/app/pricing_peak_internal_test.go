@@ -57,8 +57,8 @@ func TestRecordCostPeakOffPeakLongContextAndFast(t *testing.T) {
 		InputUSDPerMillion: 2, LongContextEnabled: true, LongContextThresholdTokens: 100,
 		LongContextInputUSDPerMillion: 6, OffPeakEnabled: true,
 		OffPeakInputUSDPerMillion: 1, LongContextOffPeakInputUSDPerMillion: 3,
-		FastMultiplier: 2,
-		calendar:       &pricingCalendar{years: map[int]map[string]bool{2026: {"2026-09-25": true}}},
+		FastEnabled: true, FastMultiplier: 2,
+		calendar: &pricingCalendar{years: map[int]map[string]bool{2026: {"2026-09-25": true}}},
 	}
 	prices := pricesByKey([]ModelPrice{price})
 	cases := []struct {

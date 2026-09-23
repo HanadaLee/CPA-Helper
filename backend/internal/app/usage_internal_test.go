@@ -165,8 +165,8 @@ func TestSaveUsageMessageStoresFastTierAndFixedFastCost(t *testing.T) {
 		INSERT INTO model_prices (
 			provider, model, input_usd_per_million, output_usd_per_million,
 			cache_read_usd_per_million, cache_creation_usd_per_million,
-			fast_multiplier, source, updated_at
-		) VALUES ('openai', 'gpt-fast', 2, 0, 0, 0, 3, 'manual', ?)
+			fast_enabled, fast_multiplier, source, updated_at
+		) VALUES ('openai', 'gpt-fast', 2, 0, 0, 0, 1, 3, 'manual', ?)
 	`, now); err != nil {
 		t.Fatal(err)
 	}

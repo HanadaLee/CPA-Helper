@@ -82,6 +82,9 @@ func TestRunMigrationsCreatesGooseVersionAndFinalSchema(t *testing.T) {
 	if !testColumnExists(t, app.db, "model_prices", "fast_multiplier") {
 		t.Fatal("model_prices.fast_multiplier was not created")
 	}
+	if !testColumnExists(t, app.db, "model_prices", "fast_enabled") {
+		t.Fatal("model_prices.fast_enabled was not created")
+	}
 	for _, column := range []string{
 		"long_context_enabled",
 		"long_context_threshold_tokens",

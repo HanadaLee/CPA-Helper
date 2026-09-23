@@ -566,6 +566,7 @@ export interface ModelPrice {
   cache_read_usd_per_million: number
   cache_creation_usd_per_million: number
   request_usd: number | null
+  fast_enabled: boolean
   fast_multiplier: number
   long_context_enabled: boolean
   long_context_threshold_tokens: number
@@ -600,6 +601,7 @@ export interface ModelPricePayload {
   cache_read_usd_per_million: number
   cache_creation_usd_per_million: number
   request_usd: number | null
+  fast_enabled: boolean
   fast_multiplier: number
   long_context_enabled: boolean
   long_context_threshold_tokens: number
@@ -745,6 +747,7 @@ export interface AvailableModelPrice {
   cache_read_usd_per_million: number
   cache_creation_usd_per_million: number
   request_usd: number | null
+  fast_enabled: boolean
   fast_multiplier: number
   long_context_enabled: boolean
   long_context_threshold_tokens: number

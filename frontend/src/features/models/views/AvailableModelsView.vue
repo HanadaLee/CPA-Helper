@@ -113,6 +113,7 @@ function priceValue(row: AvailableModel, field: PriceField): string {
 }
 
 function fastMultiplier(row: AvailableModel): string {
+  if (!row.price?.fast_enabled) return '-'
   const multiplier = row.price?.fast_multiplier
   if (multiplier === null || multiplier === undefined) {
     return '-'
