@@ -624,7 +624,10 @@ export interface PricingHolidayCalendar {
   year: number
   configured: boolean
   dates: string[]
+  days: Array<{ date: string; name: string; is_off_day: boolean }>
   source_url: string
+  synced_at: string | null
+  peak_on_makeup_days: boolean
 }
 
 export interface ModelPriceSyncResponse {

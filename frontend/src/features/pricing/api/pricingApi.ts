@@ -47,6 +47,10 @@ export function getPricingHolidayCalendar(year: number): Promise<PricingHolidayC
   return apiClient.get<PricingHolidayCalendar>(`/model-prices/holiday-calendar?year=${year}`)
 }
 
-export function updatePricingHolidayCalendar(year: number, dates: string[]): Promise<PricingHolidayCalendar> {
-  return apiClient.put<PricingHolidayCalendar>('/model-prices/holiday-calendar', { year, dates })
+export function syncPricingHolidayCalendar(year: number): Promise<PricingHolidayCalendar> {
+  return apiClient.post<PricingHolidayCalendar>('/model-prices/holiday-calendar/sync', { year })
+}
+
+export function updatePricingCalendarSettings(peakOnMakeupDays: boolean): Promise<{ peak_on_makeup_days: boolean }> {
+  return apiClient.put<{ peak_on_makeup_days: boolean }>('/model-prices/holiday-calendar/settings', { peak_on_makeup_days: peakOnMakeupDays })
 }

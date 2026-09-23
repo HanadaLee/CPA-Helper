@@ -55,18 +55,20 @@ var defaultKeeperPriorityRules = map[string]int{
 }
 
 type App struct {
-	db               *sql.DB
-	repoRoot         string
-	dataDir          string
-	frontendDist     string
-	frontendFS       fs.FS
-	frontendEnv      bool
-	collector        *CollectorRunner
-	keeper           *KeeperRunner
-	usageMaintenance *UsageMaintenanceRunner
-	keeperUsageCache keeperWindowUsageCache
-	keeperResetCache keeperResetCreditCache
-	usageCache       usageQueryCache
+	db                        *sql.DB
+	repoRoot                  string
+	dataDir                   string
+	frontendDist              string
+	frontendFS                fs.FS
+	frontendEnv               bool
+	collector                 *CollectorRunner
+	keeper                    *KeeperRunner
+	usageMaintenance          *UsageMaintenanceRunner
+	pricingCalendarSyncCancel context.CancelFunc
+	pricingCalendarSyncDone   chan struct{}
+	keeperUsageCache          keeperWindowUsageCache
+	keeperResetCache          keeperResetCreditCache
+	usageCache                usageQueryCache
 }
 
 type AppError struct {
@@ -156,6 +158,9 @@ func NewWithOptions(ctx context.Context, options NewOptions) (*App, error) {
 	}
 	if options.StartBackground {
 		app.startBackground(ctx)
+		if options.RequireReady {
+			app.startPricingCalendarSync()
+		}
 	}
 	return app, nil
 }
@@ -171,6 +176,10 @@ func (a *App) startBackground(ctx context.Context) {
 }
 
 func (a *App) Close() {
+	if a.pricingCalendarSyncCancel != nil {
+		a.pricingCalendarSyncCancel()
+		<-a.pricingCalendarSyncDone
+	}
 	if a.collector != nil {
 		a.collector.Stop()
 	}

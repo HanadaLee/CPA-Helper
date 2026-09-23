@@ -4,13 +4,15 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
 
 func TestPricingCalendarBeijingPeakBoundariesAndHolidays(t *testing.T) {
 	calendar := &pricingCalendar{years: map[int]map[string]bool{
-		2026: {"2026-09-25": true},
+		2026: {"2026-09-25": true, "2026-09-20": false},
 	}}
 	cases := []struct {
 		name string
@@ -25,6 +27,17 @@ func TestPricingCalendarBeijingPeakBoundariesAndHolidays(t *testing.T) {
 		{"official holiday", time.Date(2026, 9, 25, 10, 0, 0, 0, appTimeLocation), false},
 		{"weekend", time.Date(2026, 9, 26, 10, 0, 0, 0, appTimeLocation), false},
 		{"unknown year", time.Date(2027, 9, 24, 10, 0, 0, 0, appTimeLocation), false},
+	}
+	makeupSunday := time.Date(2026, 9, 20, 10, 0, 0, 0, appTimeLocation)
+	if calendar.isPeak(makeupSunday) {
+		t.Fatal("makeup Sunday should be off-peak by default")
+	}
+	calendar.peakOnMakeupDays = true
+	if !calendar.isPeak(makeupSunday) || calendar.isPeak(makeupSunday.Add(2*time.Hour)) {
+		t.Fatal("makeup Sunday should be peak only inside the peak time window")
+	}
+	if calendar.isPeak(time.Date(2026, 9, 26, 10, 0, 0, 0, appTimeLocation)) {
+		t.Fatal("ordinary Saturday must stay off-peak")
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
@@ -125,9 +138,22 @@ func TestModelPriceOffPeakRoundTripAndHolidayCalendarAPI(t *testing.T) {
 	if !calendar.Configured || len(calendar.Dates) != 33 || calendar.SourceURL == "" {
 		t.Fatalf("seeded 2026 calendar = %#v", calendar)
 	}
-	requestJSONForPricingTest(t, handler, http.MethodPut, "/api/model-prices/holiday-calendar", map[string]any{"year": 2027, "dates": []string{"2027-01-01"}}, cookies, &calendar)
-	if !calendar.Configured || len(calendar.Dates) != 1 || calendar.Dates[0] != "2027-01-01" {
-		t.Fatalf("saved 2027 calendar = %#v", calendar)
+	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"year":2027,"papers":["https://example.com/notice"],"days":[{"name":"元旦","date":"2027-01-01","isOffDay":true},{"name":"元旦","date":"2027-01-02","isOffDay":false}]}`))
+	}))
+	defer source.Close()
+	calendar, err = app.syncPricingCalendar(context.Background(), source.Client(), 2027, source.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !calendar.Configured || len(calendar.Dates) != 1 || len(calendar.Days) != 2 || calendar.Days[1].IsOffDay || calendar.SyncedAt == nil {
+		t.Fatalf("synced 2027 calendar = %#v", calendar)
+	}
+	var settings map[string]bool
+	requestJSONForPricingTest(t, handler, http.MethodPut, "/api/model-prices/holiday-calendar/settings", map[string]any{"peak_on_makeup_days": true}, cookies, &settings)
+	if !settings["peak_on_makeup_days"] {
+		t.Fatalf("saved makeup-day setting = %#v", settings)
 	}
 	prices, err = app.loadPriceMap(context.Background())
 	if err != nil {
@@ -135,6 +161,24 @@ func TestModelPriceOffPeakRoundTripAndHolidayCalendarAPI(t *testing.T) {
 	}
 	if amount, unpriced := calculateRecordCost(UsageRecord{Model: &created.Model, Timestamp: time.Date(2027, 1, 4, 10, 0, 0, 0, appTimeLocation), InputTokens: 100}, prices); unpriced || amount != .0002 {
 		t.Fatalf("configured 2027 weekday peak cost = %v unpriced=%v", amount, unpriced)
+	}
+	if amount, unpriced := calculateRecordCost(UsageRecord{Model: &created.Model, Timestamp: time.Date(2027, 1, 2, 10, 0, 0, 0, appTimeLocation), InputTokens: 100}, prices); unpriced || amount != .0002 {
+		t.Fatalf("2027 makeup Saturday peak cost = %v unpriced=%v", amount, unpriced)
+	}
+	if amount, unpriced := calculateRecordCost(UsageRecord{Model: &created.Model, Timestamp: time.Date(2027, 1, 1, 10, 0, 0, 0, appTimeLocation), InputTokens: 100}, prices); unpriced || amount != .0001 {
+		t.Fatalf("2027 holiday off-peak cost = %v unpriced=%v", amount, unpriced)
+	}
+
+	badSource := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"year":2027,"papers":[],"days":[]}`))
+	}))
+	defer badSource.Close()
+	if _, err := app.syncPricingCalendar(context.Background(), badSource.Client(), 2027, badSource.URL); err == nil || !strings.Contains(err.Error(), "尚未公布") {
+		t.Fatalf("unpublished year should not replace cached data: %v", err)
+	}
+	calendar, err = app.pricingHolidayCalendarForYear(context.Background(), 2027)
+	if err != nil || len(calendar.Days) != 2 {
+		t.Fatalf("calendar cache changed after failed refresh: %#v, %v", calendar, err)
 	}
 	requestJSONForPricingTest(t, handler, http.MethodPut, fmt.Sprintf("/api/model-prices/%d", created.ID), map[string]any{
 		"provider": "openai", "model": "gpt-peak-api", "input_usd_per_million": 2,

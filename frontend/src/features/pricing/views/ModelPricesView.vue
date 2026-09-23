@@ -45,7 +45,6 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
-import { Textarea } from '@/components/ui/textarea'
 import {
   Table,
   TableBody,
@@ -81,13 +80,15 @@ import {
   syncLitellmModelPrices,
   updateLiteLLMProxySettings,
   updateModelPrice,
-  updatePricingHolidayCalendar,
+  syncPricingHolidayCalendar,
+  updatePricingCalendarSettings,
 } from '@/features/pricing/api/pricingApi'
 import type {
   LiteLLMProxySettingsPayload,
   ModelPrice,
   ModelPriceCatalogResponse,
   ModelPricePayload,
+  PricingHolidayCalendar,
 } from '@/shared/types/api'
 import { formatDateTime, formatInteger } from '@/shared/utils/format'
 import { useI18n } from '@/shared/i18n'
@@ -158,11 +159,14 @@ const isProxyLoading = ref(false)
 const isProxySaving = ref(false)
 const calendarModalOpen = ref(false)
 const calendarYear = ref(Number(new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Shanghai', year: 'numeric' }).format(new Date())))
-const calendarDatesText = ref('')
+const calendarDays = ref<PricingHolidayCalendar['days']>([])
 const calendarSourceURL = ref('')
 const calendarConfigured = ref(false)
+const calendarSyncedAt = ref<string | null>(null)
+const peakOnMakeupDays = ref(false)
 const isCalendarLoading = ref(false)
 const isCalendarSaving = ref(false)
+const isCalendarSyncing = ref(false)
 const editingId = ref<number | null>(null)
 const prices = ref<ModelPrice[]>([])
 const catalog = ref<ModelPriceCatalogResponse | null>(null)
@@ -803,10 +807,7 @@ function tierPriceValue(row: PriceDisplayRow, tier: PriceTier, field: 'input' | 
 async function loadCalendarYear() {
   isCalendarLoading.value = true
   try {
-    const calendar = await getPricingHolidayCalendar(calendarYear.value)
-    calendarDatesText.value = calendar.dates.join('\n')
-    calendarSourceURL.value = calendar.source_url
-    calendarConfigured.value = calendar.configured
+    applyCalendar(await getPricingHolidayCalendar(calendarYear.value))
   } catch (error) {
     message.error(errorText(error, '加载节假日失败', 'Failed to load holidays'))
   } finally {
@@ -814,22 +815,42 @@ async function loadCalendarYear() {
   }
 }
 
+function applyCalendar(calendar: PricingHolidayCalendar) {
+  calendarDays.value = calendar.days ?? (calendar.dates ?? []).map((date) => ({ date, name: '', is_off_day: true }))
+  calendarSourceURL.value = calendar.source_url || `https://raw.githubusercontent.com/NateScarlet/holiday-cn/master/${calendar.year}.json`
+  calendarConfigured.value = calendar.configured
+  calendarSyncedAt.value = calendar.synced_at ?? null
+  peakOnMakeupDays.value = calendar.peak_on_makeup_days ?? false
+}
+
 async function openCalendar() {
   calendarModalOpen.value = true
   await loadCalendarYear()
 }
 
-async function saveCalendar() {
-  const dates = calendarDatesText.value.split(/[\s,，]+/).map((date) => date.trim()).filter(Boolean)
+async function syncCalendar() {
+  isCalendarSyncing.value = true
+  try {
+    const pendingPeakOnMakeupDays = peakOnMakeupDays.value
+    applyCalendar(await syncPricingHolidayCalendar(calendarYear.value))
+    peakOnMakeupDays.value = pendingPeakOnMakeupDays
+    message.success(t('节假日已从 holiday-cn 同步', 'Holidays synced from holiday-cn'))
+  } catch (error) {
+    message.error(errorText(error, '同步节假日失败，已保留本地数据', 'Holiday sync failed; cached data was retained'))
+  } finally {
+    isCalendarSyncing.value = false
+  }
+}
+
+async function saveCalendarSettings() {
   isCalendarSaving.value = true
   try {
-    const calendar = await updatePricingHolidayCalendar(calendarYear.value, dates)
-    calendarDatesText.value = calendar.dates.join('\n')
-    calendarConfigured.value = calendar.configured
-    message.success(t('节假日日历已保存', 'Holiday calendar saved'))
+    const settings = await updatePricingCalendarSettings(peakOnMakeupDays.value)
+    peakOnMakeupDays.value = settings.peak_on_makeup_days
+    message.success(t('调休日计费选项已保存', 'Makeup-day pricing setting saved'))
     calendarModalOpen.value = false
   } catch (error) {
-    message.error(errorText(error, '保存节假日失败', 'Failed to save holidays'))
+    message.error(errorText(error, '保存计费选项失败', 'Failed to save pricing setting'))
   } finally {
     isCalendarSaving.value = false
   }
@@ -1328,7 +1349,7 @@ onMounted(() => {
                 <FieldContent>
                   <FieldLabel for="price-off-peak-enabled">{{ t('启用峰谷分段计费', 'Enable peak/off-peak pricing') }}</FieldLabel>
                   <FieldDescription>
-                    {{ t('现有费率作为高峰价；北京时间工作日 09:00–12:00、14:00–18:00 为高峰，周末、法定节假日和其余时间为空闲。未配置节假日的年份全天使用空闲价。', 'Existing rates become peak rates. Beijing weekdays 09:00–12:00 and 14:00–18:00 are peak; weekends, holidays and other hours are off-peak. Years without a holiday calendar use off-peak all day.') }}
+                    {{ t('现有费率作为高峰价；北京时间工作日 09:00–12:00、14:00–18:00 为高峰。法定休息日为空闲；调休上班日是否按高峰价可在节假日日历中设置。未公布年份全天使用空闲价。', 'Existing rates become peak rates. Beijing workday hours 09:00–12:00 and 14:00–18:00 are peak. Published off-days are off-peak; makeup workdays can be configured. Unpublished years use off-peak all day.') }}
                   </FieldDescription>
                 </FieldContent>
                 <Switch id="price-off-peak-enabled" :model-value="form.off_peak_enabled" @update:model-value="toggleOffPeak" />
@@ -1422,29 +1443,63 @@ onMounted(() => {
 
     <Dialog v-model:open="calendarModalOpen">
       <DialogContent class="max-h-[calc(100svh-2rem)] overflow-y-auto sm:max-w-xl">
-        <form class="flex flex-col gap-5" @submit.prevent="saveCalendar">
+        <form class="flex flex-col gap-5" @submit.prevent="saveCalendarSettings">
           <DialogHeader>
             <DialogTitle>{{ t('峰谷计费节假日日历', 'Peak pricing holiday calendar') }}</DialogTitle>
-            <DialogDescription>{{ t('按国务院每年公布的放假安排维护日期；周末始终为空闲时段。未配置的年份全天使用空闲费率。', 'Maintain dates from the annual State Council holiday notice. Weekends are always off-peak. Unconfigured years use off-peak rates all day.') }}</DialogDescription>
+            <DialogDescription>{{ t('从 holiday-cn 获取放假与调休上班日期；后台每日自动刷新当前年份，失败时保留本地缓存。未公布年份全天使用空闲费率。', 'Fetch off-days and makeup workdays from holiday-cn. The server refreshes the current year daily and retains cached data on failure. Unpublished years use off-peak rates all day.') }}</DialogDescription>
           </DialogHeader>
           <FieldGroup>
             <Field>
               <FieldLabel for="pricing-calendar-year">{{ t('年份', 'Year') }}</FieldLabel>
-              <div class="flex items-center gap-2">
-                <Input id="pricing-calendar-year" v-model.number="calendarYear" type="number" min="2000" max="2100" step="1" :disabled="isCalendarLoading || isCalendarSaving" />
-                <Button type="button" variant="outline" :disabled="isCalendarLoading || isCalendarSaving" @click="loadCalendarYear">{{ t('查询', 'Load') }}</Button>
-              </div>
+              <InputGroup>
+                <InputGroupInput id="pricing-calendar-year" v-model.number="calendarYear" type="number" min="2000" max="2100" step="1" :disabled="isCalendarLoading || isCalendarSaving || isCalendarSyncing" />
+                <InputGroupAddon align="inline-end">
+                  <Button type="button" variant="ghost" size="sm" :disabled="isCalendarLoading || isCalendarSaving || isCalendarSyncing" @click="loadCalendarYear">{{ t('查看缓存', 'View cache') }}</Button>
+                </InputGroupAddon>
+              </InputGroup>
             </Field>
             <Field>
-              <FieldLabel for="pricing-calendar-dates">{{ t('法定节假日日期（每行一个）', 'Holiday dates (one per line)') }}</FieldLabel>
-              <Textarea id="pricing-calendar-dates" v-model="calendarDatesText" rows="10" placeholder="2026-01-01" :disabled="isCalendarLoading || isCalendarSaving" class="font-mono text-sm" />
-              <FieldDescription>{{ calendarConfigured ? t('该年份已配置，可编辑后保存。', 'This year is configured; edit and save.') : t('该年份尚未配置，保存后工作日才会启用高峰时段。', 'This year is not configured; peak hours become active on weekdays after saving.') }}</FieldDescription>
+              <div class="flex items-center justify-between gap-2">
+                <FieldLabel>{{ t('日期数据', 'Calendar data') }}</FieldLabel>
+                <Button type="button" variant="outline" size="sm" :disabled="isCalendarLoading || isCalendarSyncing || isCalendarSaving" @click="syncCalendar">
+                  <Spinner v-if="isCalendarSyncing" data-icon="inline-start" />
+                  <RefreshCw v-else data-icon="inline-start" />
+                  {{ t('从 holiday-cn 同步', 'Sync from holiday-cn') }}
+                </Button>
+              </div>
+              <FieldDescription>{{ calendarSyncedAt ? t(`最近同步：${formatDateTime(calendarSyncedAt)}`, `Last synced: ${formatDateTime(calendarSyncedAt)}`) : calendarConfigured ? t('正在使用本地预置数据，尚未从 holiday-cn 同步。', 'Using preloaded local data; not yet synced from holiday-cn.') : t('该年份尚无已公布的节假日数据，全天使用空闲价。', 'No published calendar for this year; off-peak rates apply all day.') }}</FieldDescription>
+              <div class="max-h-64 overflow-y-auto rounded-lg border border-border">
+                <Table>
+                  <TableHeader class="sticky top-0 bg-card">
+                    <TableRow>
+                      <TableHead>{{ t('日期', 'Date') }}</TableHead>
+                      <TableHead>{{ t('节日', 'Holiday') }}</TableHead>
+                      <TableHead>{{ t('类型', 'Type') }}</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    <TableEmpty v-if="calendarDays.length === 0" :colspan="3">{{ t('暂无已公布日期', 'No published dates') }}</TableEmpty>
+                    <TableRow v-for="day in calendarDays" :key="day.date">
+                      <TableCell class="font-mono">{{ day.date }}</TableCell>
+                      <TableCell>{{ day.name || '-' }}</TableCell>
+                      <TableCell><Badge :variant="day.is_off_day ? 'secondary' : 'outline'">{{ day.is_off_day ? t('休息日', 'Off-day') : t('调休上班', 'Makeup workday') }}</Badge></TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </div>
             </Field>
-            <a v-if="calendarSourceURL" :href="calendarSourceURL" target="_blank" rel="noopener noreferrer" class="text-sm text-primary underline-offset-4 hover:underline">{{ t('查看国务院放假通知', 'View State Council holiday notice') }}</a>
+            <Field orientation="horizontal">
+              <FieldContent>
+                <FieldLabel for="pricing-peak-on-makeup-days">{{ t('调休日按高峰价计算', 'Charge peak rates on makeup workdays') }}</FieldLabel>
+                <FieldDescription>{{ t('仅对数据源标记的调休上班日生效，并且仅在 09:00–12:00、14:00–18:00 使用高峰价；普通周末仍为空闲价。', 'Only published makeup workdays use peak rates during 09:00–12:00 and 14:00–18:00. Ordinary weekends remain off-peak.') }}</FieldDescription>
+              </FieldContent>
+              <Switch id="pricing-peak-on-makeup-days" v-model="peakOnMakeupDays" :disabled="isCalendarLoading || isCalendarSyncing || isCalendarSaving" />
+            </Field>
+            <a v-if="calendarSourceURL" :href="calendarSourceURL" target="_blank" rel="noopener noreferrer" class="text-sm text-primary underline-offset-4 hover:underline">{{ t('查看年份数据源', 'View yearly data source') }}</a>
           </FieldGroup>
           <DialogFooter>
             <Button type="button" variant="outline" @click="calendarModalOpen = false">{{ t('取消', 'Cancel') }}</Button>
-            <Button type="submit" :disabled="isCalendarLoading || isCalendarSaving">{{ t('保存', 'Save') }}</Button>
+            <Button type="submit" :disabled="isCalendarLoading || isCalendarSyncing || isCalendarSaving">{{ t('保存选项', 'Save setting') }}</Button>
           </DialogFooter>
         </form>
       </DialogContent>

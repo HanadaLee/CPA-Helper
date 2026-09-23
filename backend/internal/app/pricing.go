@@ -172,6 +172,18 @@ func (a *App) handleModelPriceByPath(w http.ResponseWriter, r *http.Request) err
 		}
 		return a.handlePricingHolidayCalendar(w, r)
 	}
+	if path == "holiday-calendar/sync" {
+		if _, err := a.adminUser(r.Context(), r); err != nil {
+			return err
+		}
+		return a.handlePricingHolidayCalendarSync(w, r)
+	}
+	if path == "holiday-calendar/settings" {
+		if _, err := a.adminUser(r.Context(), r); err != nil {
+			return err
+		}
+		return a.handlePricingCalendarSettings(w, r)
+	}
 	if path == "catalog" {
 		if _, err := a.adminUser(r.Context(), r); err != nil {
 			return err
