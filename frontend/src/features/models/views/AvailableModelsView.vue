@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ChevronLeftIcon, ChevronRightIcon, Cpu, KeyRound, RefreshCw, ShieldCheck, TriangleAlertIcon } from '@lucide/vue'
+import { ChevronLeftIcon, ChevronRightIcon, Cpu, KeyRound, RefreshCw, TriangleAlertIcon } from '@lucide/vue'
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
@@ -63,25 +63,6 @@ const pagedModels = computed(() => {
   const start = (page.value - 1) * pageSize
   return response.value?.models.slice(start, start + pageSize) ?? []
 })
-const keySummary = computed(() => {
-  if (!response.value) {
-    return '-'
-  }
-  return `${response.value.queryable_api_key_count} / ${response.value.api_key_count}`
-})
-const queryStatus = computed(() => {
-  if (!response.value) {
-    return '-'
-  }
-  if (response.value.errors.length > 0) {
-    return t(`部分失败 ${response.value.errors.length}`, `${response.value.errors.length} failed`)
-  }
-  if (response.value.queryable_api_key_count === 0) {
-    return response.value.has_api_keys ? t('不可查询', 'Unavailable') : t('无 Key', 'No keys')
-  }
-  return response.value.has_api_keys ? t('正常', 'Normal') : t('无 Key', 'No keys')
-})
-
 function displayText(value: string | null | undefined): string {
   return value?.trim() || '-'
 }
@@ -205,33 +186,6 @@ onMounted(refresh)
             </AlertDescription>
           </Alert>
 
-          <div v-if="response" class="metric-grid model-metrics">
-            <div class="metric-card">
-              <div class="metric-icon" aria-hidden="true">
-                <Cpu :size="20" :stroke-width="2.2" />
-              </div>
-              <div class="metric-label">{{ t('可用模型', 'Available models') }}</div>
-              <div class="metric-value">{{ modelCount }}</div>
-              <div class="metric-footnote">{{ t('CPA 返回', 'Returned by CPA') }}</div>
-            </div>
-            <div class="metric-card is-blue">
-              <div class="metric-icon" aria-hidden="true">
-                <KeyRound :size="20" :stroke-width="2.2" />
-              </div>
-              <div class="metric-label">{{ t('可查询 Key', 'Queryable keys') }}</div>
-              <div class="metric-value">{{ keySummary }}</div>
-              <div class="metric-footnote">{{ t('完整密钥', 'Complete keys') }}</div>
-            </div>
-            <div class="metric-card is-green">
-              <div class="metric-icon" aria-hidden="true">
-                <ShieldCheck :size="20" :stroke-width="2.2" />
-              </div>
-              <div class="metric-label">{{ t('查询状态', 'Query status') }}</div>
-              <div class="metric-value">{{ queryStatus }}</div>
-              <div class="metric-footnote">{{ t('当前账号', 'Current account') }}</div>
-            </div>
-          </div>
-
           <div v-if="isLoading && !response" class="loading-state">
             <Spinner class="size-5" />
             <span>{{ t('正在向 CPA 查询模型', 'Querying CPA for models') }}</span>
@@ -278,13 +232,11 @@ onMounted(refresh)
           </Empty>
 
           <div v-else-if="response" class="available-models-table">
-            <Table class="min-w-[1240px] table-fixed">
+            <Table class="min-w-[1000px] table-fixed">
               <TableHeader class="sticky top-0 bg-card">
                 <TableRow>
                   <TableHead class="w-[200px]">{{ t('模型 ID', 'Model ID') }}</TableHead>
                   <TableHead class="w-[150px]">{{ t('名称', 'Name') }}</TableHead>
-                  <TableHead class="w-[90px]">{{ t('所有者', 'Owner') }}</TableHead>
-                  <TableHead class="w-[160px]">{{ t('来源 Key', 'Source Key') }}</TableHead>
                   <TableHead class="w-[84px] text-center">{{ t('计费方式', 'Billing') }}</TableHead>
                   <TableHead class="w-[90px] text-right">{{ t('每次 ($)', 'Per request ($)') }}</TableHead>
                   <TableHead class="w-[100px] text-right">{{ t('输入 $/MTok', 'Input $/MTok') }}</TableHead>
@@ -298,7 +250,7 @@ onMounted(refresh)
               <TableBody>
                 <template v-if="isLoading && pagedModels.length === 0">
                   <TableRow v-for="rowIndex in 5" :key="`model-skeleton-${rowIndex}`">
-                    <TableCell v-for="columnIndex in 11" :key="columnIndex">
+                    <TableCell v-for="columnIndex in 9" :key="columnIndex">
                       <Skeleton class="h-4 w-full" />
                     </TableCell>
                   </TableRow>
@@ -309,14 +261,6 @@ onMounted(refresh)
                     <span class="block truncate" :title="model.id">{{ model.id }}</span>
                   </TableCell>
                   <TableCell><span class="block truncate" :title="displayText(model.name)">{{ displayText(model.name) }}</span></TableCell>
-                  <TableCell><span class="block truncate" :title="displayText(model.owner)">{{ displayText(model.owner) }}</span></TableCell>
-                  <TableCell>
-                    <div class="flex flex-wrap gap-1">
-                      <Badge v-for="source in model.sources" :key="source.api_key_hash" variant="secondary">
-                        {{ source.description }} · {{ source.api_key_preview }}
-                      </Badge>
-                    </div>
-                  </TableCell>
                   <TableCell class="text-center">
                     <Badge :variant="modelBillingUnit(model) === 'request' ? 'secondary' : 'outline'">
                       {{ billingLabel(model) }}
@@ -379,10 +323,6 @@ onMounted(refresh)
   min-height: 0;
 }
 
-.model-metrics {
-  grid-template-columns: repeat(3, minmax(128px, 1fr));
-}
-
 .models-page,
 .model-table-panel,
 .available-models-table {
@@ -403,7 +343,7 @@ onMounted(refresh)
 }
 
 .available-models-table :deep([data-slot="table-container"]) {
-  max-height: max(240px, calc(100dvh - 360px));
+  max-height: max(240px, calc(100dvh - 240px));
   overflow: auto;
 }
 
@@ -440,14 +380,4 @@ onMounted(refresh)
   }
 }
 
-@media (max-width: 720px) {
-  .model-metrics {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .model-metrics .metric-card:last-child {
-    grid-column: 1 / -1;
-  }
-
-}
 </style>

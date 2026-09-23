@@ -1006,7 +1006,9 @@ test('available models uses compact price columns and shows the FAST multiplier'
   await page.goto('/account/models')
   await expect(page.getByRole('columnheader', { name: /FAST 倍率|FAST multiplier/ })).toBeVisible()
   await expect(page.getByRole('cell', { name: '×1.8' })).toBeVisible()
-  await expect(page.locator('.available-models-table [data-slot="table"]')).toHaveCSS('min-width', '1240px')
+  await expect(page.locator('.models-page .metric-card')).toHaveCount(0)
+  await expect(page.getByRole('columnheader', { name: /所有者|Owner|来源 Key|Source Key/ })).toHaveCount(0)
+  await expect(page.locator('.available-models-table [data-slot="table"]')).toHaveCSS('min-width', '1000px')
 })
 
 test('theme and mobile navigation survive the migration', async ({ page }) => {
