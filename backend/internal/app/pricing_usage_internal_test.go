@@ -472,8 +472,8 @@ func TestUpdateAutoSyncedPriceLocalOverridesKeepLiteLLMSync(t *testing.T) {
 		LongContextCacheCreationUSDPerMillion: 0.4,
 		LongContextFastUnsupported:            true,
 		OffPeakEnabled:                        true,
-		OffPeakInputUSDPerMillion:             0.5,
-		LongContextOffPeakInputUSDPerMillion:  1.5,
+		PeakInputUSDPerMillion:                0.5,
+		LongContextPeakInputUSDPerMillion:     1.5,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -487,7 +487,7 @@ func TestUpdateAutoSyncedPriceLocalOverridesKeepLiteLLMSync(t *testing.T) {
 	if !updated.LongContextEnabled || updated.LongContextThresholdTokens != 200_000 || updated.LongContextInputUSDPerMillion != 2 || !updated.LongContextFastUnsupported {
 		t.Fatalf("updated long-context overrides = %#v, want enabled threshold 200000 input 2", updated)
 	}
-	if !updated.OffPeakEnabled || updated.OffPeakInputUSDPerMillion != 0.5 || updated.LongContextOffPeakInputUSDPerMillion != 1.5 {
+	if !updated.OffPeakEnabled || updated.PeakInputUSDPerMillion != 0.5 || updated.LongContextPeakInputUSDPerMillion != 1.5 {
 		t.Fatalf("updated off-peak overrides = %#v", updated)
 	}
 	_, err = app.syncLiteLLMPrices(context.Background(), "https://example.com/prices.json", map[string]any{
@@ -502,7 +502,7 @@ func TestUpdateAutoSyncedPriceLocalOverridesKeepLiteLLMSync(t *testing.T) {
 		t.Fatalf("prices after LiteLLM sync: %v, %v", prices, err)
 	}
 	synced = prices[0]
-	if synced.InputUSDPerMillion != 4 || !synced.OffPeakEnabled || synced.OffPeakInputUSDPerMillion != 0.5 || synced.LongContextOffPeakInputUSDPerMillion != 1.5 {
+	if synced.InputUSDPerMillion != 4 || !synced.OffPeakEnabled || synced.PeakInputUSDPerMillion != 0.5 || synced.LongContextPeakInputUSDPerMillion != 1.5 {
 		t.Fatalf("LiteLLM sync lost off-peak overrides: %#v", synced)
 	}
 }

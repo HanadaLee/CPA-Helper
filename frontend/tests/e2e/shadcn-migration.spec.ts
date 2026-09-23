@@ -653,6 +653,8 @@ test('all migrated routes render and core controls remain interactive', async ({
   await page.getByRole('button', { name: /新增价格|Add price/ }).click()
   const priceDialog = page.getByRole('dialog', { name: /新增价格|Add price/ })
   const fastMultiplierInput = priceDialog.locator('#price-fast-multiplier')
+  await expect(fastMultiplierInput).toHaveCount(0)
+  await priceDialog.getByRole('switch', { name: /支持 FAST 模式|Supports FAST mode/ }).click()
   await fastMultiplierInput.fill('2')
   await expect(fastMultiplierInput).toHaveValue('2')
   await expect(fastMultiplierInput).toHaveAttribute('step', '0.01')
@@ -660,18 +662,18 @@ test('all migrated routes render and core controls remain interactive', async ({
     valid: input.validity.valid,
     stepMismatch: input.validity.stepMismatch,
   }))).toEqual({ valid: true, stepMismatch: false })
-  const longContextFastUnsupported = priceDialog.getByRole('switch', {
-    name: /长上下文不支持 FAST 模式|FAST mode unavailable for long context/,
+  const longContextFastSupport = priceDialog.getByRole('switch', {
+    name: /长上下文支持 FAST 模式|FAST mode available for long context/,
   })
-  await expect(longContextFastUnsupported).toHaveCount(0)
+  await expect(longContextFastSupport).toHaveCount(0)
   const longContextSwitch = priceDialog.getByRole('switch', { name: /启用长上下文费率|Enable long-context rates/ })
   await expect(longContextSwitch).toBeVisible()
   await longContextSwitch.click()
-  await expect(longContextFastUnsupported).toBeVisible()
+  await expect(longContextFastSupport).toBeVisible()
   await fastMultiplierInput.fill('1')
-  await expect(longContextFastUnsupported).toHaveCount(0)
+  await expect(longContextFastSupport).toBeVisible()
   await fastMultiplierInput.fill('2')
-  await expect(longContextFastUnsupported).toBeVisible()
+  await expect(longContextFastSupport).toBeVisible()
   await expect(priceDialog.locator('#price-long-context-threshold')).toBeVisible()
   await expect(priceDialog.locator('#price-long-context-input')).toBeVisible()
   await expect(priceDialog.locator('#price-long-context-output')).toBeVisible()
@@ -955,7 +957,7 @@ test('all migrated routes render and core controls remain interactive', async ({
   expect(consoleErrors).toEqual([])
 })
 
-test('available models uses compact price columns and shows the FAST multiplier', async ({ page }) => {
+test('available models shows the regular, peak, long-context and FAST rate tiers', async ({ page }) => {
   await setupOrLogin(page)
   await page.route('**/api/account/models', async (route) => {
     await route.fulfill({
@@ -987,6 +989,7 @@ test('available models uses compact price columns and shows the FAST multiplier'
               cache_read_usd_per_million: 0.2,
               cache_creation_usd_per_million: 2.5,
               request_usd: null,
+              fast_enabled: true,
               fast_multiplier: 1.8,
               long_context_enabled: true,
               long_context_threshold_tokens: 200000,
@@ -995,6 +998,16 @@ test('available models uses compact price columns and shows the FAST multiplier'
               long_context_cache_read_usd_per_million: 0.4,
               long_context_cache_creation_usd_per_million: 4,
               long_context_fast_unsupported: false,
+              off_peak_enabled: true,
+              peak_input_usd_per_million: 3,
+              peak_output_usd_per_million: 18,
+              peak_cache_read_usd_per_million: 0.3,
+              peak_cache_creation_usd_per_million: 3.5,
+              peak_request_usd: null,
+              long_context_peak_input_usd_per_million: 6,
+              long_context_peak_output_usd_per_million: 24,
+              long_context_peak_cache_read_usd_per_million: 0.6,
+              long_context_peak_cache_creation_usd_per_million: 6,
               billing_unit: 'token',
             },
           },
@@ -1004,11 +1017,17 @@ test('available models uses compact price columns and shows the FAST multiplier'
   })
 
   await page.goto('/account/models')
-  await expect(page.getByRole('columnheader', { name: /FAST 倍率|FAST multiplier/ })).toBeVisible()
-  await expect(page.getByRole('cell', { name: '×1.8' })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: /费率档位|Rate tier/ })).toBeVisible()
+  const tiers = page.getByRole('row').filter({ hasText: 'gpt-5.6-terra' }).getByRole('cell').nth(3)
+  await expect(tiers.locator('.rate-tier-line')).toHaveCount(8)
+  await expect(tiers).toContainText('FAST')
+  await expect(tiers).not.toContainText('×1.8')
+  await expect(page.getByRole('row').filter({ hasText: 'gpt-5.6-terra' }).getByRole('cell').nth(5).locator('.rate-tier-line')).toHaveText(['2', '3.6', '3', '5.4', '4', '7.2', '6', '10.8'])
   await expect(page.locator('.models-page .metric-card')).toHaveCount(0)
   await expect(page.getByRole('columnheader', { name: /所有者|Owner|来源 Key|Source Key/ })).toHaveCount(0)
-  await expect(page.locator('.available-models-table [data-slot="table"]')).toHaveCSS('min-width', '1000px')
+  await page.setViewportSize({ width: 1024, height: 1000 })
+  const modelTableContainer = page.locator('.available-models-table [data-slot="table-container"]')
+  expect(await modelTableContainer.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(false)
 })
 
 test('theme and mobile navigation survive the migration', async ({ page }) => {

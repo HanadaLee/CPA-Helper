@@ -41,14 +41,11 @@ import { listAvailableModels } from '@/features/models/api/availableModelsApi'
 import { useI18n } from '@/shared/i18n'
 import type { AvailableModel, AvailableModelPrice, AvailableModelsResponse } from '@/shared/types/api'
 
-type PriceField = keyof Pick<
-  AvailableModelPrice,
-  | 'input_usd_per_million'
-  | 'output_usd_per_million'
-  | 'cache_read_usd_per_million'
-  | 'cache_creation_usd_per_million'
->
 type BillingUnit = 'token' | 'request'
+type RateField = 'input' | 'output' | 'cache_read' | 'cache_creation' | 'request'
+type RatePrefix = '' | 'peak_' | 'long_context_' | 'long_context_peak_'
+type RateTier = { key: string; label: string; prefix: RatePrefix; multiplier: number }
+const rateFields: RateField[] = ['request', 'input', 'output', 'cache_read', 'cache_creation']
 
 const router = useRouter()
 const { currentLanguage, errorText, serverText, t } = useI18n()
@@ -92,35 +89,36 @@ function billingLabel(row: AvailableModel): string {
   return unit === 'request' ? t('按次', 'Per request') : t('按 Token', 'Per token')
 }
 
-function requestPrice(row: AvailableModel): string {
-  if (modelBillingUnit(row) !== 'request') {
-    return '-'
+function rateTiers(row: AvailableModel): RateTier[] {
+  const price = row.price
+  if (!price) return [{ key: 'base', label: '-', prefix: '', multiplier: 1 }]
+  const tiers: RateTier[] = []
+  const addTier = (key: string, label: string, prefix: RatePrefix, supportsFast = true) => {
+    tiers.push({ key, label, prefix, multiplier: 1 })
+    if (price.fast_enabled && supportsFast) tiers.push({ key: `${key}-fast`, label: `${label} · FAST`, prefix, multiplier: price.fast_multiplier })
   }
-  if (row.price?.request_usd === null || row.price?.request_usd === undefined) {
-    return t('未定价', 'Unpriced')
+  addTier('base', price.off_peak_enabled ? t('常规 · 空闲', 'Standard · off-peak') : t('常规', 'Standard'), '')
+  if (price.off_peak_enabled) addTier('peak', t('常规 · 高峰', 'Standard · peak'), 'peak_')
+  if (price.long_context_enabled) {
+    const noFast = price.fast_enabled && price.long_context_fast_unsupported ? t(' · 无 FAST', ' · no FAST') : ''
+    addTier('long', (price.off_peak_enabled ? t('长上下文 · 空闲', 'Long context · off-peak') : t('长上下文', 'Long context')) + noFast, 'long_context_', !price.long_context_fast_unsupported)
+    if (price.off_peak_enabled) addTier('long-peak', t('长上下文 · 高峰', 'Long context · peak') + noFast, 'long_context_peak_', !price.long_context_fast_unsupported)
   }
-  return formatUsdPerMtok(row.price.request_usd)
+  return tiers
 }
 
-function priceValue(row: AvailableModel, field: PriceField): string {
-  if (modelBillingUnit(row) === 'request') {
-    return '-'
+function rateValue(row: AvailableModel, tier: RateTier, field: RateField): string {
+  const price = row.price
+  if (!price) return '-'
+  if (field === 'request') {
+    if (modelBillingUnit(row) !== 'request') return '-'
+    const value = tier.prefix === 'peak_' ? price.peak_request_usd ?? price.request_usd : price.request_usd
+    return value === null ? t('未定价', 'Unpriced') : formatUsdPerMtok(Number((value * tier.multiplier).toPrecision(12)))
   }
-  if (!row.price) {
-    return '-'
-  }
-  return formatUsdPerMtok(row.price[field])
-}
-
-function fastMultiplier(row: AvailableModel): string {
-  if (!row.price?.fast_enabled) return '-'
-  const multiplier = row.price?.fast_multiplier
-  if (multiplier === null || multiplier === undefined) {
-    return '-'
-  }
-  return `×${multiplier.toLocaleString(currentLanguage.value === 'zh' ? 'zh-CN' : 'en-US', {
-    maximumFractionDigits: 4,
-  })}`
+  if (modelBillingUnit(row) === 'request') return '-'
+  const key = `${tier.prefix}${field}_usd_per_million` as keyof AvailableModelPrice
+  const value = price[key]
+  return typeof value === 'number' ? formatUsdPerMtok(Number((value * tier.multiplier).toPrecision(12))) : '-'
 }
 
 function goToApiKeys() {
@@ -233,25 +231,25 @@ onMounted(refresh)
           </Empty>
 
           <div v-else-if="response" class="available-models-table">
-            <Table class="min-w-[1000px] table-fixed">
+            <Table class="table-fixed">
               <TableHeader class="sticky top-0 bg-card">
                 <TableRow>
-                  <TableHead class="w-[200px]">{{ t('模型 ID', 'Model ID') }}</TableHead>
-                  <TableHead class="w-[150px]">{{ t('名称', 'Name') }}</TableHead>
-                  <TableHead class="w-[84px] text-center">{{ t('计费方式', 'Billing') }}</TableHead>
-                  <TableHead class="w-[90px] text-right">{{ t('每次 ($)', 'Per request ($)') }}</TableHead>
-                  <TableHead class="w-[100px] text-right">{{ t('输入 $/MTok', 'Input $/MTok') }}</TableHead>
-                  <TableHead class="w-[100px] text-right">{{ t('输出 $/MTok', 'Output $/MTok') }}</TableHead>
-                  <TableHead class="w-[100px] text-right">{{ t('缓存读 $/MTok', 'Cache read $/MTok') }}</TableHead>
-                  <TableHead class="w-[100px] text-right">{{ t('缓存写 $/MTok', 'Cache write $/MTok') }}</TableHead>
-                  <TableHead class="w-[80px] text-right">{{ t('FAST 倍率', 'FAST multiplier') }}</TableHead>
+                  <TableHead class="w-[170px]">{{ t('模型 ID', 'Model ID') }}</TableHead>
+                  <TableHead class="model-secondary-column w-[115px]">{{ t('名称', 'Name') }}</TableHead>
+                  <TableHead class="w-[80px] text-center">{{ t('计费方式', 'Billing') }}</TableHead>
+                  <TableHead class="w-[175px]">{{ t('费率档位', 'Rate tier') }}</TableHead>
+                  <TableHead class="w-[75px] text-right whitespace-normal leading-tight">{{ t('每次 ($)', 'Per request ($)') }}</TableHead>
+                  <TableHead class="w-[80px] text-right whitespace-normal leading-tight">{{ t('输入 $/MTok', 'Input $/MTok') }}</TableHead>
+                  <TableHead class="w-[80px] text-right whitespace-normal leading-tight">{{ t('输出 $/MTok', 'Output $/MTok') }}</TableHead>
+                  <TableHead class="model-secondary-column w-[80px] text-right">{{ t('缓存读 $/MTok', 'Cache read $/MTok') }}</TableHead>
+                  <TableHead class="model-secondary-column w-[80px] text-right">{{ t('缓存写 $/MTok', 'Cache write $/MTok') }}</TableHead>
                 </TableRow>
               </TableHeader>
 
               <TableBody>
                 <template v-if="isLoading && pagedModels.length === 0">
                   <TableRow v-for="rowIndex in 5" :key="`model-skeleton-${rowIndex}`">
-                    <TableCell v-for="columnIndex in 9" :key="columnIndex">
+                    <TableCell v-for="columnIndex in 9" :key="columnIndex" :class="{ 'model-secondary-column': [2, 8, 9].includes(columnIndex) }">
                       <Skeleton class="h-4 w-full" />
                     </TableCell>
                   </TableRow>
@@ -261,18 +259,14 @@ onMounted(refresh)
                   <TableCell class="font-mono text-xs">
                     <span class="block truncate" :title="model.id">{{ model.id }}</span>
                   </TableCell>
-                  <TableCell><span class="block truncate" :title="displayText(model.name)">{{ displayText(model.name) }}</span></TableCell>
+                  <TableCell class="model-secondary-column"><span class="block truncate" :title="displayText(model.name)">{{ displayText(model.name) }}</span></TableCell>
                   <TableCell class="text-center">
                     <Badge :variant="modelBillingUnit(model) === 'request' ? 'secondary' : 'outline'">
                       {{ billingLabel(model) }}
                     </Badge>
                   </TableCell>
-                  <TableCell class="text-right tabular-nums">{{ requestPrice(model) }}</TableCell>
-                  <TableCell class="text-right tabular-nums">{{ priceValue(model, 'input_usd_per_million') }}</TableCell>
-                  <TableCell class="text-right tabular-nums">{{ priceValue(model, 'output_usd_per_million') }}</TableCell>
-                  <TableCell class="text-right tabular-nums">{{ priceValue(model, 'cache_read_usd_per_million') }}</TableCell>
-                  <TableCell class="text-right tabular-nums">{{ priceValue(model, 'cache_creation_usd_per_million') }}</TableCell>
-                  <TableCell class="text-right tabular-nums">{{ fastMultiplier(model) }}</TableCell>
+                  <TableCell><div class="rate-tier-stack"><div v-for="tier in rateTiers(model)" :key="tier.key" class="rate-tier-line" :title="tier.label">{{ tier.label }}</div></div></TableCell>
+                  <TableCell v-for="field in rateFields" :key="field" class="text-right tabular-nums" :class="{ 'model-secondary-column': field === 'cache_read' || field === 'cache_creation' }"><div class="rate-tier-stack"><div v-for="tier in rateTiers(model)" :key="tier.key" class="rate-tier-line">{{ rateValue(model, tier, field) }}</div></div></TableCell>
                 </TableRow>
               </TableBody>
             </Table>
@@ -317,6 +311,26 @@ onMounted(refresh)
 </template>
 
 <style scoped>
+.rate-tier-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.rate-tier-line {
+  min-height: 1.5rem;
+  overflow: hidden;
+  line-height: 1.5rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 1100px) {
+  .model-secondary-column {
+    display: none;
+  }
+}
+
 .model-panel {
   display: grid;
   gap: 14px;

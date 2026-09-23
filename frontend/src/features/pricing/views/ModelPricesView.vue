@@ -60,6 +60,7 @@ import {
   Layers3,
   ListFilter,
   MoreHorizontal,
+  Pencil,
   Plus,
   RefreshCw,
   Search,
@@ -106,34 +107,34 @@ type PriceFieldName = keyof Pick<
   | 'long_context_output_usd_per_million'
   | 'long_context_cache_read_usd_per_million'
   | 'long_context_cache_creation_usd_per_million'
-  | 'off_peak_input_usd_per_million'
-  | 'off_peak_output_usd_per_million'
-  | 'off_peak_cache_read_usd_per_million'
-  | 'off_peak_cache_creation_usd_per_million'
-  | 'long_context_off_peak_input_usd_per_million'
-  | 'long_context_off_peak_output_usd_per_million'
-  | 'long_context_off_peak_cache_read_usd_per_million'
-  | 'long_context_off_peak_cache_creation_usd_per_million'
+  | 'peak_input_usd_per_million'
+  | 'peak_output_usd_per_million'
+  | 'peak_cache_read_usd_per_million'
+  | 'peak_cache_creation_usd_per_million'
+  | 'long_context_peak_input_usd_per_million'
+  | 'long_context_peak_output_usd_per_million'
+  | 'long_context_peak_cache_read_usd_per_million'
+  | 'long_context_peak_cache_creation_usd_per_million'
 >
 
 type PriceTier = {
   key: string
   label: string
-  prefix: '' | 'long_context_' | 'off_peak_' | 'long_context_off_peak_'
+  prefix: '' | 'long_context_' | 'peak_' | 'long_context_peak_'
   multiplier: number
 }
 
-const offPeakRateFields: Array<{ key: PriceFieldName; zh: string; en: string }> = [
-  { key: 'off_peak_input_usd_per_million', zh: '空闲输入 ($/MTok)', en: 'Off-peak input ($/MTok)' },
-  { key: 'off_peak_output_usd_per_million', zh: '空闲输出 ($/MTok)', en: 'Off-peak output ($/MTok)' },
-  { key: 'off_peak_cache_read_usd_per_million', zh: '空闲缓存读 ($/MTok)', en: 'Off-peak cache read ($/MTok)' },
-  { key: 'off_peak_cache_creation_usd_per_million', zh: '空闲缓存写 ($/MTok)', en: 'Off-peak cache write ($/MTok)' },
+const peakRateFields: Array<{ key: PriceFieldName; zh: string; en: string }> = [
+  { key: 'peak_input_usd_per_million', zh: '高峰输入 ($/MTok)', en: 'Peak input ($/MTok)' },
+  { key: 'peak_output_usd_per_million', zh: '高峰输出 ($/MTok)', en: 'Peak output ($/MTok)' },
+  { key: 'peak_cache_read_usd_per_million', zh: '高峰缓存读 ($/MTok)', en: 'Peak cache read ($/MTok)' },
+  { key: 'peak_cache_creation_usd_per_million', zh: '高峰缓存写 ($/MTok)', en: 'Peak cache write ($/MTok)' },
 ]
-const longOffPeakRateFields: Array<{ key: PriceFieldName; zh: string; en: string }> = [
-  { key: 'long_context_off_peak_input_usd_per_million', zh: '长上下文空闲输入 ($/MTok)', en: 'Long off-peak input ($/MTok)' },
-  { key: 'long_context_off_peak_output_usd_per_million', zh: '长上下文空闲输出 ($/MTok)', en: 'Long off-peak output ($/MTok)' },
-  { key: 'long_context_off_peak_cache_read_usd_per_million', zh: '长上下文空闲缓存读 ($/MTok)', en: 'Long off-peak cache read ($/MTok)' },
-  { key: 'long_context_off_peak_cache_creation_usd_per_million', zh: '长上下文空闲缓存写 ($/MTok)', en: 'Long off-peak cache write ($/MTok)' },
+const longPeakRateFields: Array<{ key: PriceFieldName; zh: string; en: string }> = [
+  { key: 'long_context_peak_input_usd_per_million', zh: '长上下文高峰输入 ($/MTok)', en: 'Long peak input ($/MTok)' },
+  { key: 'long_context_peak_output_usd_per_million', zh: '长上下文高峰输出 ($/MTok)', en: 'Long peak output ($/MTok)' },
+  { key: 'long_context_peak_cache_read_usd_per_million', zh: '长上下文高峰缓存读 ($/MTok)', en: 'Long peak cache read ($/MTok)' },
+  { key: 'long_context_peak_cache_creation_usd_per_million', zh: '长上下文高峰缓存写 ($/MTok)', en: 'Long peak cache write ($/MTok)' },
 ]
 
 interface PriceDisplayRow {
@@ -167,6 +168,7 @@ const calendarSourceURL = ref('')
 const calendarConfigured = ref(false)
 const calendarSyncedAt = ref<string | null>(null)
 const peakOnMakeupDays = ref(false)
+const peakPeriods = ref<PricingHolidayCalendar['peak_periods']>([])
 const isCalendarLoading = ref(false)
 const isCalendarSaving = ref(false)
 const isCalendarSyncing = ref(false)
@@ -196,15 +198,15 @@ const form = reactive<ModelPricePayload>({
   long_context_cache_creation_usd_per_million: 0,
   long_context_fast_unsupported: false,
   off_peak_enabled: false,
-  off_peak_input_usd_per_million: 0,
-  off_peak_output_usd_per_million: 0,
-  off_peak_cache_read_usd_per_million: 0,
-  off_peak_cache_creation_usd_per_million: 0,
-  off_peak_request_usd: null,
-  long_context_off_peak_input_usd_per_million: 0,
-  long_context_off_peak_output_usd_per_million: 0,
-  long_context_off_peak_cache_read_usd_per_million: 0,
-  long_context_off_peak_cache_creation_usd_per_million: 0,
+  peak_input_usd_per_million: 0,
+  peak_output_usd_per_million: 0,
+  peak_cache_read_usd_per_million: 0,
+  peak_cache_creation_usd_per_million: 0,
+  peak_request_usd: null,
+  long_context_peak_input_usd_per_million: 0,
+  long_context_peak_output_usd_per_million: 0,
+  long_context_peak_cache_read_usd_per_million: 0,
+  long_context_peak_cache_creation_usd_per_million: 0,
 })
 const proxyForm = reactive<LiteLLMProxySettingsPayload>({
   enabled: false,
@@ -496,15 +498,15 @@ function resetForm() {
   form.long_context_cache_creation_usd_per_million = 0
   form.long_context_fast_unsupported = false
   form.off_peak_enabled = false
-  form.off_peak_input_usd_per_million = 0
-  form.off_peak_output_usd_per_million = 0
-  form.off_peak_cache_read_usd_per_million = 0
-  form.off_peak_cache_creation_usd_per_million = 0
-  form.off_peak_request_usd = null
-  form.long_context_off_peak_input_usd_per_million = 0
-  form.long_context_off_peak_output_usd_per_million = 0
-  form.long_context_off_peak_cache_read_usd_per_million = 0
-  form.long_context_off_peak_cache_creation_usd_per_million = 0
+  form.peak_input_usd_per_million = 0
+  form.peak_output_usd_per_million = 0
+  form.peak_cache_read_usd_per_million = 0
+  form.peak_cache_creation_usd_per_million = 0
+  form.peak_request_usd = null
+  form.long_context_peak_input_usd_per_million = 0
+  form.long_context_peak_output_usd_per_million = 0
+  form.long_context_peak_cache_read_usd_per_million = 0
+  form.long_context_peak_cache_creation_usd_per_million = 0
 }
 
 async function refresh() {
@@ -575,15 +577,15 @@ function openEdit(row: ModelPrice) {
 
 function fillOffPeakForm(price: Partial<ModelPricePayload>) {
   form.off_peak_enabled = price.off_peak_enabled ?? false
-  form.off_peak_input_usd_per_million = price.off_peak_input_usd_per_million ?? 0
-  form.off_peak_output_usd_per_million = price.off_peak_output_usd_per_million ?? 0
-  form.off_peak_cache_read_usd_per_million = price.off_peak_cache_read_usd_per_million ?? 0
-  form.off_peak_cache_creation_usd_per_million = price.off_peak_cache_creation_usd_per_million ?? 0
-  form.off_peak_request_usd = price.off_peak_request_usd ?? null
-  form.long_context_off_peak_input_usd_per_million = price.long_context_off_peak_input_usd_per_million ?? 0
-  form.long_context_off_peak_output_usd_per_million = price.long_context_off_peak_output_usd_per_million ?? 0
-  form.long_context_off_peak_cache_read_usd_per_million = price.long_context_off_peak_cache_read_usd_per_million ?? 0
-  form.long_context_off_peak_cache_creation_usd_per_million = price.long_context_off_peak_cache_creation_usd_per_million ?? 0
+  form.peak_input_usd_per_million = price.peak_input_usd_per_million ?? 0
+  form.peak_output_usd_per_million = price.peak_output_usd_per_million ?? 0
+  form.peak_cache_read_usd_per_million = price.peak_cache_read_usd_per_million ?? 0
+  form.peak_cache_creation_usd_per_million = price.peak_cache_creation_usd_per_million ?? 0
+  form.peak_request_usd = price.peak_request_usd ?? null
+  form.long_context_peak_input_usd_per_million = price.long_context_peak_input_usd_per_million ?? 0
+  form.long_context_peak_output_usd_per_million = price.long_context_peak_output_usd_per_million ?? 0
+  form.long_context_peak_cache_read_usd_per_million = price.long_context_peak_cache_read_usd_per_million ?? 0
+  form.long_context_peak_cache_creation_usd_per_million = price.long_context_peak_cache_creation_usd_per_million ?? 0
 }
 
 function normalizeNumberInput(value: string | number, fallback = 0): number {
@@ -602,18 +604,18 @@ function setRequestPrice(value: string | number) {
   form.request_usd = value === '' ? null : normalizeNumberInput(value)
 }
 
-function setOffPeakRequestPrice(value: string | number) {
-  form.off_peak_request_usd = value === '' ? null : normalizeNumberInput(value)
+function setPeakRequestPrice(value: string | number) {
+  form.peak_request_usd = value === '' ? null : normalizeNumberInput(value)
 }
 
 function toggleOffPeak(enabled: boolean) {
   form.off_peak_enabled = enabled
   if (!enabled) return
-  if (form.off_peak_request_usd === null) form.off_peak_request_usd = form.request_usd
+  if (form.peak_request_usd === null) form.peak_request_usd = form.request_usd
   const fields = ['input', 'output', 'cache_read', 'cache_creation'] as const
   for (const field of fields) {
-    const shortKey = `off_peak_${field}_usd_per_million` as PriceFieldName
-    const longKey = `long_context_off_peak_${field}_usd_per_million` as PriceFieldName
+    const shortKey = `peak_${field}_usd_per_million` as PriceFieldName
+    const longKey = `long_context_peak_${field}_usd_per_million` as PriceFieldName
     const baseKey = `${field}_usd_per_million` as PriceFieldName
     const longBaseKey = `long_context_${field}_usd_per_million` as PriceFieldName
     if (form[shortKey] === 0) form[shortKey] = form[baseKey]
@@ -665,15 +667,15 @@ async function savePrice() {
     long_context_cache_creation_usd_per_million: requestPriceMode ? 0 : form.long_context_cache_creation_usd_per_million,
     long_context_fast_unsupported: !requestPriceMode && form.fast_enabled && form.long_context_fast_unsupported,
     off_peak_enabled: form.off_peak_enabled,
-    off_peak_input_usd_per_million: form.off_peak_input_usd_per_million,
-    off_peak_output_usd_per_million: form.off_peak_output_usd_per_million,
-    off_peak_cache_read_usd_per_million: form.off_peak_cache_read_usd_per_million,
-    off_peak_cache_creation_usd_per_million: form.off_peak_cache_creation_usd_per_million,
-    off_peak_request_usd: requestPriceMode ? form.off_peak_request_usd : null,
-    long_context_off_peak_input_usd_per_million: form.long_context_off_peak_input_usd_per_million,
-    long_context_off_peak_output_usd_per_million: form.long_context_off_peak_output_usd_per_million,
-    long_context_off_peak_cache_read_usd_per_million: form.long_context_off_peak_cache_read_usd_per_million,
-    long_context_off_peak_cache_creation_usd_per_million: form.long_context_off_peak_cache_creation_usd_per_million,
+    peak_input_usd_per_million: form.peak_input_usd_per_million,
+    peak_output_usd_per_million: form.peak_output_usd_per_million,
+    peak_cache_read_usd_per_million: form.peak_cache_read_usd_per_million,
+    peak_cache_creation_usd_per_million: form.peak_cache_creation_usd_per_million,
+    peak_request_usd: requestPriceMode ? form.peak_request_usd : null,
+    long_context_peak_input_usd_per_million: form.long_context_peak_input_usd_per_million,
+    long_context_peak_output_usd_per_million: form.long_context_peak_output_usd_per_million,
+    long_context_peak_cache_read_usd_per_million: form.long_context_peak_cache_read_usd_per_million,
+    long_context_peak_cache_creation_usd_per_million: form.long_context_peak_cache_creation_usd_per_million,
   }
   if (!payload.provider || !payload.model) {
     message.error(t('服务商和模型不能为空', 'Provider and model are required'))
@@ -687,8 +689,8 @@ async function savePrice() {
     message.error(t('image 模型需要填写每次调用价格', 'Image models require a per-call price'))
     return
   }
-  if (requestPriceMode && payload.off_peak_enabled && payload.off_peak_request_usd === null) {
-    message.error(t('请填写空闲时段每次调用价格', 'Enter the off-peak per-call price'))
+  if (requestPriceMode && payload.off_peak_enabled && payload.peak_request_usd === null) {
+    message.error(t('请填写高峰时段每次调用价格', 'Enter the peak per-call price'))
     return
   }
   if (payload.long_context_enabled && (!Number.isInteger(payload.long_context_threshold_tokens) || payload.long_context_threshold_tokens <= 0)) {
@@ -794,15 +796,15 @@ function priceTiers(row: PriceDisplayRow): PriceTier[] {
   const addTier = (key: string, label: string, prefix: PriceTier['prefix'], supportsFast = true) => {
     tiers.push({ key, label, prefix, multiplier: 1 })
     if (supportsFast && price.fast_enabled) {
-      tiers.push({ key: `${key}-fast`, label: `${label} · FAST ×${price.fast_multiplier}`, prefix, multiplier: price.fast_multiplier })
+      tiers.push({ key: `${key}-fast`, label: `${label} · FAST`, prefix, multiplier: price.fast_multiplier })
     }
   }
-  addTier('base', price.off_peak_enabled ? t('常规 · 高峰', 'Standard · peak') : t('常规', 'Standard'), '')
-  if (price.off_peak_enabled) addTier('off-peak', t('常规 · 空闲', 'Standard · off-peak'), 'off_peak_')
+  addTier('base', price.off_peak_enabled ? t('常规 · 空闲', 'Standard · off-peak') : t('常规', 'Standard'), '')
+  if (price.off_peak_enabled) addTier('peak', t('常规 · 高峰', 'Standard · peak'), 'peak_')
   if (price.long_context_enabled) {
     const fastSuffix = price.fast_enabled && price.long_context_fast_unsupported ? t(' · 无 FAST', ' · no FAST') : ''
-    addTier('long', (price.off_peak_enabled ? t('长上下文 · 高峰', 'Long context · peak') : t('长上下文', 'Long context')) + fastSuffix, 'long_context_', !price.long_context_fast_unsupported)
-    if (price.off_peak_enabled) addTier('long-off-peak', t('长上下文 · 空闲', 'Long context · off-peak') + fastSuffix, 'long_context_off_peak_', !price.long_context_fast_unsupported)
+    addTier('long', (price.off_peak_enabled ? t('长上下文 · 空闲', 'Long context · off-peak') : t('长上下文', 'Long context')) + fastSuffix, 'long_context_', !price.long_context_fast_unsupported)
+    if (price.off_peak_enabled) addTier('long-peak', t('长上下文 · 高峰', 'Long context · peak') + fastSuffix, 'long_context_peak_', !price.long_context_fast_unsupported)
   }
   return tiers
 }
@@ -816,7 +818,7 @@ function tierPriceValue(row: PriceDisplayRow, tier: PriceTier, field: 'input' | 
   if (!row.price) return '-'
   if (field === 'request') {
     if (row.billing_unit !== 'request') return '-'
-    const requestPrice = tier.prefix === 'off_peak_' ? row.price.off_peak_request_usd ?? row.price.request_usd : row.price.request_usd
+    const requestPrice = tier.prefix === 'peak_' ? row.price.peak_request_usd ?? row.price.request_usd : row.price.request_usd
     return multipliedPriceValue(requestPrice, tier.multiplier)
   }
   if (row.billing_unit === 'request') return '-'
@@ -841,6 +843,7 @@ function applyCalendar(calendar: PricingHolidayCalendar) {
   calendarConfigured.value = calendar.configured
   calendarSyncedAt.value = calendar.synced_at ?? null
   peakOnMakeupDays.value = calendar.peak_on_makeup_days ?? false
+  peakPeriods.value = (calendar.peak_periods ?? []).map((period) => ({ ...period }))
 }
 
 async function openCalendar() {
@@ -852,8 +855,10 @@ async function syncCalendar() {
   isCalendarSyncing.value = true
   try {
     const pendingPeakOnMakeupDays = peakOnMakeupDays.value
+    const pendingPeakPeriods = peakPeriods.value.map((period) => ({ ...period }))
     applyCalendar(await syncPricingHolidayCalendar(calendarYear.value))
     peakOnMakeupDays.value = pendingPeakOnMakeupDays
+    peakPeriods.value = pendingPeakPeriods
     message.success(t('节假日已从 holiday-cn 同步', 'Holidays synced from holiday-cn'))
   } catch (error) {
     message.error(errorText(error, '同步节假日失败，已保留本地数据', 'Holiday sync failed; cached data was retained'))
@@ -865,9 +870,10 @@ async function syncCalendar() {
 async function saveCalendarSettings() {
   isCalendarSaving.value = true
   try {
-    const settings = await updatePricingCalendarSettings(peakOnMakeupDays.value)
+    const settings = await updatePricingCalendarSettings(peakOnMakeupDays.value, peakPeriods.value)
     peakOnMakeupDays.value = settings.peak_on_makeup_days
-    message.success(t('调休日计费选项已保存', 'Makeup-day pricing setting saved'))
+    peakPeriods.value = settings.peak_periods
+    message.success(t('峰谷计费选项已保存', 'Peak pricing settings saved'))
     calendarModalOpen.value = false
   } catch (error) {
     message.error(errorText(error, '保存计费选项失败', 'Failed to save pricing setting'))
@@ -1009,7 +1015,7 @@ onMounted(() => {
               <TableHead class="w-[75px] whitespace-normal text-right">{{ t('输出 ($/MTok)', 'Output ($/MTok)') }}</TableHead>
               <TableHead class="price-secondary-column w-[75px] whitespace-normal text-right">{{ t('缓存读 ($/MTok)', 'Cache read ($/MTok)') }}</TableHead>
               <TableHead class="price-secondary-column w-[75px] whitespace-normal text-right">{{ t('缓存写 ($/MTok)', 'Cache write ($/MTok)') }}</TableHead>
-              <TableHead class="w-[100px]">
+              <TableHead class="w-[70px]">
                 <span class="sr-only">{{ t('操作', 'Actions') }}</span>
               </TableHead>
             </TableRow>
@@ -1062,10 +1068,7 @@ onMounted(() => {
               <TableCell class="price-secondary-column text-right tabular-nums"><div class="rate-tier-stack"><div v-for="tier in priceTiers(row)" :key="tier.key" class="rate-tier-line">{{ tierPriceValue(row, tier, 'cache_read') }}</div></div></TableCell>
               <TableCell class="price-secondary-column text-right tabular-nums"><div class="rate-tier-stack"><div v-for="tier in priceTiers(row)" :key="tier.key" class="rate-tier-line">{{ tierPriceValue(row, tier, 'cache_creation') }}</div></div></TableCell>
               <TableCell class="text-right">
-                <div class="flex items-center justify-end gap-1">
-                  <Button variant="ghost" size="sm" @click="row.price ? openEdit(row.price) : openCreateForRow(row)">
-                    {{ row.price ? t('改价', 'Edit') : t('设价', 'Set') }}
-                  </Button>
+                <div class="flex items-center justify-end">
                   <DropdownMenu v-if="row.price">
                     <DropdownMenuTrigger as-child>
                       <Button
@@ -1079,6 +1082,10 @@ onMounted(() => {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" :side-offset="4" class="w-40">
                       <DropdownMenuGroup>
+                        <DropdownMenuItem @select="openEdit(row.price)">
+                          <Pencil />
+                          <span>{{ t('编辑', 'Edit') }}</span>
+                        </DropdownMenuItem>
                         <DropdownMenuItem variant="destructive" @select="confirmDelete(row.price)">
                           <Trash2 />
                           <span>{{ t('删除', 'Delete') }}</span>
@@ -1086,6 +1093,7 @@ onMounted(() => {
                       </DropdownMenuGroup>
                     </DropdownMenuContent>
                   </DropdownMenu>
+                  <Button v-else variant="ghost" size="sm" @click="openCreateForRow(row)">{{ t('设价', 'Set') }}</Button>
                 </div>
               </TableCell>
             </TableRow>
@@ -1324,23 +1332,23 @@ onMounted(() => {
                 <FieldContent>
                   <FieldLabel for="price-off-peak-enabled">{{ t('启用峰谷分段计费', 'Enable peak/off-peak pricing') }}</FieldLabel>
                   <FieldDescription>
-                    {{ t('现有费率作为高峰价；北京时间工作日 09:00–12:00、14:00–18:00 为高峰。法定休息日为空闲；调休上班日是否按高峰价可在节假日日历中设置。未公布年份全天使用空闲价。', 'Existing rates become peak rates. Beijing workday hours 09:00–12:00 and 14:00–18:00 are peak. Published off-days are off-peak; makeup workdays can be configured. Unpublished years use off-peak all day.') }}
+                    {{ t('常规费率为空闲价；开启后另填高峰价。北京时间高峰时段与调休日计费方式可在节假日日历中设置；法定休息日和未公布年份使用空闲价。', 'Regular rates are off-peak rates. Enter separate peak rates when enabled. Configure Beijing-time peak hours and makeup days in the holiday calendar; published off-days and unpublished years use off-peak rates.') }}
                   </FieldDescription>
                 </FieldContent>
                 <Switch id="price-off-peak-enabled" :model-value="form.off_peak_enabled" @update:model-value="toggleOffPeak" />
               </Field>
               <FieldGroup v-if="form.off_peak_enabled" class="long-context-rate-grid">
                 <Field v-if="isRequestPriceForm" class="wide-form-item">
-                  <FieldLabel for="price-off-peak-request">{{ t('空闲时段每次调用价格 USD', 'Off-peak per-call price USD') }}</FieldLabel>
-                  <Input id="price-off-peak-request" type="number" min="0" step="any" :model-value="form.off_peak_request_usd ?? ''" @update:model-value="setOffPeakRequestPrice" />
+                  <FieldLabel for="price-peak-request">{{ t('高峰时段每次调用价格 USD', 'Peak per-call price USD') }}</FieldLabel>
+                  <Input id="price-peak-request" type="number" min="0" step="any" :model-value="form.peak_request_usd ?? ''" @update:model-value="setPeakRequestPrice" />
                 </Field>
                 <template v-else>
-                  <Field v-for="field in offPeakRateFields" :key="field.key">
+                  <Field v-for="field in peakRateFields" :key="field.key">
                     <FieldLabel :for="`price-${field.key}`">{{ t(field.zh, field.en) }}</FieldLabel>
                     <Input :id="`price-${field.key}`" type="number" min="0" step="any" :model-value="form[field.key]" @update:model-value="setPriceNumber(field.key, $event)" />
                   </Field>
                   <template v-if="form.long_context_enabled">
-                    <Field v-for="field in longOffPeakRateFields" :key="field.key">
+                    <Field v-for="field in longPeakRateFields" :key="field.key">
                       <FieldLabel :for="`price-${field.key}`">{{ t(field.zh, field.en) }}</FieldLabel>
                       <Input :id="`price-${field.key}`" type="number" min="0" step="any" :model-value="form[field.key]" @update:model-value="setPriceNumber(field.key, $event)" />
                     </Field>
@@ -1463,10 +1471,25 @@ onMounted(() => {
                 </Table>
               </div>
             </Field>
+            <Field>
+              <div class="flex items-center justify-between gap-2">
+                <FieldLabel>{{ t('高峰时段（北京时间）', 'Peak hours (Beijing time)') }}</FieldLabel>
+                <Button type="button" variant="outline" size="sm" :disabled="peakPeriods.length >= 8 || isCalendarLoading || isCalendarSaving" @click="peakPeriods.push({ start: '', end: '' })">
+                  <Plus data-icon="inline-start" />{{ t('添加时段', 'Add period') }}
+                </Button>
+              </div>
+              <FieldDescription>{{ t('仅工作日及开启计费的调休上班日适用；按开始时间排序，时段不可重叠或跨日。', 'Applies only on workdays and opted-in makeup days. Order by start time; periods cannot overlap or cross midnight.') }}</FieldDescription>
+              <div v-for="(period, index) in peakPeriods" :key="index" class="flex items-center gap-2">
+                <Input v-model="period.start" type="time" :aria-label="t(`第 ${index + 1} 段开始时间`, `Period ${index + 1} start`)" :disabled="isCalendarLoading || isCalendarSaving" />
+                <span class="text-muted-foreground">–</span>
+                <Input v-model="period.end" type="time" :aria-label="t(`第 ${index + 1} 段结束时间`, `Period ${index + 1} end`)" :disabled="isCalendarLoading || isCalendarSaving" />
+                <Button type="button" variant="ghost" size="icon-sm" :aria-label="t(`删除第 ${index + 1} 段`, `Remove period ${index + 1}`)" :disabled="peakPeriods.length <= 1 || isCalendarLoading || isCalendarSaving" @click="peakPeriods.splice(index, 1)"><Trash2 /></Button>
+              </div>
+            </Field>
             <Field orientation="horizontal">
               <FieldContent>
                 <FieldLabel for="pricing-peak-on-makeup-days">{{ t('调休日按高峰价计算', 'Charge peak rates on makeup workdays') }}</FieldLabel>
-                <FieldDescription>{{ t('仅对数据源标记的调休上班日生效，并且仅在 09:00–12:00、14:00–18:00 使用高峰价；普通周末仍为空闲价。', 'Only published makeup workdays use peak rates during 09:00–12:00 and 14:00–18:00. Ordinary weekends remain off-peak.') }}</FieldDescription>
+                <FieldDescription>{{ t('仅对数据源标记的调休上班日生效，并且仅在上方设置的高峰时段使用高峰价；普通周末仍为空闲价。', 'Only published makeup workdays use peak rates during the configured hours. Ordinary weekends remain off-peak.') }}</FieldDescription>
               </FieldContent>
               <Switch id="pricing-peak-on-makeup-days" v-model="peakOnMakeupDays" :disabled="isCalendarLoading || isCalendarSyncing || isCalendarSaving" />
             </Field>

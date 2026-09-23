@@ -486,6 +486,73 @@ func TestRunMigrationsRepairsOldPythonSchemaWithoutOldCode(t *testing.T) {
 	}
 }
 
+func TestPeakRateMigrationPreservesExistingTierPrices(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "peak-rates.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.SetMaxOpenConns(1)
+	defer db.Close()
+	goose.SetBaseFS(backendMigrations.FS)
+	if err := goose.SetDialect("sqlite3"); err != nil {
+		t.Fatal(err)
+	}
+	if err := goose.UpToContext(ctx, db, ".", 202609230003); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO model_prices (
+			provider, model, input_usd_per_million, output_usd_per_million,
+			off_peak_enabled, off_peak_input_usd_per_million, off_peak_output_usd_per_million,
+			long_context_enabled, long_context_input_usd_per_million, long_context_off_peak_input_usd_per_million,
+			source, source_model, auto_synced, updated_at
+		) VALUES ('openai', 'gpt-old-tiers', 2, 4, 1, 1, 3, 1, 6, 5,
+		          'litellm', 'gpt-old-tiers', 1, '2026-09-23 00:00:00')
+	`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO model_prices (
+			provider, model, input_usd_per_million, output_usd_per_million,
+			request_usd, off_peak_enabled, off_peak_request_usd, source, updated_at
+		) VALUES ('openai', 'gpt-image-old', 0, 0, 2, 1, 0.5, 'manual', '2026-09-23 00:00:00'),
+		         ('openai', 'gpt-unchanged', 7, 8, NULL, 0, NULL, 'manual', '2026-09-23 00:00:00')
+	`); err != nil {
+		t.Fatal(err)
+	}
+	if err := goose.UpToContext(ctx, db, ".", 202609230004); err != nil {
+		t.Fatal(err)
+	}
+	var regularInput, peakInput, regularOutput, peakOutput, regularLong, peakLong float64
+	var source string
+	var autoSynced bool
+	if err := db.QueryRow(`
+		SELECT input_usd_per_million, peak_input_usd_per_million,
+		       output_usd_per_million, peak_output_usd_per_million,
+		       long_context_input_usd_per_million, long_context_peak_input_usd_per_million,
+		       source, auto_synced FROM model_prices WHERE model = 'gpt-old-tiers'
+	`).Scan(&regularInput, &peakInput, &regularOutput, &peakOutput, &regularLong, &peakLong, &source, &autoSynced); err != nil {
+		t.Fatal(err)
+	}
+	if regularInput != 1 || peakInput != 2 || regularOutput != 3 || peakOutput != 4 || regularLong != 5 || peakLong != 6 || source != "manual" || autoSynced {
+		t.Fatalf("migrated prices = %v/%v %v/%v %v/%v %s/%v", regularInput, peakInput, regularOutput, peakOutput, regularLong, peakLong, source, autoSynced)
+	}
+	var regularRequest, peakRequest float64
+	if err := db.QueryRow(`SELECT request_usd, peak_request_usd FROM model_prices WHERE model = 'gpt-image-old'`).Scan(&regularRequest, &peakRequest); err != nil {
+		t.Fatal(err)
+	}
+	if regularRequest != .5 || peakRequest != 2 {
+		t.Fatalf("migrated request prices = %v/%v", regularRequest, peakRequest)
+	}
+	if err := db.QueryRow(`SELECT input_usd_per_million FROM model_prices WHERE model = 'gpt-unchanged'`).Scan(&regularInput); err != nil {
+		t.Fatal(err)
+	}
+	if regularInput != 7 {
+		t.Fatalf("non-tiered price changed to %v", regularInput)
+	}
+}
+
 func TestRunMigrationsBackfillsUsageTokenBreakdownZeros(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "usage-backfill.sqlite3"))

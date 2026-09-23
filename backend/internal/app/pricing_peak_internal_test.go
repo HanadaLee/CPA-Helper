@@ -54,9 +54,9 @@ func TestRecordCostPeakOffPeakLongContextAndFast(t *testing.T) {
 	fast := "fast"
 	price := ModelPrice{
 		Provider: provider, Model: model,
-		InputUSDPerMillion: 2, LongContextEnabled: true, LongContextThresholdTokens: 100,
-		LongContextInputUSDPerMillion: 6, OffPeakEnabled: true,
-		OffPeakInputUSDPerMillion: 1, LongContextOffPeakInputUSDPerMillion: 3,
+		InputUSDPerMillion: 1, LongContextEnabled: true, LongContextThresholdTokens: 100,
+		LongContextInputUSDPerMillion: 3, OffPeakEnabled: true,
+		PeakInputUSDPerMillion: 2, LongContextPeakInputUSDPerMillion: 6,
 		FastEnabled: true, FastMultiplier: 2,
 		calendar: &pricingCalendar{years: map[int]map[string]bool{2026: {"2026-09-25": true}}},
 	}
@@ -88,8 +88,8 @@ func TestRequestPriceUsesOffPeakAndHistoricalCostStaysFixed(t *testing.T) {
 	peakUSD := 2.0
 	offPeakUSD := 0.5
 	price := ModelPrice{
-		Provider: provider, Model: model, RequestUSD: &peakUSD,
-		OffPeakEnabled: true, OffPeakRequestUSD: &offPeakUSD,
+		Provider: provider, Model: model, RequestUSD: &offPeakUSD,
+		OffPeakEnabled: true, PeakRequestUSD: &peakUSD,
 		calendar: &pricingCalendar{years: map[int]map[string]bool{2026: {}}},
 	}
 	prices := pricesByKey([]ModelPrice{price})
@@ -118,13 +118,13 @@ func TestModelPriceOffPeakRoundTripAndHolidayCalendarAPI(t *testing.T) {
 	cookies := requestJSONForPricingTest(t, handler, http.MethodPost, "/api/auth/setup", map[string]any{"username": "admin", "password": "test-password", "nickname": "Admin"}, nil, nil)
 	var created ModelPrice
 	requestJSONForPricingTest(t, handler, http.MethodPost, "/api/model-prices", map[string]any{
-		"provider": "openai", "model": "gpt-peak-api", "input_usd_per_million": 2,
-		"off_peak_enabled": true, "off_peak_input_usd_per_million": 1,
+		"provider": "openai", "model": "gpt-peak-api", "input_usd_per_million": 1,
+		"off_peak_enabled": true, "peak_input_usd_per_million": 2,
 		"long_context_enabled": true, "long_context_threshold_tokens": 100,
-		"long_context_input_usd_per_million": 6, "long_context_off_peak_input_usd_per_million": 3,
+		"long_context_input_usd_per_million": 3, "long_context_peak_input_usd_per_million": 6,
 	}, cookies, &created)
-	if !created.OffPeakEnabled || created.OffPeakInputUSDPerMillion != 1 || created.LongContextOffPeakInputUSDPerMillion != 3 {
-		t.Fatalf("created off-peak price = %#v", created)
+	if !created.OffPeakEnabled || created.PeakInputUSDPerMillion != 2 || created.LongContextPeakInputUSDPerMillion != 6 {
+		t.Fatalf("created peak price = %#v", created)
 	}
 	prices, err := app.loadPriceMap(context.Background())
 	if err != nil {
@@ -135,7 +135,7 @@ func TestModelPriceOffPeakRoundTripAndHolidayCalendarAPI(t *testing.T) {
 	}
 	var calendar pricingHolidayCalendarResponse
 	requestJSONForPricingTest(t, handler, http.MethodGet, "/api/model-prices/holiday-calendar?year=2026", nil, cookies, &calendar)
-	if !calendar.Configured || len(calendar.Dates) != 33 || calendar.SourceURL == "" {
+	if !calendar.Configured || len(calendar.Dates) != 33 || calendar.SourceURL == "" || len(calendar.PeakPeriods) != 2 {
 		t.Fatalf("seeded 2026 calendar = %#v", calendar)
 	}
 	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -150,9 +150,11 @@ func TestModelPriceOffPeakRoundTripAndHolidayCalendarAPI(t *testing.T) {
 	if !calendar.Configured || len(calendar.Dates) != 1 || len(calendar.Days) != 2 || calendar.Days[1].IsOffDay || calendar.SyncedAt == nil {
 		t.Fatalf("synced 2027 calendar = %#v", calendar)
 	}
-	var settings map[string]bool
+	var settings struct {
+		PeakOnMakeupDays bool `json:"peak_on_makeup_days"`
+	}
 	requestJSONForPricingTest(t, handler, http.MethodPut, "/api/model-prices/holiday-calendar/settings", map[string]any{"peak_on_makeup_days": true}, cookies, &settings)
-	if !settings["peak_on_makeup_days"] {
+	if !settings.PeakOnMakeupDays {
 		t.Fatalf("saved makeup-day setting = %#v", settings)
 	}
 	prices, err = app.loadPriceMap(context.Background())
@@ -168,6 +170,35 @@ func TestModelPriceOffPeakRoundTripAndHolidayCalendarAPI(t *testing.T) {
 	if amount, unpriced := calculateRecordCost(UsageRecord{Model: &created.Model, Timestamp: time.Date(2027, 1, 1, 10, 0, 0, 0, appTimeLocation), InputTokens: 100}, prices); unpriced || amount != .0001 {
 		t.Fatalf("2027 holiday off-peak cost = %v unpriced=%v", amount, unpriced)
 	}
+	var customSettings struct {
+		PeakOnMakeupDays bool                `json:"peak_on_makeup_days"`
+		PeakPeriods      []pricingPeakPeriod `json:"peak_periods"`
+	}
+	requestJSONForPricingTest(t, handler, http.MethodPut, "/api/model-prices/holiday-calendar/settings", map[string]any{
+		"peak_periods": []pricingPeakPeriod{{Start: "08:30", End: "10:30"}, {Start: "14:15", End: "18:00"}},
+	}, cookies, &customSettings)
+	if !customSettings.PeakOnMakeupDays || len(customSettings.PeakPeriods) != 2 || customSettings.PeakPeriods[0].Start != "08:30" {
+		t.Fatalf("custom peak schedule = %#v", customSettings)
+	}
+	prices, err = app.loadPriceMap(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, check := range []struct {
+		hour, minute int
+		want         float64
+	}{
+		{8, 29, .0001}, {8, 30, .0002}, {10, 29, .0002}, {10, 30, .0001}, {14, 14, .0001}, {14, 15, .0002},
+	} {
+		at := time.Date(2027, 1, 4, check.hour, check.minute, 0, 0, appTimeLocation)
+		amount, unpriced := calculateRecordCost(UsageRecord{Model: &created.Model, Timestamp: at, InputTokens: 100}, prices)
+		if unpriced || amount != check.want {
+			t.Fatalf("custom peak cost at %s = %v unpriced=%v, want %v", at, amount, unpriced, check.want)
+		}
+	}
+	if err := validatePricingPeakPeriods([]pricingPeakPeriod{{Start: "09:00", End: "12:00"}, {Start: "11:30", End: "18:00"}}); err == nil {
+		t.Fatal("overlapping peak periods should be rejected")
+	}
 
 	badSource := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"year":2027,"papers":[],"days":[]}`))
@@ -181,12 +212,12 @@ func TestModelPriceOffPeakRoundTripAndHolidayCalendarAPI(t *testing.T) {
 		t.Fatalf("calendar cache changed after failed refresh: %#v, %v", calendar, err)
 	}
 	requestJSONForPricingTest(t, handler, http.MethodPut, fmt.Sprintf("/api/model-prices/%d", created.ID), map[string]any{
-		"provider": "openai", "model": "gpt-peak-api", "input_usd_per_million": 2,
-		"off_peak_enabled": true, "off_peak_input_usd_per_million": .5,
+		"provider": "openai", "model": "gpt-peak-api", "input_usd_per_million": .5,
+		"off_peak_enabled": true, "peak_input_usd_per_million": 2,
 		"long_context_enabled": true, "long_context_threshold_tokens": 100,
-		"long_context_input_usd_per_million": 6, "long_context_off_peak_input_usd_per_million": 3,
+		"long_context_input_usd_per_million": 3, "long_context_peak_input_usd_per_million": 6,
 	}, cookies, &created)
-	if created.OffPeakInputUSDPerMillion != .5 {
-		t.Fatalf("updated off-peak input = %v", created.OffPeakInputUSDPerMillion)
+	if created.InputUSDPerMillion != .5 || created.PeakInputUSDPerMillion != 2 {
+		t.Fatalf("updated regular/peak input = %v/%v", created.InputUSDPerMillion, created.PeakInputUSDPerMillion)
 	}
 }

@@ -32,23 +32,33 @@ type AvailableModelSource struct {
 }
 
 type AvailableModelPrice struct {
-	Provider                              string   `json:"provider"`
-	Model                                 string   `json:"model"`
-	InputUSDPerMillion                    float64  `json:"input_usd_per_million"`
-	OutputUSDPerMillion                   float64  `json:"output_usd_per_million"`
-	CacheReadUSDPerMillion                float64  `json:"cache_read_usd_per_million"`
-	CacheCreationUSDPerMillion            float64  `json:"cache_creation_usd_per_million"`
-	RequestUSD                            *float64 `json:"request_usd"`
-	FastEnabled                           bool     `json:"fast_enabled"`
-	FastMultiplier                        float64  `json:"fast_multiplier"`
-	LongContextEnabled                    bool     `json:"long_context_enabled"`
-	LongContextThresholdTokens            int      `json:"long_context_threshold_tokens"`
-	LongContextInputUSDPerMillion         float64  `json:"long_context_input_usd_per_million"`
-	LongContextOutputUSDPerMillion        float64  `json:"long_context_output_usd_per_million"`
-	LongContextCacheReadUSDPerMillion     float64  `json:"long_context_cache_read_usd_per_million"`
-	LongContextCacheCreationUSDPerMillion float64  `json:"long_context_cache_creation_usd_per_million"`
-	LongContextFastUnsupported            bool     `json:"long_context_fast_unsupported"`
-	BillingUnit                           string   `json:"billing_unit"`
+	Provider                                  string   `json:"provider"`
+	Model                                     string   `json:"model"`
+	InputUSDPerMillion                        float64  `json:"input_usd_per_million"`
+	OutputUSDPerMillion                       float64  `json:"output_usd_per_million"`
+	CacheReadUSDPerMillion                    float64  `json:"cache_read_usd_per_million"`
+	CacheCreationUSDPerMillion                float64  `json:"cache_creation_usd_per_million"`
+	RequestUSD                                *float64 `json:"request_usd"`
+	FastEnabled                               bool     `json:"fast_enabled"`
+	FastMultiplier                            float64  `json:"fast_multiplier"`
+	LongContextEnabled                        bool     `json:"long_context_enabled"`
+	LongContextThresholdTokens                int      `json:"long_context_threshold_tokens"`
+	LongContextInputUSDPerMillion             float64  `json:"long_context_input_usd_per_million"`
+	LongContextOutputUSDPerMillion            float64  `json:"long_context_output_usd_per_million"`
+	LongContextCacheReadUSDPerMillion         float64  `json:"long_context_cache_read_usd_per_million"`
+	LongContextCacheCreationUSDPerMillion     float64  `json:"long_context_cache_creation_usd_per_million"`
+	LongContextFastUnsupported                bool     `json:"long_context_fast_unsupported"`
+	OffPeakEnabled                            bool     `json:"off_peak_enabled"`
+	PeakInputUSDPerMillion                    float64  `json:"peak_input_usd_per_million"`
+	PeakOutputUSDPerMillion                   float64  `json:"peak_output_usd_per_million"`
+	PeakCacheReadUSDPerMillion                float64  `json:"peak_cache_read_usd_per_million"`
+	PeakCacheCreationUSDPerMillion            float64  `json:"peak_cache_creation_usd_per_million"`
+	PeakRequestUSD                            *float64 `json:"peak_request_usd"`
+	LongContextPeakInputUSDPerMillion         float64  `json:"long_context_peak_input_usd_per_million"`
+	LongContextPeakOutputUSDPerMillion        float64  `json:"long_context_peak_output_usd_per_million"`
+	LongContextPeakCacheReadUSDPerMillion     float64  `json:"long_context_peak_cache_read_usd_per_million"`
+	LongContextPeakCacheCreationUSDPerMillion float64  `json:"long_context_peak_cache_creation_usd_per_million"`
+	BillingUnit                               string   `json:"billing_unit"`
 }
 
 type AvailableModelItem struct {
@@ -165,23 +175,33 @@ func (a *App) availableModelsForUser(ctx context.Context, userID int) (Available
 	for _, model := range modelsByID {
 		if price := findMatchingPrice(prices, &model.ID); price != nil {
 			model.Price = &AvailableModelPrice{
-				Provider:                              price.Provider,
-				Model:                                 price.Model,
-				InputUSDPerMillion:                    price.InputUSDPerMillion,
-				OutputUSDPerMillion:                   price.OutputUSDPerMillion,
-				CacheReadUSDPerMillion:                price.CacheReadUSDPerMillion,
-				CacheCreationUSDPerMillion:            price.CacheCreationUSDPerMillion,
-				RequestUSD:                            price.RequestUSD,
-				FastMultiplier:                        price.FastMultiplier,
-				FastEnabled:                           price.FastEnabled,
-				LongContextEnabled:                    price.LongContextEnabled,
-				LongContextThresholdTokens:            price.LongContextThresholdTokens,
-				LongContextInputUSDPerMillion:         price.LongContextInputUSDPerMillion,
-				LongContextOutputUSDPerMillion:        price.LongContextOutputUSDPerMillion,
-				LongContextCacheReadUSDPerMillion:     price.LongContextCacheReadUSDPerMillion,
-				LongContextCacheCreationUSDPerMillion: price.LongContextCacheCreationUSDPerMillion,
-				LongContextFastUnsupported:            price.LongContextFastUnsupported,
-				BillingUnit:                           price.BillingUnit,
+				Provider:                                  price.Provider,
+				Model:                                     price.Model,
+				InputUSDPerMillion:                        price.InputUSDPerMillion,
+				OutputUSDPerMillion:                       price.OutputUSDPerMillion,
+				CacheReadUSDPerMillion:                    price.CacheReadUSDPerMillion,
+				CacheCreationUSDPerMillion:                price.CacheCreationUSDPerMillion,
+				RequestUSD:                                price.RequestUSD,
+				FastMultiplier:                            price.FastMultiplier,
+				FastEnabled:                               price.FastEnabled,
+				LongContextEnabled:                        price.LongContextEnabled,
+				LongContextThresholdTokens:                price.LongContextThresholdTokens,
+				LongContextInputUSDPerMillion:             price.LongContextInputUSDPerMillion,
+				LongContextOutputUSDPerMillion:            price.LongContextOutputUSDPerMillion,
+				LongContextCacheReadUSDPerMillion:         price.LongContextCacheReadUSDPerMillion,
+				LongContextCacheCreationUSDPerMillion:     price.LongContextCacheCreationUSDPerMillion,
+				LongContextFastUnsupported:                price.LongContextFastUnsupported,
+				OffPeakEnabled:                            price.OffPeakEnabled,
+				PeakInputUSDPerMillion:                    price.PeakInputUSDPerMillion,
+				PeakOutputUSDPerMillion:                   price.PeakOutputUSDPerMillion,
+				PeakCacheReadUSDPerMillion:                price.PeakCacheReadUSDPerMillion,
+				PeakCacheCreationUSDPerMillion:            price.PeakCacheCreationUSDPerMillion,
+				PeakRequestUSD:                            price.PeakRequestUSD,
+				LongContextPeakInputUSDPerMillion:         price.LongContextPeakInputUSDPerMillion,
+				LongContextPeakOutputUSDPerMillion:        price.LongContextPeakOutputUSDPerMillion,
+				LongContextPeakCacheReadUSDPerMillion:     price.LongContextPeakCacheReadUSDPerMillion,
+				LongContextPeakCacheCreationUSDPerMillion: price.LongContextPeakCacheCreationUSDPerMillion,
+				BillingUnit:                               price.BillingUnit,
 			}
 		}
 		response.Models = append(response.Models, model)

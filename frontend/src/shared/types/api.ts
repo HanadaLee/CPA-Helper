@@ -576,15 +576,15 @@ export interface ModelPrice {
   long_context_cache_creation_usd_per_million: number
   long_context_fast_unsupported: boolean
   off_peak_enabled: boolean
-  off_peak_input_usd_per_million: number
-  off_peak_output_usd_per_million: number
-  off_peak_cache_read_usd_per_million: number
-  off_peak_cache_creation_usd_per_million: number
-  off_peak_request_usd: number | null
-  long_context_off_peak_input_usd_per_million: number
-  long_context_off_peak_output_usd_per_million: number
-  long_context_off_peak_cache_read_usd_per_million: number
-  long_context_off_peak_cache_creation_usd_per_million: number
+  peak_input_usd_per_million: number
+  peak_output_usd_per_million: number
+  peak_cache_read_usd_per_million: number
+  peak_cache_creation_usd_per_million: number
+  peak_request_usd: number | null
+  long_context_peak_input_usd_per_million: number
+  long_context_peak_output_usd_per_million: number
+  long_context_peak_cache_read_usd_per_million: number
+  long_context_peak_cache_creation_usd_per_million: number
   billing_unit: 'token' | 'request' | string
   source: 'manual' | 'litellm' | string
   source_model: string | null
@@ -611,15 +611,15 @@ export interface ModelPricePayload {
   long_context_cache_creation_usd_per_million: number
   long_context_fast_unsupported: boolean
   off_peak_enabled: boolean
-  off_peak_input_usd_per_million: number
-  off_peak_output_usd_per_million: number
-  off_peak_cache_read_usd_per_million: number
-  off_peak_cache_creation_usd_per_million: number
-  off_peak_request_usd: number | null
-  long_context_off_peak_input_usd_per_million: number
-  long_context_off_peak_output_usd_per_million: number
-  long_context_off_peak_cache_read_usd_per_million: number
-  long_context_off_peak_cache_creation_usd_per_million: number
+  peak_input_usd_per_million: number
+  peak_output_usd_per_million: number
+  peak_cache_read_usd_per_million: number
+  peak_cache_creation_usd_per_million: number
+  peak_request_usd: number | null
+  long_context_peak_input_usd_per_million: number
+  long_context_peak_output_usd_per_million: number
+  long_context_peak_cache_read_usd_per_million: number
+  long_context_peak_cache_creation_usd_per_million: number
 }
 
 export interface PricingHolidayCalendar {
@@ -630,6 +630,7 @@ export interface PricingHolidayCalendar {
   source_url: string
   synced_at: string | null
   peak_on_makeup_days: boolean
+  peak_periods: Array<{ start: string; end: string }>
 }
 
 export interface ModelPriceSyncResponse {
@@ -756,6 +757,16 @@ export interface AvailableModelPrice {
   long_context_cache_read_usd_per_million: number
   long_context_cache_creation_usd_per_million: number
   long_context_fast_unsupported: boolean
+  off_peak_enabled: boolean
+  peak_input_usd_per_million: number
+  peak_output_usd_per_million: number
+  peak_cache_read_usd_per_million: number
+  peak_cache_creation_usd_per_million: number
+  peak_request_usd: number | null
+  long_context_peak_input_usd_per_million: number
+  long_context_peak_output_usd_per_million: number
+  long_context_peak_cache_read_usd_per_million: number
+  long_context_peak_cache_creation_usd_per_million: number
   billing_unit: 'token' | 'request' | string
 }
 

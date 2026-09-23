@@ -19,9 +19,54 @@ const holidayCNMaxResponseBytes = 1 << 20
 type pricingCalendar struct {
 	years            map[int]map[string]bool // date -> isOffDay
 	peakOnMakeupDays bool
+	peakRanges       [][2]int // Beijing local minutes, half-open intervals
 }
 
-// Peak hours are Beijing weekdays 09:00–12:00 and 14:00–18:00, excluding
+type pricingPeakPeriod struct {
+	Start string `json:"start"`
+	End   string `json:"end"`
+}
+
+func peakMinute(value string, isEnd bool) (int, error) {
+	if len(value) != 5 || value[2] != ':' {
+		return 0, validationError("高峰时段必须使用 HH:MM 格式")
+	}
+	for _, position := range []int{0, 1, 3, 4} {
+		if value[position] < '0' || value[position] > '9' {
+			return 0, validationError("高峰时段必须使用 HH:MM 格式")
+		}
+	}
+	hour, hourErr := strconv.Atoi(value[:2])
+	minute, minuteErr := strconv.Atoi(value[3:])
+	if hourErr != nil || minuteErr != nil || minute < 0 || minute > 59 || hour < 0 || hour > 24 || (hour == 24 && (!isEnd || minute != 0)) {
+		return 0, validationError("高峰时段时间无效")
+	}
+	return hour*60 + minute, nil
+}
+
+func validatePricingPeakPeriods(periods []pricingPeakPeriod) error {
+	if len(periods) == 0 || len(periods) > 8 {
+		return validationError("高峰时段需要设置 1 至 8 段")
+	}
+	lastEnd := 0
+	for index, period := range periods {
+		start, err := peakMinute(period.Start, false)
+		if err != nil {
+			return err
+		}
+		end, err := peakMinute(period.End, true)
+		if err != nil {
+			return err
+		}
+		if start >= end || (index > 0 && start < lastEnd) {
+			return validationError("高峰时段必须按时间排序，且不能重叠或跨日")
+		}
+		lastEnd = end
+	}
+	return nil
+}
+
+// Peak hours follow the configured Beijing-time intervals, excluding
 // published off-days. Published makeup workdays are peak only when opted in.
 // An unpublished year stays off-peak instead of risking an overcharge.
 func (calendar *pricingCalendar) isPeak(timestamp time.Time) bool {
@@ -42,8 +87,17 @@ func (calendar *pricingCalendar) isPeak(timestamp time.Time) bool {
 			return false
 		}
 	}
-	hour := local.Hour()
-	return (hour >= 9 && hour < 12) || (hour >= 14 && hour < 18)
+	minute := local.Hour()*60 + local.Minute()
+	ranges := calendar.peakRanges
+	if len(ranges) == 0 {
+		ranges = [][2]int{{9 * 60, 12 * 60}, {14 * 60, 18 * 60}}
+	}
+	for _, period := range ranges {
+		if minute >= period[0] && minute < period[1] {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *App) loadPricingCalendar(ctx context.Context) (*pricingCalendar, error) {
@@ -53,8 +107,22 @@ func (a *App) loadPricingCalendar(ctx context.Context) (*pricingCalendar, error)
 		return nil, err
 	}
 	defer tx.Rollback()
-	if err := tx.QueryRowContext(ctx, `SELECT peak_on_makeup_days FROM pricing_calendar_settings WHERE id = 1`).Scan(&calendar.peakOnMakeupDays); err != nil {
+	var periodsJSON string
+	if err := tx.QueryRowContext(ctx, `SELECT peak_on_makeup_days, peak_periods_json FROM pricing_calendar_settings WHERE id = 1`).Scan(&calendar.peakOnMakeupDays, &periodsJSON); err != nil {
 		return nil, err
+	}
+	var periods []pricingPeakPeriod
+	if err := json.Unmarshal([]byte(periodsJSON), &periods); err != nil {
+		return nil, err
+	}
+	if err := validatePricingPeakPeriods(periods); err != nil {
+		return nil, err
+	}
+	calendar.peakRanges = make([][2]int, 0, len(periods))
+	for _, period := range periods {
+		start, _ := peakMinute(period.Start, false)
+		end, _ := peakMinute(period.End, true)
+		calendar.peakRanges = append(calendar.peakRanges, [2]int{start, end})
 	}
 	rows, err := tx.QueryContext(ctx, `SELECT year FROM pricing_holiday_years WHERE source_url <> ''`)
 	if err != nil {
@@ -118,6 +186,7 @@ type pricingHolidayCalendarResponse struct {
 	SourceURL        string              `json:"source_url"`
 	SyncedAt         *time.Time          `json:"synced_at"`
 	PeakOnMakeupDays bool                `json:"peak_on_makeup_days"`
+	PeakPeriods      []pricingPeakPeriod `json:"peak_periods"`
 }
 
 type pricingHolidayCalendarPayload struct {
@@ -125,7 +194,8 @@ type pricingHolidayCalendarPayload struct {
 }
 
 type pricingCalendarSettingsPayload struct {
-	PeakOnMakeupDays *bool `json:"peak_on_makeup_days"`
+	PeakOnMakeupDays *bool                `json:"peak_on_makeup_days"`
+	PeakPeriods      *[]pricingPeakPeriod `json:"peak_periods"`
 }
 
 func pricingCalendarYear(year int) error {
@@ -137,7 +207,14 @@ func pricingCalendarYear(year int) error {
 
 func (a *App) pricingHolidayCalendarForYear(ctx context.Context, year int) (pricingHolidayCalendarResponse, error) {
 	result := pricingHolidayCalendarResponse{Year: year, Dates: []string{}, Days: []pricingHolidayDay{}}
-	if err := a.db.QueryRowContext(ctx, `SELECT peak_on_makeup_days FROM pricing_calendar_settings WHERE id = 1`).Scan(&result.PeakOnMakeupDays); err != nil {
+	var periodsJSON string
+	if err := a.db.QueryRowContext(ctx, `SELECT peak_on_makeup_days, peak_periods_json FROM pricing_calendar_settings WHERE id = 1`).Scan(&result.PeakOnMakeupDays, &periodsJSON); err != nil {
+		return result, err
+	}
+	if err := json.Unmarshal([]byte(periodsJSON), &result.PeakPeriods); err != nil {
+		return result, err
+	}
+	if err := validatePricingPeakPeriods(result.PeakPeriods); err != nil {
 		return result, err
 	}
 	var sourceURL string
@@ -204,14 +281,38 @@ func (a *App) handlePricingCalendarSettings(w http.ResponseWriter, r *http.Reque
 	if err := decodeJSON(r, &payload); err != nil {
 		return err
 	}
-	if payload.PeakOnMakeupDays == nil {
-		return validationError("缺少调休日计费选项")
+	if payload.PeakOnMakeupDays == nil && payload.PeakPeriods == nil {
+		return validationError("缺少峰谷计费配置")
 	}
-	if _, err := a.db.ExecContext(r.Context(), `UPDATE pricing_calendar_settings SET peak_on_makeup_days = ? WHERE id = 1`, *payload.PeakOnMakeupDays); err != nil {
+	var settings struct {
+		PeakOnMakeupDays bool
+		PeriodsJSON      string
+	}
+	if err := a.db.QueryRowContext(r.Context(), `SELECT peak_on_makeup_days, peak_periods_json FROM pricing_calendar_settings WHERE id = 1`).Scan(&settings.PeakOnMakeupDays, &settings.PeriodsJSON); err != nil {
+		return err
+	}
+	if payload.PeakOnMakeupDays != nil {
+		settings.PeakOnMakeupDays = *payload.PeakOnMakeupDays
+	}
+	if payload.PeakPeriods != nil {
+		if err := validatePricingPeakPeriods(*payload.PeakPeriods); err != nil {
+			return err
+		}
+		encoded, err := json.Marshal(*payload.PeakPeriods)
+		if err != nil {
+			return err
+		}
+		settings.PeriodsJSON = string(encoded)
+	}
+	if _, err := a.db.ExecContext(r.Context(), `UPDATE pricing_calendar_settings SET peak_on_makeup_days = ?, peak_periods_json = ? WHERE id = 1`, settings.PeakOnMakeupDays, settings.PeriodsJSON); err != nil {
+		return err
+	}
+	var periods []pricingPeakPeriod
+	if err := json.Unmarshal([]byte(settings.PeriodsJSON), &periods); err != nil {
 		return err
 	}
 	a.invalidateUsagePrices()
-	writeJSON(w, http.StatusOK, map[string]bool{"peak_on_makeup_days": *payload.PeakOnMakeupDays})
+	writeJSON(w, http.StatusOK, map[string]any{"peak_on_makeup_days": settings.PeakOnMakeupDays, "peak_periods": periods})
 	return nil
 }
 
