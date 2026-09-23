@@ -574,6 +574,16 @@ export interface ModelPrice {
   long_context_cache_read_usd_per_million: number
   long_context_cache_creation_usd_per_million: number
   long_context_fast_unsupported: boolean
+  off_peak_enabled: boolean
+  off_peak_input_usd_per_million: number
+  off_peak_output_usd_per_million: number
+  off_peak_cache_read_usd_per_million: number
+  off_peak_cache_creation_usd_per_million: number
+  off_peak_request_usd: number | null
+  long_context_off_peak_input_usd_per_million: number
+  long_context_off_peak_output_usd_per_million: number
+  long_context_off_peak_cache_read_usd_per_million: number
+  long_context_off_peak_cache_creation_usd_per_million: number
   billing_unit: 'token' | 'request' | string
   source: 'manual' | 'litellm' | string
   source_model: string | null
@@ -598,6 +608,23 @@ export interface ModelPricePayload {
   long_context_cache_read_usd_per_million: number
   long_context_cache_creation_usd_per_million: number
   long_context_fast_unsupported: boolean
+  off_peak_enabled: boolean
+  off_peak_input_usd_per_million: number
+  off_peak_output_usd_per_million: number
+  off_peak_cache_read_usd_per_million: number
+  off_peak_cache_creation_usd_per_million: number
+  off_peak_request_usd: number | null
+  long_context_off_peak_input_usd_per_million: number
+  long_context_off_peak_output_usd_per_million: number
+  long_context_off_peak_cache_read_usd_per_million: number
+  long_context_off_peak_cache_creation_usd_per_million: number
+}
+
+export interface PricingHolidayCalendar {
+  year: number
+  configured: boolean
+  dates: string[]
+  source_url: string
 }
 
 export interface ModelPriceSyncResponse {

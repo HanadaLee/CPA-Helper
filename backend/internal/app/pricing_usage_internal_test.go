@@ -449,6 +449,9 @@ func TestUpdateAutoSyncedPriceLocalOverridesKeepLiteLLMSync(t *testing.T) {
 		LongContextCacheReadUSDPerMillion:     0.2,
 		LongContextCacheCreationUSDPerMillion: 0.4,
 		LongContextFastUnsupported:            true,
+		OffPeakEnabled:                        true,
+		OffPeakInputUSDPerMillion:             0.5,
+		LongContextOffPeakInputUSDPerMillion:  1.5,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -461,6 +464,24 @@ func TestUpdateAutoSyncedPriceLocalOverridesKeepLiteLLMSync(t *testing.T) {
 	}
 	if !updated.LongContextEnabled || updated.LongContextThresholdTokens != 200_000 || updated.LongContextInputUSDPerMillion != 2 || !updated.LongContextFastUnsupported {
 		t.Fatalf("updated long-context overrides = %#v, want enabled threshold 200000 input 2", updated)
+	}
+	if !updated.OffPeakEnabled || updated.OffPeakInputUSDPerMillion != 0.5 || updated.LongContextOffPeakInputUSDPerMillion != 1.5 {
+		t.Fatalf("updated off-peak overrides = %#v", updated)
+	}
+	_, err = app.syncLiteLLMPrices(context.Background(), "https://example.com/prices.json", map[string]any{
+		"gpt-fast-sync": map[string]any{"litellm_provider": "openai", "input_cost_per_token": 0.000004},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var synced ModelPrice
+	prices, err := app.listPrices(context.Background())
+	if err != nil || len(prices) != 1 {
+		t.Fatalf("prices after LiteLLM sync: %v, %v", prices, err)
+	}
+	synced = prices[0]
+	if synced.InputUSDPerMillion != 4 || !synced.OffPeakEnabled || synced.OffPeakInputUSDPerMillion != 0.5 || synced.LongContextOffPeakInputUSDPerMillion != 1.5 {
+		t.Fatalf("LiteLLM sync lost off-peak overrides: %#v", synced)
 	}
 }
 

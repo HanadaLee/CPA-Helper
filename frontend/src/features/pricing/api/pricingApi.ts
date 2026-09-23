@@ -6,6 +6,7 @@ import type {
   ModelPriceCatalogResponse,
   ModelPricePayload,
   ModelPriceSyncResponse,
+  PricingHolidayCalendar,
 } from '@/shared/types/api'
 
 export function listModelPrices(): Promise<ModelPrice[]> {
@@ -40,4 +41,12 @@ export function updateLiteLLMProxySettings(
   payload: LiteLLMProxySettingsPayload,
 ): Promise<LiteLLMProxySettings> {
   return apiClient.put<LiteLLMProxySettings>('/model-prices/litellm-proxy', payload)
+}
+
+export function getPricingHolidayCalendar(year: number): Promise<PricingHolidayCalendar> {
+  return apiClient.get<PricingHolidayCalendar>(`/model-prices/holiday-calendar?year=${year}`)
+}
+
+export function updatePricingHolidayCalendar(year: number, dates: string[]): Promise<PricingHolidayCalendar> {
+  return apiClient.put<PricingHolidayCalendar>('/model-prices/holiday-calendar', { year, dates })
 }

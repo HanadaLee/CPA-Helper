@@ -1,0 +1,37 @@
+import { expect, test } from '@playwright/test'
+
+test('model prices show peak, off-peak and long-context tiers', async ({ page }) => {
+  const modelName = `gpt-peak-e2e-${Date.now()}`
+  await page.goto('/login')
+  const inputs = page.locator('input')
+  await inputs.nth(0).fill('admin')
+  await inputs.nth(1).fill('test-password')
+  if ((await inputs.count()) >= 3) await inputs.nth(2).fill('管理员')
+  await page.locator('button[type="submit"]').click()
+  await page.waitForURL(/\/admin\/usage/)
+
+  await page.goto('/admin/pricing')
+  await page.getByRole('button', { name: /新增价格|Add price/ }).click()
+  const dialog = page.getByRole('dialog', { name: /新增价格|Add price/ })
+  await dialog.locator('#price-provider').fill('openai')
+  await dialog.locator('#price-model').fill(modelName)
+  await dialog.locator('#price-input').fill('2')
+  await dialog.locator('#price-output').fill('4')
+  await dialog.getByRole('switch', { name: /启用长上下文费率|Enable long-context rates/ }).click()
+  await dialog.locator('#price-long-context-threshold').fill('100')
+  await dialog.locator('#price-long-context-input').fill('6')
+  await dialog.getByRole('switch', { name: /启用峰谷分段计费|Enable peak\/off-peak pricing/ }).click()
+  await dialog.locator('#price-off_peak_input_usd_per_million').fill('1')
+  await dialog.locator('#price-long_context_off_peak_input_usd_per_million').fill('3')
+  await dialog.getByRole('button', { name: /保存|Save/ }).click()
+
+  const row = page.getByRole('row').filter({ hasText: modelName })
+  await expect(row).toContainText(/常规 · 高峰|Standard · peak/)
+  await expect(row).toContainText(/常规 · 空闲|Standard · off-peak/)
+  await expect(row).toContainText(/长上下文 · 高峰|Long context · peak/)
+  await expect(row).toContainText(/长上下文 · 空闲|Long context · off-peak/)
+
+  await page.getByRole('button', { name: /节假日日历|Holiday calendar/ }).click()
+  const calendar = page.getByRole('dialog', { name: /峰谷计费节假日日历|Peak pricing holiday calendar/ })
+  await expect(calendar.locator('#pricing-calendar-dates')).toHaveValue(/2026-09-25/)
+})

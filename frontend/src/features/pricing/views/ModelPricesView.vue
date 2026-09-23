@@ -45,6 +45,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
 import {
   Table,
   TableBody,
@@ -56,6 +57,7 @@ import {
 } from '@/components/ui/table'
 import {
   CircleAlert,
+  CalendarDays,
   Database,
   Layers3,
   ListFilter,
@@ -73,11 +75,13 @@ import {
   createModelPrice,
   deleteModelPrice,
   getLiteLLMProxySettings,
+  getPricingHolidayCalendar,
   listModelPriceCatalog,
   listModelPrices,
   syncLitellmModelPrices,
   updateLiteLLMProxySettings,
   updateModelPrice,
+  updatePricingHolidayCalendar,
 } from '@/features/pricing/api/pricingApi'
 import type {
   LiteLLMProxySettingsPayload,
@@ -103,7 +107,30 @@ type PriceFieldName = keyof Pick<
   | 'long_context_output_usd_per_million'
   | 'long_context_cache_read_usd_per_million'
   | 'long_context_cache_creation_usd_per_million'
+  | 'off_peak_input_usd_per_million'
+  | 'off_peak_output_usd_per_million'
+  | 'off_peak_cache_read_usd_per_million'
+  | 'off_peak_cache_creation_usd_per_million'
+  | 'long_context_off_peak_input_usd_per_million'
+  | 'long_context_off_peak_output_usd_per_million'
+  | 'long_context_off_peak_cache_read_usd_per_million'
+  | 'long_context_off_peak_cache_creation_usd_per_million'
 >
+
+type PriceTier = { key: string; label: string; prefix: '' | 'long_context_' | 'off_peak_' | 'long_context_off_peak_' }
+
+const offPeakRateFields: Array<{ key: PriceFieldName; zh: string; en: string }> = [
+  { key: 'off_peak_input_usd_per_million', zh: '空闲输入 ($/MTok)', en: 'Off-peak input ($/MTok)' },
+  { key: 'off_peak_output_usd_per_million', zh: '空闲输出 ($/MTok)', en: 'Off-peak output ($/MTok)' },
+  { key: 'off_peak_cache_read_usd_per_million', zh: '空闲缓存读 ($/MTok)', en: 'Off-peak cache read ($/MTok)' },
+  { key: 'off_peak_cache_creation_usd_per_million', zh: '空闲缓存写 ($/MTok)', en: 'Off-peak cache write ($/MTok)' },
+]
+const longOffPeakRateFields: Array<{ key: PriceFieldName; zh: string; en: string }> = [
+  { key: 'long_context_off_peak_input_usd_per_million', zh: '长上下文空闲输入 ($/MTok)', en: 'Long off-peak input ($/MTok)' },
+  { key: 'long_context_off_peak_output_usd_per_million', zh: '长上下文空闲输出 ($/MTok)', en: 'Long off-peak output ($/MTok)' },
+  { key: 'long_context_off_peak_cache_read_usd_per_million', zh: '长上下文空闲缓存读 ($/MTok)', en: 'Long off-peak cache read ($/MTok)' },
+  { key: 'long_context_off_peak_cache_creation_usd_per_million', zh: '长上下文空闲缓存写 ($/MTok)', en: 'Long off-peak cache write ($/MTok)' },
+]
 
 interface PriceDisplayRow {
   key: string
@@ -129,6 +156,13 @@ const modalOpen = ref(false)
 const proxyModalOpen = ref(false)
 const isProxyLoading = ref(false)
 const isProxySaving = ref(false)
+const calendarModalOpen = ref(false)
+const calendarYear = ref(Number(new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Shanghai', year: 'numeric' }).format(new Date())))
+const calendarDatesText = ref('')
+const calendarSourceURL = ref('')
+const calendarConfigured = ref(false)
+const isCalendarLoading = ref(false)
+const isCalendarSaving = ref(false)
 const editingId = ref<number | null>(null)
 const prices = ref<ModelPrice[]>([])
 const catalog = ref<ModelPriceCatalogResponse | null>(null)
@@ -153,6 +187,16 @@ const form = reactive<ModelPricePayload>({
   long_context_cache_read_usd_per_million: 0,
   long_context_cache_creation_usd_per_million: 0,
   long_context_fast_unsupported: false,
+  off_peak_enabled: false,
+  off_peak_input_usd_per_million: 0,
+  off_peak_output_usd_per_million: 0,
+  off_peak_cache_read_usd_per_million: 0,
+  off_peak_cache_creation_usd_per_million: 0,
+  off_peak_request_usd: null,
+  long_context_off_peak_input_usd_per_million: 0,
+  long_context_off_peak_output_usd_per_million: 0,
+  long_context_off_peak_cache_read_usd_per_million: 0,
+  long_context_off_peak_cache_creation_usd_per_million: 0,
 })
 const proxyForm = reactive<LiteLLMProxySettingsPayload>({
   enabled: false,
@@ -355,12 +399,12 @@ const showLongContextFastUnsupported = computed(
 const priceSaveHint = computed(() =>
   isRequestPriceForm.value
     ? t(
-        'image 模型按每次成功调用固定金额计费；仅修改 FAST 倍率不会取消 LiteLLM 同步。',
-        'Image models are charged a fixed amount per successful call. Changing only the FAST multiplier keeps LiteLLM sync enabled.',
+        'image 模型按每次成功调用固定金额计费；仅修改 FAST 倍率或峰谷价格不会取消 LiteLLM 同步。',
+        'Image models are charged per successful call. Changing only the FAST multiplier or peak/off-peak settings keeps LiteLLM sync enabled.',
       )
     : t(
-        '基础价格修改后会转为手动价格；仅修改 FAST 倍率或长上下文设置不会取消 LiteLLM 同步。',
-        'Changing base prices makes them manual. Changing only the FAST multiplier or long-context settings keeps LiteLLM sync enabled.',
+        '基础价格修改后会转为手动价格；仅修改 FAST 倍率、长上下文或峰谷设置不会取消 LiteLLM 同步。',
+        'Changing base prices makes them manual. Changing only FAST, long-context or peak/off-peak settings keeps LiteLLM sync enabled.',
       ),
 )
 
@@ -442,6 +486,16 @@ function resetForm() {
   form.long_context_cache_read_usd_per_million = 0
   form.long_context_cache_creation_usd_per_million = 0
   form.long_context_fast_unsupported = false
+  form.off_peak_enabled = false
+  form.off_peak_input_usd_per_million = 0
+  form.off_peak_output_usd_per_million = 0
+  form.off_peak_cache_read_usd_per_million = 0
+  form.off_peak_cache_creation_usd_per_million = 0
+  form.off_peak_request_usd = null
+  form.long_context_off_peak_input_usd_per_million = 0
+  form.long_context_off_peak_output_usd_per_million = 0
+  form.long_context_off_peak_cache_read_usd_per_million = 0
+  form.long_context_off_peak_cache_creation_usd_per_million = 0
 }
 
 async function refresh() {
@@ -476,6 +530,7 @@ function openCreate(prefill: Partial<ModelPricePayload> = {}) {
   form.long_context_cache_read_usd_per_million = prefill.long_context_cache_read_usd_per_million ?? 0
   form.long_context_cache_creation_usd_per_million = prefill.long_context_cache_creation_usd_per_million ?? 0
   form.long_context_fast_unsupported = prefill.long_context_fast_unsupported ?? false
+  fillOffPeakForm(prefill)
   modalOpen.value = true
 }
 
@@ -503,7 +558,21 @@ function openEdit(row: ModelPrice) {
   form.long_context_cache_read_usd_per_million = row.long_context_cache_read_usd_per_million
   form.long_context_cache_creation_usd_per_million = row.long_context_cache_creation_usd_per_million
   form.long_context_fast_unsupported = row.long_context_fast_unsupported
+  fillOffPeakForm(row)
   modalOpen.value = true
+}
+
+function fillOffPeakForm(price: Partial<ModelPricePayload>) {
+  form.off_peak_enabled = price.off_peak_enabled ?? false
+  form.off_peak_input_usd_per_million = price.off_peak_input_usd_per_million ?? 0
+  form.off_peak_output_usd_per_million = price.off_peak_output_usd_per_million ?? 0
+  form.off_peak_cache_read_usd_per_million = price.off_peak_cache_read_usd_per_million ?? 0
+  form.off_peak_cache_creation_usd_per_million = price.off_peak_cache_creation_usd_per_million ?? 0
+  form.off_peak_request_usd = price.off_peak_request_usd ?? null
+  form.long_context_off_peak_input_usd_per_million = price.long_context_off_peak_input_usd_per_million ?? 0
+  form.long_context_off_peak_output_usd_per_million = price.long_context_off_peak_output_usd_per_million ?? 0
+  form.long_context_off_peak_cache_read_usd_per_million = price.long_context_off_peak_cache_read_usd_per_million ?? 0
+  form.long_context_off_peak_cache_creation_usd_per_million = price.long_context_off_peak_cache_creation_usd_per_million ?? 0
 }
 
 function normalizeNumberInput(value: string | number, fallback = 0): number {
@@ -520,6 +589,25 @@ function setPriceNumber(
 
 function setRequestPrice(value: string | number) {
   form.request_usd = value === '' ? null : normalizeNumberInput(value)
+}
+
+function setOffPeakRequestPrice(value: string | number) {
+  form.off_peak_request_usd = value === '' ? null : normalizeNumberInput(value)
+}
+
+function toggleOffPeak(enabled: boolean) {
+  form.off_peak_enabled = enabled
+  if (!enabled) return
+  if (form.off_peak_request_usd === null) form.off_peak_request_usd = form.request_usd
+  const fields = ['input', 'output', 'cache_read', 'cache_creation'] as const
+  for (const field of fields) {
+    const shortKey = `off_peak_${field}_usd_per_million` as PriceFieldName
+    const longKey = `long_context_off_peak_${field}_usd_per_million` as PriceFieldName
+    const baseKey = `${field}_usd_per_million` as PriceFieldName
+    const longBaseKey = `long_context_${field}_usd_per_million` as PriceFieldName
+    if (form[shortKey] === 0) form[shortKey] = form[baseKey]
+    if (form[longKey] === 0) form[longKey] = form[longBaseKey]
+  }
 }
 
 function setLongContextThreshold(value: string | number) {
@@ -564,6 +652,16 @@ async function savePrice() {
     long_context_cache_read_usd_per_million: requestPriceMode ? 0 : form.long_context_cache_read_usd_per_million,
     long_context_cache_creation_usd_per_million: requestPriceMode ? 0 : form.long_context_cache_creation_usd_per_million,
     long_context_fast_unsupported: !requestPriceMode && form.long_context_fast_unsupported,
+    off_peak_enabled: form.off_peak_enabled,
+    off_peak_input_usd_per_million: form.off_peak_input_usd_per_million,
+    off_peak_output_usd_per_million: form.off_peak_output_usd_per_million,
+    off_peak_cache_read_usd_per_million: form.off_peak_cache_read_usd_per_million,
+    off_peak_cache_creation_usd_per_million: form.off_peak_cache_creation_usd_per_million,
+    off_peak_request_usd: requestPriceMode ? form.off_peak_request_usd : null,
+    long_context_off_peak_input_usd_per_million: form.long_context_off_peak_input_usd_per_million,
+    long_context_off_peak_output_usd_per_million: form.long_context_off_peak_output_usd_per_million,
+    long_context_off_peak_cache_read_usd_per_million: form.long_context_off_peak_cache_read_usd_per_million,
+    long_context_off_peak_cache_creation_usd_per_million: form.long_context_off_peak_cache_creation_usd_per_million,
   }
   if (!payload.provider || !payload.model) {
     message.error(t('服务商和模型不能为空', 'Provider and model are required'))
@@ -575,6 +673,10 @@ async function savePrice() {
   }
   if (requestPriceMode && requestUSD === null) {
     message.error(t('image 模型需要填写每次调用价格', 'Image models require a per-call price'))
+    return
+  }
+  if (requestPriceMode && payload.off_peak_enabled && payload.off_peak_request_usd === null) {
+    message.error(t('请填写空闲时段每次调用价格', 'Enter the off-peak per-call price'))
     return
   }
   if (payload.long_context_enabled && (!Number.isInteger(payload.long_context_threshold_tokens) || payload.long_context_threshold_tokens <= 0)) {
@@ -673,17 +775,64 @@ function formatPriceValue(value: number | null | undefined): string {
   return typeof value === 'number' ? String(value) : '-'
 }
 
-function tokenPriceValue(row: PriceDisplayRow, field: PriceFieldName): string {
-  return row.billing_unit === 'request' ? '-' : formatPriceValue(row.price?.[field])
+function priceTiers(row: PriceDisplayRow): PriceTier[] {
+  const price = row.price
+  if (!price) return [{ key: 'base', label: '-', prefix: '' }]
+  const tiers: PriceTier[] = [
+    { key: 'base', label: price.off_peak_enabled ? t('常规 · 高峰', 'Standard · peak') : t('常规', 'Standard'), prefix: '' },
+  ]
+  if (price.off_peak_enabled) tiers.push({ key: 'off-peak', label: t('常规 · 空闲', 'Standard · off-peak'), prefix: 'off_peak_' })
+  if (price.long_context_enabled) {
+    tiers.push({ key: 'long', label: price.off_peak_enabled ? t('长上下文 · 高峰', 'Long context · peak') : t('长上下文', 'Long context'), prefix: 'long_context_' })
+    if (price.off_peak_enabled) tiers.push({ key: 'long-off-peak', label: t('长上下文 · 空闲', 'Long context · off-peak'), prefix: 'long_context_off_peak_' })
+  }
+  return tiers
 }
 
-function requestPriceValue(row: PriceDisplayRow): string {
-  if (row.billing_unit !== 'request') {
-    return '-'
+function tierPriceValue(row: PriceDisplayRow, tier: PriceTier, field: 'input' | 'output' | 'cache_read' | 'cache_creation' | 'request'): string {
+  if (!row.price) return '-'
+  if (field === 'request') {
+    if (row.billing_unit !== 'request') return '-'
+    return formatPriceValue(tier.prefix === 'off_peak_' ? row.price.off_peak_request_usd : row.price.request_usd)
   }
-  return row.price?.request_usd === null || row.price?.request_usd === undefined
-    ? t('未定价', 'Unpriced')
-    : formatPriceValue(row.price.request_usd)
+  if (row.billing_unit === 'request') return '-'
+  const key = `${tier.prefix}${field}_usd_per_million` as PriceFieldName
+  return formatPriceValue(row.price[key])
+}
+
+async function loadCalendarYear() {
+  isCalendarLoading.value = true
+  try {
+    const calendar = await getPricingHolidayCalendar(calendarYear.value)
+    calendarDatesText.value = calendar.dates.join('\n')
+    calendarSourceURL.value = calendar.source_url
+    calendarConfigured.value = calendar.configured
+  } catch (error) {
+    message.error(errorText(error, '加载节假日失败', 'Failed to load holidays'))
+  } finally {
+    isCalendarLoading.value = false
+  }
+}
+
+async function openCalendar() {
+  calendarModalOpen.value = true
+  await loadCalendarYear()
+}
+
+async function saveCalendar() {
+  const dates = calendarDatesText.value.split(/[\s,，]+/).map((date) => date.trim()).filter(Boolean)
+  isCalendarSaving.value = true
+  try {
+    const calendar = await updatePricingHolidayCalendar(calendarYear.value, dates)
+    calendarDatesText.value = calendar.dates.join('\n')
+    calendarConfigured.value = calendar.configured
+    message.success(t('节假日日历已保存', 'Holiday calendar saved'))
+    calendarModalOpen.value = false
+  } catch (error) {
+    message.error(errorText(error, '保存节假日失败', 'Failed to save holidays'))
+  } finally {
+    isCalendarSaving.value = false
+  }
 }
 
 function fastMultiplierValue(row: PriceDisplayRow): string {
@@ -742,6 +891,10 @@ onMounted(() => {
         <Button variant="outline" :disabled="isSyncing" @click="openProxySettings">
           <Settings2 data-icon="inline-start" />
           {{ t('代理配置', 'Proxy settings') }}
+        </Button>
+        <Button variant="outline" @click="openCalendar">
+          <CalendarDays data-icon="inline-start" />
+          {{ t('节假日日历', 'Holiday calendar') }}
         </Button>
         <Button @click="openCreate()">
           <Plus data-icon="inline-start" />
@@ -819,13 +972,14 @@ onMounted(() => {
       </div>
 
       <div class="price-table">
-        <Table class="min-w-[1456px] table-fixed">
+        <Table class="min-w-[1600px] table-fixed">
           <TableHeader class="sticky top-0 bg-card">
             <TableRow>
               <TableHead class="w-[300px]">{{ t('模型', 'Model') }}</TableHead>
               <TableHead class="w-[130px]">{{ t('服务商', 'Provider') }}</TableHead>
               <TableHead class="w-[90px]">{{ t('定价', 'Pricing') }}</TableHead>
               <TableHead class="w-[100px]">{{ t('计费方式', 'Billing') }}</TableHead>
+              <TableHead class="w-[150px]">{{ t('费率档位', 'Rate tiers') }}</TableHead>
               <TableHead class="w-[100px] text-right">{{ t('FAST 倍率', 'FAST multiplier') }}</TableHead>
               <TableHead class="w-[100px] text-right">{{ t('每次 ($)', 'Per call ($)') }}</TableHead>
               <TableHead class="w-[110px] text-right">{{ t('输入 ($/MTok)', 'Input ($/MTok)') }}</TableHead>
@@ -841,13 +995,13 @@ onMounted(() => {
           <TableBody>
             <template v-if="isLoading && filteredPrices.length === 0">
               <TableRow v-for="rowIndex in 8" :key="`price-skeleton-${rowIndex}`">
-                <TableCell v-for="columnIndex in 12" :key="columnIndex">
+                <TableCell v-for="columnIndex in 13" :key="columnIndex">
                   <Skeleton class="h-4 w-full" />
                 </TableCell>
               </TableRow>
             </template>
 
-            <TableEmpty v-else-if="filteredPrices.length === 0" :colspan="12">
+            <TableEmpty v-else-if="filteredPrices.length === 0" :colspan="13">
               {{ t('暂无模型价格', 'No model prices') }}
             </TableEmpty>
 
@@ -891,19 +1045,24 @@ onMounted(() => {
               <TableCell>
                 <Badge :variant="billingUnitVariant(row)">{{ billingUnitLabel(row) }}</Badge>
               </TableCell>
+              <TableCell>
+                <div class="rate-tier-stack">
+                  <div v-for="tier in priceTiers(row)" :key="tier.key" class="rate-tier-line">{{ tier.label }}</div>
+                </div>
+              </TableCell>
               <TableCell class="text-right tabular-nums">{{ fastMultiplierValue(row) }}</TableCell>
-              <TableCell class="text-right tabular-nums">{{ requestPriceValue(row) }}</TableCell>
+              <TableCell class="text-right tabular-nums"><div class="rate-tier-stack"><div v-for="tier in priceTiers(row)" :key="tier.key" class="rate-tier-line">{{ tierPriceValue(row, tier, 'request') }}</div></div></TableCell>
               <TableCell class="text-right tabular-nums">
-                {{ tokenPriceValue(row, 'input_usd_per_million') }}
+                <div class="rate-tier-stack"><div v-for="tier in priceTiers(row)" :key="tier.key" class="rate-tier-line">{{ tierPriceValue(row, tier, 'input') }}</div></div>
               </TableCell>
               <TableCell class="text-right tabular-nums">
-                {{ tokenPriceValue(row, 'output_usd_per_million') }}
+                <div class="rate-tier-stack"><div v-for="tier in priceTiers(row)" :key="tier.key" class="rate-tier-line">{{ tierPriceValue(row, tier, 'output') }}</div></div>
               </TableCell>
               <TableCell class="text-right tabular-nums">
-                {{ tokenPriceValue(row, 'cache_read_usd_per_million') }}
+                <div class="rate-tier-stack"><div v-for="tier in priceTiers(row)" :key="tier.key" class="rate-tier-line">{{ tierPriceValue(row, tier, 'cache_read') }}</div></div>
               </TableCell>
               <TableCell class="text-right tabular-nums">
-                {{ tokenPriceValue(row, 'cache_creation_usd_per_million') }}
+                <div class="rate-tier-stack"><div v-for="tier in priceTiers(row)" :key="tier.key" class="rate-tier-line">{{ tierPriceValue(row, tier, 'cache_creation') }}</div></div>
               </TableCell>
               <TableCell class="tabular-nums">
                 {{ row.price ? formatDateTime(row.price.updated_at) : '-' }}
@@ -1164,6 +1323,35 @@ onMounted(() => {
                 </FieldGroup>
               </div>
             </template>
+            <div class="wide-form-item long-context-panel">
+              <Field orientation="horizontal" class="long-context-switch-row">
+                <FieldContent>
+                  <FieldLabel for="price-off-peak-enabled">{{ t('启用峰谷分段计费', 'Enable peak/off-peak pricing') }}</FieldLabel>
+                  <FieldDescription>
+                    {{ t('现有费率作为高峰价；北京时间工作日 09:00–12:00、14:00–18:00 为高峰，周末、法定节假日和其余时间为空闲。未配置节假日的年份全天使用空闲价。', 'Existing rates become peak rates. Beijing weekdays 09:00–12:00 and 14:00–18:00 are peak; weekends, holidays and other hours are off-peak. Years without a holiday calendar use off-peak all day.') }}
+                  </FieldDescription>
+                </FieldContent>
+                <Switch id="price-off-peak-enabled" :model-value="form.off_peak_enabled" @update:model-value="toggleOffPeak" />
+              </Field>
+              <FieldGroup v-if="form.off_peak_enabled" class="long-context-rate-grid">
+                <Field v-if="isRequestPriceForm" class="wide-form-item">
+                  <FieldLabel for="price-off-peak-request">{{ t('空闲时段每次调用价格 USD', 'Off-peak per-call price USD') }}</FieldLabel>
+                  <Input id="price-off-peak-request" type="number" min="0" step="any" :model-value="form.off_peak_request_usd ?? ''" @update:model-value="setOffPeakRequestPrice" />
+                </Field>
+                <template v-else>
+                  <Field v-for="field in offPeakRateFields" :key="field.key">
+                    <FieldLabel :for="`price-${field.key}`">{{ t(field.zh, field.en) }}</FieldLabel>
+                    <Input :id="`price-${field.key}`" type="number" min="0" step="any" :model-value="form[field.key]" @update:model-value="setPriceNumber(field.key, $event)" />
+                  </Field>
+                  <template v-if="form.long_context_enabled">
+                    <Field v-for="field in longOffPeakRateFields" :key="field.key">
+                      <FieldLabel :for="`price-${field.key}`">{{ t(field.zh, field.en) }}</FieldLabel>
+                      <Input :id="`price-${field.key}`" type="number" min="0" step="any" :model-value="form[field.key]" @update:model-value="setPriceNumber(field.key, $event)" />
+                    </Field>
+                  </template>
+                </template>
+              </FieldGroup>
+            </div>
           </FieldGroup>
 
           <DialogFooter>
@@ -1231,6 +1419,36 @@ onMounted(() => {
         </form>
       </DialogContent>
     </Dialog>
+
+    <Dialog v-model:open="calendarModalOpen">
+      <DialogContent class="max-h-[calc(100svh-2rem)] overflow-y-auto sm:max-w-xl">
+        <form class="flex flex-col gap-5" @submit.prevent="saveCalendar">
+          <DialogHeader>
+            <DialogTitle>{{ t('峰谷计费节假日日历', 'Peak pricing holiday calendar') }}</DialogTitle>
+            <DialogDescription>{{ t('按国务院每年公布的放假安排维护日期；周末始终为空闲时段。未配置的年份全天使用空闲费率。', 'Maintain dates from the annual State Council holiday notice. Weekends are always off-peak. Unconfigured years use off-peak rates all day.') }}</DialogDescription>
+          </DialogHeader>
+          <FieldGroup>
+            <Field>
+              <FieldLabel for="pricing-calendar-year">{{ t('年份', 'Year') }}</FieldLabel>
+              <div class="flex items-center gap-2">
+                <Input id="pricing-calendar-year" v-model.number="calendarYear" type="number" min="2000" max="2100" step="1" :disabled="isCalendarLoading || isCalendarSaving" />
+                <Button type="button" variant="outline" :disabled="isCalendarLoading || isCalendarSaving" @click="loadCalendarYear">{{ t('查询', 'Load') }}</Button>
+              </div>
+            </Field>
+            <Field>
+              <FieldLabel for="pricing-calendar-dates">{{ t('法定节假日日期（每行一个）', 'Holiday dates (one per line)') }}</FieldLabel>
+              <Textarea id="pricing-calendar-dates" v-model="calendarDatesText" rows="10" placeholder="2026-01-01" :disabled="isCalendarLoading || isCalendarSaving" class="font-mono text-sm" />
+              <FieldDescription>{{ calendarConfigured ? t('该年份已配置，可编辑后保存。', 'This year is configured; edit and save.') : t('该年份尚未配置，保存后工作日才会启用高峰时段。', 'This year is not configured; peak hours become active on weekdays after saving.') }}</FieldDescription>
+            </Field>
+            <a v-if="calendarSourceURL" :href="calendarSourceURL" target="_blank" rel="noopener noreferrer" class="text-sm text-primary underline-offset-4 hover:underline">{{ t('查看国务院放假通知', 'View State Council holiday notice') }}</a>
+          </FieldGroup>
+          <DialogFooter>
+            <Button type="button" variant="outline" @click="calendarModalOpen = false">{{ t('取消', 'Cancel') }}</Button>
+            <Button type="submit" :disabled="isCalendarLoading || isCalendarSaving">{{ t('保存', 'Save') }}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   </section>
 </template>
 <style scoped>
@@ -1240,6 +1458,18 @@ onMounted(() => {
 
 .price-metric-card {
   min-width: 0;
+}
+
+.rate-tier-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.rate-tier-line {
+  min-height: 1.5rem;
+  line-height: 1.5rem;
+  white-space: nowrap;
 }
 
 .price-metric-card :deep([data-slot="card-header"]) {
