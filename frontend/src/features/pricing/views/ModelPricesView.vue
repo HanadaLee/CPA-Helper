@@ -26,7 +26,6 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
@@ -61,7 +60,6 @@ import {
   Layers3,
   ListFilter,
   MoreHorizontal,
-  Pencil,
   Plus,
   RefreshCw,
   Search,
@@ -787,8 +785,9 @@ function priceTiers(row: PriceDisplayRow): PriceTier[] {
   ]
   if (price.off_peak_enabled) tiers.push({ key: 'off-peak', label: t('常规 · 空闲', 'Standard · off-peak'), prefix: 'off_peak_' })
   if (price.long_context_enabled) {
-    tiers.push({ key: 'long', label: price.off_peak_enabled ? t('长上下文 · 高峰', 'Long context · peak') : t('长上下文', 'Long context'), prefix: 'long_context_' })
-    if (price.off_peak_enabled) tiers.push({ key: 'long-off-peak', label: t('长上下文 · 空闲', 'Long context · off-peak'), prefix: 'long_context_off_peak_' })
+    const fastSuffix = price.long_context_fast_unsupported ? t(' · 无 FAST', ' · no FAST') : ''
+    tiers.push({ key: 'long', label: (price.off_peak_enabled ? t('长上下文 · 高峰', 'Long context · peak') : t('长上下文', 'Long context')) + fastSuffix, prefix: 'long_context_' })
+    if (price.off_peak_enabled) tiers.push({ key: 'long-off-peak', label: t('长上下文 · 空闲', 'Long context · off-peak') + fastSuffix, prefix: 'long_context_off_peak_' })
   }
   return tiers
 }
@@ -858,17 +857,6 @@ async function saveCalendarSettings() {
 
 function fastMultiplierValue(row: PriceDisplayRow): string {
   return row.price ? `×${row.price.fast_multiplier}` : '-'
-}
-
-function longContextBadgeTitle(price: ModelPrice): string {
-  const thresholdDescription = t(
-    `输入上下文超过 ${formatInteger(price.long_context_threshold_tokens)} Token 后使用长上下文费率`,
-    `Uses long-context rates above ${formatInteger(price.long_context_threshold_tokens)} input tokens`,
-  )
-  if (!price.long_context_fast_unsupported) {
-    return thresholdDescription
-  }
-  return `${thresholdDescription}${t('；长上下文不支持 FAST 模式', '; long context does not support FAST mode')}`
 }
 
 function billingUnitLabel(row: PriceDisplayRow): string {
@@ -993,22 +981,15 @@ onMounted(() => {
       </div>
 
       <div class="price-table">
-        <Table class="min-w-[1600px] table-fixed">
+        <Table class="table-fixed">
           <TableHeader class="sticky top-0 bg-card">
             <TableRow>
-              <TableHead class="w-[300px]">{{ t('模型', 'Model') }}</TableHead>
-              <TableHead class="w-[130px]">{{ t('服务商', 'Provider') }}</TableHead>
-              <TableHead class="w-[90px]">{{ t('定价', 'Pricing') }}</TableHead>
-              <TableHead class="w-[100px]">{{ t('计费方式', 'Billing') }}</TableHead>
-              <TableHead class="w-[150px]">{{ t('费率档位', 'Rate tiers') }}</TableHead>
-              <TableHead class="w-[100px] text-right">{{ t('FAST 倍率', 'FAST multiplier') }}</TableHead>
-              <TableHead class="w-[100px] text-right">{{ t('每次 ($)', 'Per call ($)') }}</TableHead>
-              <TableHead class="w-[110px] text-right">{{ t('输入 ($/MTok)', 'Input ($/MTok)') }}</TableHead>
-              <TableHead class="w-[110px] text-right">{{ t('输出 ($/MTok)', 'Output ($/MTok)') }}</TableHead>
-              <TableHead class="w-[120px] text-right">{{ t('缓存读 ($/MTok)', 'Cache read ($/MTok)') }}</TableHead>
-              <TableHead class="w-[120px] text-right">{{ t('缓存写 ($/MTok)', 'Cache write ($/MTok)') }}</TableHead>
-              <TableHead class="w-[120px]">{{ t('更新', 'Updated') }}</TableHead>
-              <TableHead class="w-[56px]">
+              <TableHead class="w-[35%]">{{ t('模型', 'Model') }}</TableHead>
+              <TableHead class="w-[16%]">{{ t('服务商', 'Provider') }}</TableHead>
+              <TableHead class="w-[12%]">{{ t('定价', 'Pricing') }}</TableHead>
+              <TableHead class="w-[12%]">{{ t('计费方式', 'Billing') }}</TableHead>
+              <TableHead class="w-[10%] whitespace-normal text-right">{{ t('FAST 倍率', 'FAST multiplier') }}</TableHead>
+              <TableHead class="w-[15%]">
                 <span class="sr-only">{{ t('操作', 'Actions') }}</span>
               </TableHead>
             </TableRow>
@@ -1016,112 +997,101 @@ onMounted(() => {
           <TableBody>
             <template v-if="isLoading && filteredPrices.length === 0">
               <TableRow v-for="rowIndex in 8" :key="`price-skeleton-${rowIndex}`">
-                <TableCell v-for="columnIndex in 13" :key="columnIndex">
+                <TableCell v-for="columnIndex in 6" :key="columnIndex">
                   <Skeleton class="h-4 w-full" />
                 </TableCell>
               </TableRow>
             </template>
 
-            <TableEmpty v-else-if="filteredPrices.length === 0" :colspan="13">
+            <TableEmpty v-else-if="filteredPrices.length === 0" :colspan="6">
               {{ t('暂无模型价格', 'No model prices') }}
             </TableEmpty>
 
-            <TableRow v-for="row in pagedPrices" v-else :key="row.key">
-              <TableCell>
-                <div class="model-cell">
-                  <div class="model-title-row">
-                    <span class="model-name" :title="row.id">{{ row.id }}</span>
-                    <Badge v-if="row.in_cpa" variant="secondary" class="model-availability-tag">
-                      {{ t('CPA 可用模型', 'CPA available model') }}
-                    </Badge>
-                    <Badge
-                      v-if="row.price?.long_context_enabled"
-                      variant="outline"
-                      class="model-availability-tag"
-                      :title="longContextBadgeTitle(row.price)"
-                    >
-                      {{
-                        row.price.long_context_fast_unsupported
-                          ? t('长上下文 · 无 FAST', 'Long context · no FAST')
-                          : t('长上下文', 'Long context')
-                      }}
-                    </Badge>
+            <template v-for="row in pagedPrices" v-else :key="row.key">
+              <TableRow class="border-0">
+                <TableCell>
+                  <div class="model-cell">
+                    <div class="model-title-row">
+                      <span class="model-name" :title="row.id">{{ row.id }}</span>
+                      <Badge v-if="row.in_cpa" variant="secondary" class="model-availability-tag">
+                        {{ t('CPA 可用模型', 'CPA available model') }}
+                      </Badge>
+                    </div>
+                    <div v-if="row.name && row.name !== row.id" class="model-sub" :title="row.name">
+                      {{ row.name }}
+                    </div>
                   </div>
-                  <div v-if="row.name && row.name !== row.id" class="model-sub" :title="row.name">
-                    {{ row.name }}
+                </TableCell>
+                <TableCell>
+                  <div class="provider-cell">
+                    <div class="provider-main" :title="row.provider || '-'">{{ row.provider || '-' }}</div>
+                    <div v-if="row.owner && row.owner !== row.provider" class="model-sub">
+                      {{ t('所有者', 'Owner') }}: {{ row.owner }}
+                    </div>
                   </div>
-                </div>
-              </TableCell>
-              <TableCell>
-                <div class="provider-cell">
-                  <div class="provider-main" :title="row.provider || '-'">{{ row.provider || '-' }}</div>
-                  <div v-if="row.owner && row.owner !== row.provider" class="model-sub">
-                    {{ t('所有者', 'Owner') }}: {{ row.owner }}
-                  </div>
-                </div>
-              </TableCell>
-              <TableCell>
-                <Badge :variant="priceStatusVariant(row)">{{ priceStatusLabel(row) }}</Badge>
-              </TableCell>
-              <TableCell>
-                <Badge :variant="billingUnitVariant(row)">{{ billingUnitLabel(row) }}</Badge>
-              </TableCell>
-              <TableCell>
-                <div class="rate-tier-stack">
-                  <div v-for="tier in priceTiers(row)" :key="tier.key" class="rate-tier-line">{{ tier.label }}</div>
-                </div>
-              </TableCell>
-              <TableCell class="text-right tabular-nums">{{ fastMultiplierValue(row) }}</TableCell>
-              <TableCell class="text-right tabular-nums"><div class="rate-tier-stack"><div v-for="tier in priceTiers(row)" :key="tier.key" class="rate-tier-line">{{ tierPriceValue(row, tier, 'request') }}</div></div></TableCell>
-              <TableCell class="text-right tabular-nums">
-                <div class="rate-tier-stack"><div v-for="tier in priceTiers(row)" :key="tier.key" class="rate-tier-line">{{ tierPriceValue(row, tier, 'input') }}</div></div>
-              </TableCell>
-              <TableCell class="text-right tabular-nums">
-                <div class="rate-tier-stack"><div v-for="tier in priceTiers(row)" :key="tier.key" class="rate-tier-line">{{ tierPriceValue(row, tier, 'output') }}</div></div>
-              </TableCell>
-              <TableCell class="text-right tabular-nums">
-                <div class="rate-tier-stack"><div v-for="tier in priceTiers(row)" :key="tier.key" class="rate-tier-line">{{ tierPriceValue(row, tier, 'cache_read') }}</div></div>
-              </TableCell>
-              <TableCell class="text-right tabular-nums">
-                <div class="rate-tier-stack"><div v-for="tier in priceTiers(row)" :key="tier.key" class="rate-tier-line">{{ tierPriceValue(row, tier, 'cache_creation') }}</div></div>
-              </TableCell>
-              <TableCell class="tabular-nums">
-                {{ row.price ? formatDateTime(row.price.updated_at) : '-' }}
-              </TableCell>
-              <TableCell class="text-right">
-                <DropdownMenu>
-                  <DropdownMenuTrigger as-child>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      class="price-actions-trigger"
-                      :aria-label="t(`打开 ${row.id} 的操作菜单`, `Open actions for ${row.id}`)"
-                    >
-                      <MoreHorizontal />
+                </TableCell>
+                <TableCell>
+                  <Badge :variant="priceStatusVariant(row)">{{ priceStatusLabel(row) }}</Badge>
+                </TableCell>
+                <TableCell>
+                  <Badge :variant="billingUnitVariant(row)">{{ billingUnitLabel(row) }}</Badge>
+                </TableCell>
+                <TableCell class="text-right tabular-nums">{{ fastMultiplierValue(row) }}</TableCell>
+                <TableCell class="text-right">
+                  <div class="flex items-center justify-end gap-1">
+                    <Button variant="ghost" size="sm" @click="row.price ? openEdit(row.price) : openCreateForRow(row)">
+                      {{ row.price ? t('改价', 'Edit') : t('设价', 'Set') }}
                     </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" :side-offset="4" class="w-40">
-                    <DropdownMenuGroup>
-                      <DropdownMenuItem @select="row.price ? openEdit(row.price) : openCreateForRow(row)">
-                        <Pencil v-if="row.price" />
-                        <Plus v-else />
-                        <span>{{ row.price ? t('改价', 'Edit price') : t('设价', 'Set price') }}</span>
-                      </DropdownMenuItem>
-                    </DropdownMenuGroup>
-                    <template v-if="row.price">
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        variant="destructive"
-                        @select="confirmDelete(row.price)"
-                      >
-                        <Trash2 />
-                        <span>{{ t('删除', 'Delete') }}</span>
-                      </DropdownMenuItem>
-                    </template>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </TableCell>
-            </TableRow>
+                    <DropdownMenu v-if="row.price">
+                      <DropdownMenuTrigger as-child>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          class="price-actions-trigger"
+                          :aria-label="t(`打开 ${row.id} 的操作菜单`, `Open actions for ${row.id}`)"
+                        >
+                          <MoreHorizontal />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" :side-offset="4" class="w-40">
+                        <DropdownMenuGroup>
+                          <DropdownMenuItem variant="destructive" @select="confirmDelete(row.price)">
+                            <Trash2 />
+                            <span>{{ t('删除', 'Delete') }}</span>
+                          </DropdownMenuItem>
+                        </DropdownMenuGroup>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </TableCell>
+              </TableRow>
+              <TableRow class="rate-detail-row">
+                <TableCell :colspan="6" class="rate-detail-cell">
+                  <Table class="table-fixed">
+                    <TableHeader class="bg-muted/40">
+                      <TableRow>
+                        <TableHead class="w-[29%]">{{ t('费率档位', 'Rate tier') }}</TableHead>
+                        <TableHead class="w-[14%] whitespace-normal text-right">{{ t('每次 ($)', 'Per call ($)') }}</TableHead>
+                        <TableHead class="w-[14%] whitespace-normal text-right">{{ t('输入 ($/MTok)', 'Input ($/MTok)') }}</TableHead>
+                        <TableHead class="w-[14%] whitespace-normal text-right">{{ t('输出 ($/MTok)', 'Output ($/MTok)') }}</TableHead>
+                        <TableHead class="w-[14.5%] whitespace-normal text-right">{{ t('缓存读 ($/MTok)', 'Cache read ($/MTok)') }}</TableHead>
+                        <TableHead class="w-[14.5%] whitespace-normal text-right">{{ t('缓存写 ($/MTok)', 'Cache write ($/MTok)') }}</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      <TableRow v-for="tier in priceTiers(row)" :key="tier.key">
+                        <TableCell>{{ tier.label }}</TableCell>
+                        <TableCell class="text-right tabular-nums">{{ tierPriceValue(row, tier, 'request') }}</TableCell>
+                        <TableCell class="text-right tabular-nums">{{ tierPriceValue(row, tier, 'input') }}</TableCell>
+                        <TableCell class="text-right tabular-nums">{{ tierPriceValue(row, tier, 'output') }}</TableCell>
+                        <TableCell class="text-right tabular-nums">{{ tierPriceValue(row, tier, 'cache_read') }}</TableCell>
+                        <TableCell class="text-right tabular-nums">{{ tierPriceValue(row, tier, 'cache_creation') }}</TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </Table>
+                </TableCell>
+              </TableRow>
+            </template>
           </TableBody>
         </Table>
 
@@ -1515,18 +1485,6 @@ onMounted(() => {
   min-width: 0;
 }
 
-.rate-tier-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.rate-tier-line {
-  min-height: 1.5rem;
-  line-height: 1.5rem;
-  white-space: nowrap;
-}
-
 .price-metric-card :deep([data-slot="card-header"]) {
   padding-bottom: 10px;
 }
@@ -1611,6 +1569,17 @@ onMounted(() => {
   overscroll-behavior: contain;
 }
 
+.rate-detail-cell {
+  padding-top: 0;
+  padding-bottom: 12px;
+}
+
+.price-table .rate-detail-cell :deep([data-slot="table-container"]) {
+  height: auto;
+  max-height: none;
+  overflow: visible;
+}
+
 .table-loading-overlay {
   position: absolute;
   inset: 0;
@@ -1620,7 +1589,6 @@ onMounted(() => {
 }
 
 .price-actions-trigger {
-  margin-left: auto;
   color: var(--muted-foreground);
 }
 
@@ -1642,6 +1610,7 @@ onMounted(() => {
 
 .model-name,
 .provider-main {
+  max-width: 100%;
   min-width: 0;
   overflow: hidden;
   color: var(--foreground);
