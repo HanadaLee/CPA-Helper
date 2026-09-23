@@ -187,7 +187,7 @@ onMounted(refresh)
 
           <div v-if="isLoading && !response" class="loading-state">
             <Spinner class="size-5" />
-            <span>{{ t('正在向 CPA 查询模型', 'Querying CPA for models') }}</span>
+            <span>{{ t('正在查询模型', 'Querying models') }}</span>
           </div>
 
           <Empty v-else-if="response && !response.has_api_keys" class="min-h-[220px]">
@@ -208,7 +208,11 @@ onMounted(refresh)
             <EmptyHeader>
               <EmptyMedia variant="icon"><KeyRound /></EmptyMedia>
               <EmptyTitle>{{ t('API 密钥不可查询', 'API keys unavailable') }}</EmptyTitle>
-              <EmptyDescription>{{ t('绑定的 API 密钥缺少完整密钥，无法查询模型', 'Bound API keys are missing complete keys and cannot query models') }}</EmptyDescription>
+              <EmptyDescription>
+                {{ response.quota_paused
+                  ? t('账户额度已用尽，API 密钥暂时不可用', 'Account quota is exhausted; API keys are temporarily unavailable')
+                  : t('密钥已禁用或缺少完整密钥，无法查询模型', 'Keys are disabled or missing their full value and cannot query models') }}
+              </EmptyDescription>
             </EmptyHeader>
             <EmptyContent>
               <Button @click="goToApiKeys">{{ t('去 API 密钥页检查', 'Check API keys') }}</Button>
@@ -219,7 +223,7 @@ onMounted(refresh)
             <EmptyHeader>
               <EmptyMedia variant="icon"><Cpu /></EmptyMedia>
               <EmptyTitle>{{ t('暂无可用模型', 'No available models') }}</EmptyTitle>
-              <EmptyDescription>{{ t('CPA 未返回可用模型', 'CPA returned no available models') }}</EmptyDescription>
+              <EmptyDescription>{{ t('当前没有返回可用模型', 'No available models were returned') }}</EmptyDescription>
             </EmptyHeader>
             <EmptyContent>
               <Button variant="outline" :disabled="isLoading" @click="refresh">

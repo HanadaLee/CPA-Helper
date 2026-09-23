@@ -744,6 +744,23 @@ func TestModelPriceCatalogListsCPAModelsWithMatchedPrices(t *testing.T) {
 	`, hashAPIKey(apiKey), apiKey, now, now); err != nil {
 		t.Fatalf("seed api key: %v", err)
 	}
+	pausedUser, err := app.db.Exec(`
+		INSERT INTO users (username, is_admin, nickname, quota_paused_at, quota_pause_reason, created_at, updated_at)
+		VALUES ('paused-user', 0, 'Paused user', ?, ?, ?, ?)
+	`, now, quotaPauseReasonExhausted, now, now)
+	if err != nil {
+		t.Fatalf("seed paused user: %v", err)
+	}
+	pausedUserID, err := pausedUser.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := app.db.Exec(`
+		INSERT INTO user_api_keys (api_key_hash, user_id, api_key, description, created_at, updated_at)
+		VALUES (?, ?, ?, 'Paused Key', ?, ?)
+	`, hashAPIKey("sk-paused-catalog"), pausedUserID, "sk-paused-catalog", now, now); err != nil {
+		t.Fatalf("seed paused api key: %v", err)
+	}
 	if _, err := app.db.Exec(`
 		INSERT INTO model_prices (
 			provider, model, input_usd_per_million, output_usd_per_million,
@@ -759,8 +776,8 @@ func TestModelPriceCatalogListsCPAModelsWithMatchedPrices(t *testing.T) {
 	if seenAuth != "Bearer "+apiKey {
 		t.Fatalf("Authorization = %q, want bearer api key", seenAuth)
 	}
-	if catalog.APIKeyCount != 1 || catalog.QueryableAPIKeyCount != 1 {
-		t.Fatalf("key counts = %d/%d, want 1/1", catalog.APIKeyCount, catalog.QueryableAPIKeyCount)
+	if catalog.APIKeyCount != 2 || catalog.QueryableAPIKeyCount != 1 || len(catalog.Errors) != 0 {
+		t.Fatalf("key counts/errors = %d/%d/%d, want 2/1/0", catalog.APIKeyCount, catalog.QueryableAPIKeyCount, len(catalog.Errors))
 	}
 	if catalog.PricedModels != 1 || catalog.UnpricedModels != 1 {
 		t.Fatalf("priced/unpriced = %d/%d, want 1/1", catalog.PricedModels, catalog.UnpricedModels)
@@ -776,6 +793,20 @@ func TestModelPriceCatalogListsCPAModelsWithMatchedPrices(t *testing.T) {
 	}
 	if len(catalog.Models[1].Sources) != 1 || catalog.Models[1].Sources[0].Description != "Admin Key" || catalog.Models[1].Sources[0].UserLabel != "管理员" {
 		t.Fatalf("sources = %#v, want key description and user label", catalog.Models[1].Sources)
+	}
+	pausedModels, err := app.availableModelsForUser(context.Background(), int(pausedUserID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !pausedModels.HasAPIKeys || pausedModels.APIKeyCount != 1 || pausedModels.QueryableAPIKeyCount != 0 || !pausedModels.QuotaPaused || len(pausedModels.Errors) != 0 {
+		t.Fatalf("paused user's model catalog = %#v", pausedModels)
+	}
+	if _, err := app.db.Exec(`UPDATE users SET quota_paused_at = ?, quota_pause_reason = ? WHERE id = 1`, now, quotaPauseReasonExhausted); err != nil {
+		t.Fatal(err)
+	}
+	requestJSONForPricingTest(t, handler, http.MethodGet, "/api/model-prices/catalog", nil, cookies, &catalog)
+	if !catalog.HasAPIKeys || catalog.APIKeyCount != 2 || catalog.QueryableAPIKeyCount != 0 || len(catalog.Errors) != 0 || len(catalog.Models) != 0 {
+		t.Fatalf("all quota-paused model catalog = %#v", catalog)
 	}
 }
 

@@ -83,6 +83,7 @@ type AvailableModelsResponse struct {
 	HasAPIKeys           bool                     `json:"has_api_keys"`
 	APIKeyCount          int                      `json:"api_key_count"`
 	QueryableAPIKeyCount int                      `json:"queryable_api_key_count"`
+	QuotaPaused          bool                     `json:"quota_paused"`
 	Models               []AvailableModelItem     `json:"models"`
 	Errors               []AvailableModelKeyError `json:"errors"`
 }
@@ -115,6 +116,14 @@ func (a *App) availableModelsForUser(ctx context.Context, userID int) (Available
 		Errors:      []AvailableModelKeyError{},
 	}
 	if len(bindings) == 0 {
+		return response, nil
+	}
+	user, err := a.getUser(ctx, userID)
+	if err != nil {
+		return AvailableModelsResponse{}, err
+	}
+	if user.QuotaPausedAt != nil {
+		response.QuotaPaused = true
 		return response, nil
 	}
 	queryable := make([]UserAPIKey, 0, len(bindings))
@@ -170,7 +179,7 @@ func (a *App) availableModelsForUser(ctx context.Context, userID int) (Available
 				break
 			}
 		}
-		return AvailableModelsResponse{}, validationError("查询 CPA 可用模型失败：" + strings.Join(messages, "；"))
+		return AvailableModelsResponse{}, validationError("查询可用模型失败：" + strings.Join(messages, "；"))
 	}
 	for _, model := range modelsByID {
 		if price := findMatchingPrice(prices, &model.ID); price != nil {
@@ -217,14 +226,14 @@ func fetchAvailableModelItems(ctx context.Context, cfg AppConfig, apiKey string)
 	headers.Set("Authorization", "Bearer "+apiKey)
 	response, payload, err := doJSON(ctx, httpClient(modelListTimeout), http.MethodGet, makeURL(cfg.Collector.CLIProxyURL, "/v1/models", nil), headers, nil)
 	if err != nil {
-		return nil, fmt.Errorf("CPA 模型列表请求失败：%s", err.Error())
+		return nil, fmt.Errorf("模型列表请求失败：%s", err.Error())
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, fmt.Errorf("CPA 模型列表请求失败：HTTP %d", response.StatusCode)
+		return nil, fmt.Errorf("模型列表请求失败：HTTP %d", response.StatusCode)
 	}
 	var raw any
 	if err := json.Unmarshal(payload, &raw); err != nil {
-		return nil, fmt.Errorf("CPA 模型列表响应不是有效 JSON")
+		return nil, fmt.Errorf("模型列表响应不是有效 JSON")
 	}
 	return extractAvailableModelItems(raw)
 }
@@ -235,14 +244,14 @@ func extractAvailableModelItems(payload any) ([]any, error) {
 	}
 	object, ok := payload.(map[string]any)
 	if !ok {
-		return nil, fmt.Errorf("CPA 模型列表响应格式不支持")
+		return nil, fmt.Errorf("模型列表响应格式不支持")
 	}
 	for _, key := range modelContainerKeys {
 		if value, exists := object[key]; exists {
 			if items, ok := value.([]any); ok {
 				return items, nil
 			}
-			return nil, fmt.Errorf("CPA 模型列表响应字段 %s 不是列表", key)
+			return nil, fmt.Errorf("模型列表响应字段 %s 不是列表", key)
 		}
 	}
 	for _, key := range modelIDKeys {
@@ -250,7 +259,7 @@ func extractAvailableModelItems(payload any) ([]any, error) {
 			return []any{object}, nil
 		}
 	}
-	return nil, fmt.Errorf("CPA 模型列表响应缺少模型列表")
+	return nil, fmt.Errorf("模型列表响应缺少模型列表")
 }
 
 func parseAvailableModel(raw any, source AvailableModelSource) *AvailableModelItem {

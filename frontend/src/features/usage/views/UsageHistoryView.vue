@@ -371,16 +371,6 @@ const rankingTitle = computed(() =>
 const filterComboboxes = computed<UsageFilterCombobox[]>(() => {
   const items: UsageFilterCombobox[] = [
     {
-      key: 'api-key',
-      icon: KeyRound,
-      value: filterForm.api_key_description,
-      options: selectOptions.value.apiKeyDescriptions,
-      placeholder: t('KEY 描述', 'Key description'),
-      searchPlaceholder: t('搜索 KEY 描述', 'Search key descriptions'),
-      emptyText: t('没有匹配的 KEY 描述', 'No matching key descriptions'),
-      onChange: handleApiKeyChange,
-    },
-    {
       key: 'provider',
       icon: Server,
       value: filterForm.provider,
@@ -412,7 +402,18 @@ const filterComboboxes = computed<UsageFilterCombobox[]>(() => {
     },
   ]
 
-  if (!isAccountScope.value) {
+  if (isAccountScope.value) {
+    items.unshift({
+      key: 'api-key',
+      icon: KeyRound,
+      value: filterForm.api_key_description,
+      options: selectOptions.value.apiKeyDescriptions,
+      placeholder: t('KEY 描述', 'Key description'),
+      searchPlaceholder: t('搜索 KEY 描述', 'Search key descriptions'),
+      emptyText: t('没有匹配的 KEY 描述', 'No matching key descriptions'),
+      onChange: handleApiKeyChange,
+    })
+  } else {
     items.unshift({
       key: 'user',
       icon: UserRound,
@@ -476,7 +477,7 @@ function buildFilters(): UsageFilters {
     start: dateRange.value ? formatLocalDateTimeParam(dateRange.value[0]) : undefined,
     end: dateRange.value ? formatLocalDateTimeParam(dateRange.value[1]) : undefined,
     user_id: isAccountScope.value ? undefined : (filterForm.user_id ?? undefined),
-    api_key_description: filterForm.api_key_description ?? undefined,
+    api_key_description: isAccountScope.value ? (filterForm.api_key_description ?? undefined) : undefined,
     provider: filterForm.provider ?? undefined,
     model: filterForm.model ?? undefined,
     endpoint: filterForm.endpoint ?? undefined,
@@ -1684,15 +1685,11 @@ onBeforeUnmount(() => {
 
 .field-row {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr)) minmax(184px, 1.2fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(184px, 1.2fr);
   gap: 8px;
   align-items: stretch;
   width: 100%;
   min-width: 0;
-}
-
-.field-row.is-account-scope {
-  grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(184px, 1.2fr);
 }
 
 .range-picker {

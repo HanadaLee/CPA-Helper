@@ -405,6 +405,7 @@ func (a *App) handleBranding(w http.ResponseWriter, r *http.Request) error {
 type modelRequestTestPayload struct {
 	APIKeyHash string `json:"api_key_hash"`
 	Endpoint   string `json:"endpoint"`
+	BaseURL    string `json:"base_url"`
 	Model      string `json:"model"`
 	Message    string `json:"message"`
 }
@@ -725,7 +726,11 @@ func (a *App) testCurrentUserModelRequest(ctx context.Context, user *AuthUser, p
 	if err != nil {
 		return modelRequestTestResponse{}, err
 	}
-	target := strings.TrimRight(modelRequestOpenAIBaseURL(cfg.ModelRequestURL), "/") + modelRequestEndpointPath(endpoint)
+	baseURL, err := configuredModelRequestBaseURL(cfg, payload.BaseURL)
+	if err != nil {
+		return modelRequestTestResponse{}, err
+	}
+	target := strings.TrimRight(baseURL, "/") + modelRequestEndpointPath(endpoint)
 	headers := modelRequestEndpointHeaders(endpoint, strings.TrimSpace(*apiKey.APIKey))
 	requestBody := modelRequestEndpointBody(endpoint, model, message)
 
@@ -1003,6 +1008,22 @@ func modelRequestOpenAIBaseURL(requestURL string) string {
 		return normalized
 	}
 	return normalized + "/v1"
+}
+
+// Only an endpoint published in settings may be used for an authenticated test.
+func configuredModelRequestBaseURL(cfg AppConfig, requested string) (string, error) {
+	defaultURL := modelRequestOpenAIBaseURL(cfg.ModelRequestURL)
+	requested = strings.TrimSpace(requested)
+	if requested == "" || requested == defaultURL {
+		return defaultURL, nil
+	}
+	for _, endpoint := range cfg.ModelRequestExtraEndpoints {
+		baseURL := modelRequestOpenAIBaseURL(endpoint.URL)
+		if requested == baseURL {
+			return baseURL, nil
+		}
+	}
+	return "", validationError("请求 Endpoint 不在当前配置中，请刷新页面后重试")
 }
 
 func (a *App) handleCollectorStatus(w http.ResponseWriter, r *http.Request) error {

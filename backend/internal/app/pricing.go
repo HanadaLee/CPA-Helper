@@ -117,7 +117,8 @@ type ModelPriceCatalogResponse struct {
 
 type modelCatalogAPIKey struct {
 	UserAPIKey
-	UserLabel string
+	UserLabel   string
+	QuotaPaused bool
 }
 
 func (a *App) handleModelPrices(w http.ResponseWriter, r *http.Request) error {
@@ -390,7 +391,7 @@ func (a *App) modelPriceCatalog(ctx context.Context) (ModelPriceCatalogResponse,
 	}
 	queryable := make([]modelCatalogAPIKey, 0, len(bindings))
 	for _, binding := range bindings {
-		if binding.APIKey != nil && strings.TrimSpace(*binding.APIKey) != "" {
+		if !binding.Disabled && !binding.QuotaPaused && binding.APIKey != nil && strings.TrimSpace(*binding.APIKey) != "" {
 			queryable = append(queryable, binding)
 		}
 	}
@@ -470,11 +471,12 @@ func (a *App) modelPriceCatalog(ctx context.Context) (ModelPriceCatalogResponse,
 
 func (a *App) modelCatalogAPIKeys(ctx context.Context) ([]modelCatalogAPIKey, error) {
 	rows, err := a.db.QueryContext(ctx, `
-		SELECT k.api_key_hash, k.user_id, k.api_key, k.description, CAST(k.created_at AS TEXT), CAST(k.updated_at AS TEXT),
-		       u.username, u.nickname
+		SELECT k.api_key_hash, k.user_id, k.api_key, k.description, k.disabled,
+		       CAST(k.created_at AS TEXT), CAST(k.updated_at AS TEXT),
+		       u.username, u.nickname, u.quota_paused_at IS NOT NULL
 		FROM user_api_keys k
 		INNER JOIN users u ON u.id = k.user_id
-		WHERE u.disabled_at IS NULL AND k.disabled = 0
+		WHERE u.disabled_at IS NULL
 		ORDER BY lower(u.username), lower(k.description), k.api_key_hash
 	`)
 	if err != nil {
@@ -485,7 +487,7 @@ func (a *App) modelCatalogAPIKeys(ctx context.Context) ([]modelCatalogAPIKey, er
 	for rows.Next() {
 		var item modelCatalogAPIKey
 		var apiKey, createdAt, updatedAt, username, nickname sql.NullString
-		if err := rows.Scan(&item.APIKeyHash, &item.UserID, &apiKey, &item.Description, &createdAt, &updatedAt, &username, &nickname); err != nil {
+		if err := rows.Scan(&item.APIKeyHash, &item.UserID, &apiKey, &item.Description, &item.Disabled, &createdAt, &updatedAt, &username, &nickname, &item.QuotaPaused); err != nil {
 			return nil, err
 		}
 		item.APIKey = nullableString(apiKey)

@@ -60,6 +60,14 @@ import {
   PaginationPrevious,
 } from '@/components/ui/pagination'
 import { Skeleton } from '@/components/ui/skeleton'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Spinner } from '@/components/ui/spinner'
 import {
   Table,
@@ -134,6 +142,7 @@ const editorVisible = ref(false)
 const requestTestVisible = ref(false)
 const requestTestApiKey = ref<UserApiKeySummary | null>(null)
 const requestEndpoint = ref<ModelRequestEndpoint>('chat_completions')
+const requestTestEndpointKey = ref('default')
 type PublicRequestURLType = 'base' | ModelRequestEndpoint
 const publicRequestURLType = ref<PublicRequestURLType>('base')
 const requestTestModel = ref<string | null>(null)
@@ -262,7 +271,6 @@ const apiKeyMetrics = computed<ApiKeyMetricCard[]>(() => {
 
 const canCreateApiKey = computed(() => quotaStatus.value?.can_create_keys ?? true)
 
-const requestBaseURL = computed(() => modelRequestGuide.value?.openai_base_url ?? requestLoadingText.value)
 const publicRequestURLTypeOptions = computed<PublicRequestURLTypeOption[]>(() => [
   {
     label: t('基础', 'Base'),
@@ -303,6 +311,10 @@ const publicRequestEndpoints = computed<PublicRequestEndpoint[]>(() => {
     })),
   ]
 })
+const selectedRequestTestEndpoint = computed(() =>
+  publicRequestEndpoints.value.find((endpoint) => endpoint.key === requestTestEndpointKey.value) ?? publicRequestEndpoints.value[0],
+)
+const requestBaseURL = computed(() => selectedRequestTestEndpoint.value?.baseURL ?? requestLoadingText.value)
 const publicRequestEndpointRows = computed(() => {
   const path = publicRequestURLTypeMeta.value?.path ?? ''
   return publicRequestEndpoints.value.map((endpoint) => ({
@@ -326,14 +338,20 @@ function updateRequestEndpoint(value: unknown) {
   }
 }
 
+function updateRequestTestEndpointKey(value: unknown) {
+  if (publicRequestEndpoints.value.some((endpoint) => endpoint.key === value)) {
+    requestTestEndpointKey.value = value as string
+  }
+}
+
 const requestEndpointMeta = computed(
   () =>
     requestEndpointOptions.value.find((option) => option.value === requestEndpoint.value) ??
     chatCompletionsEndpointOption.value,
 )
 const requestEndpointURL = computed(() => {
-  const baseURL = modelRequestGuide.value?.openai_base_url
-  if (!baseURL) {
+  const baseURL = requestBaseURL.value
+  if (baseURL === requestLoadingText.value) {
     return requestLoadingText.value
   }
   return `${baseURL.replace(/\/$/, '')}${requestEndpointMeta.value.path}`
@@ -406,6 +424,11 @@ const requestTestUsageText = computed(() => {
 })
 
 watch(requestEndpoint, () => {
+  requestTestResult.value = null
+  requestTestError.value = null
+})
+
+watch(requestTestEndpointKey, () => {
   requestTestResult.value = null
   requestTestError.value = null
 })
@@ -630,6 +653,7 @@ async function loadAvailableModelsForTest() {
 
 function openRequestTest(row: UserApiKeySummary) {
   requestTestApiKey.value = row
+  requestTestEndpointKey.value = 'default'
   requestTestModel.value = row.last_model ?? row.models[0] ?? null
   requestTestMessage.value = requestTestMessageDefaults[currentLanguage.value]
   requestTestResult.value = null
@@ -678,6 +702,7 @@ async function runRequestTest() {
     requestTestResult.value = await testModelRequest({
       api_key_hash: currentKey.api_key_hash,
       endpoint: requestEndpoint.value,
+      base_url: requestBaseURL.value,
       model,
       message: requestTestMessage.value,
     })
@@ -734,8 +759,8 @@ function confirmToggleApiKey(row: UserApiKeySummary) {
   dialog.warning({
     title: nextDisabled ? t('禁用 API 密钥', 'Disable API key') : t('启用 API 密钥', 'Enable API key'),
     content: nextDisabled
-      ? t(`将暂时禁用“${label}”，并从 CPA 的可用密钥中移除。之后可以再次启用。`, `Temporarily disable “${label}” and remove it from CPA's active keys. You can enable it again later.`)
-      : t(`将重新启用“${label}”，并将其加入 CPA 的可用密钥。`, `Re-enable “${label}” and add it back to CPA's active keys.`),
+      ? t(`将暂时禁用“${label}”，并从可用密钥中移除。之后可以再次启用。`, `Temporarily disable “${label}” and remove it from active keys. You can enable it again later.`)
+      : t(`将重新启用“${label}”，并将其加入可用密钥。`, `Re-enable “${label}” and add it back to active keys.`),
     positiveText: nextDisabled ? t('确认禁用', 'Confirm disable') : t('确认启用', 'Confirm enable'),
     negativeText: t('取消', 'Cancel'),
     onPositiveClick: async () => {
@@ -815,7 +840,7 @@ async function saveApiKey() {
       const created = await createApiKey({ description })
       generatedApiKey.value = created.api_key ?? null
       generatedApiKeyHash.value = created.api_key_hash
-      message.success(t('API 密钥已创建并同步到 CPA', 'API key created and synced to CPA'))
+      message.success(t('API 密钥已创建并同步', 'API key created and synced'))
     }
     editorVisible.value = false
     editingApiKeyHash.value = null
@@ -831,8 +856,8 @@ function confirmDelete(row: UserApiKeySummary) {
   dialog.warning({
     title: t('删除 API 密钥', 'Delete API key'),
     content: t(
-      `将删除 ${row.description || '未命名'} 对应的密钥，并从 CPA 中移除。`,
-      `This deletes the key for ${row.description || 'Unnamed'} and removes it from CPA.`,
+      `将删除 ${row.description || '未命名'} 对应的密钥，并从可用密钥中移除。`,
+      `This deletes the key for ${row.description || 'Unnamed'} and removes it from active keys.`,
     ),
     positiveText: t('删除', 'Delete'),
     negativeText: t('取消', 'Cancel'),
@@ -915,7 +940,7 @@ onMounted(refresh)
           <Alert v-if="quotaStatus?.paused" variant="destructive">
             <AlertTitle>{{ t('额度已用尽', 'Quota exhausted') }}</AlertTitle>
             <AlertDescription>
-              {{ t('当前账号 API KEY 已从 CPA 暂停。补充额度或进入新的日、周、月周期后，系统会自动恢复可用 Key。', 'API keys for this account are paused in CPA. Available keys are restored automatically after quota is added or a new daily, weekly, or monthly period begins.') }}
+              {{ t('当前账号的 API 密钥已暂停。补充额度或进入新的日、周、月周期后，系统会自动恢复可用密钥。', 'API keys for this account are paused. They are restored automatically after quota is added or a new daily, weekly, or monthly period begins.') }}
             </AlertDescription>
           </Alert>
           <Alert v-else-if="quotaStatus?.unpriced_records">
@@ -1178,11 +1203,21 @@ onMounted(refresh)
         </DialogHeader>
 
         <div class="request-test-scroll">
-          <Alert>
-            <AlertDescription>
-              {{ t('请求测试使用默认 Endpoint；额外 Endpoint 仅在页面卡片中展示。', 'Request tests use the default endpoint; extra endpoints are shown only on the page card.') }}
-            </AlertDescription>
-          </Alert>
+          <Field>
+            <FieldLabel for="request-test-endpoint">{{ t('请求 Endpoint', 'Request endpoint') }}</FieldLabel>
+            <Select :model-value="requestTestEndpointKey" :disabled="!modelRequestGuide" @update:model-value="updateRequestTestEndpointKey">
+              <SelectTrigger id="request-test-endpoint" class="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem v-for="endpoint in publicRequestEndpoints" :key="endpoint.key" :value="endpoint.key">
+                    {{ endpoint.label }}
+                  </SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </Field>
 
           <div class="request-endpoint-switch">
             <span id="request-format-label" class="request-endpoint-label">{{ t('请求格式', 'Request format') }}</span>
@@ -1310,7 +1345,7 @@ onMounted(refresh)
               {{ t('刷新模型', 'Refresh models') }}
             </Button>
             <Button
-              :disabled="!requestTestModel || isAvailableModelsLoading || isRequestTesting"
+              :disabled="!requestTestModel || !modelRequestGuide || isAvailableModelsLoading || isRequestTesting"
               @click="runRequestTest"
             >
               <Spinner v-if="isRequestTesting" data-icon="inline-start" />

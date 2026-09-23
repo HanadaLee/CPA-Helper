@@ -384,8 +384,8 @@ const catalogNotice = computed(() => {
   }
   if (current.queryable_api_key_count === 0) {
     return t(
-      '本地 API Key 没有保存明文 Key，暂时无法查询 CPA 当前模型，只显示已有价格库条目。',
-      'Local API keys do not store plaintext keys, so CPA models cannot be queried for now. Only existing price library entries are shown.',
+      '当前没有可查询的 API Key；已禁用、额度暂停或缺少完整密钥的 Key 不参与模型查询。只显示已有价格库条目。',
+      'No API keys can be queried. Disabled, quota-paused, or incomplete keys are excluded; only existing price entries are shown.',
     )
   }
   if (current.errors.length > 0) {

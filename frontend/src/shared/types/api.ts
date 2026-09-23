@@ -122,6 +122,7 @@ export type ModelRequestEndpoint = 'chat_completions' | 'responses' | 'claude_me
 export interface ModelRequestTestPayload {
   api_key_hash: string
   endpoint: ModelRequestEndpoint
+  base_url: string
   model: string
   message: string
 }
@@ -792,6 +793,7 @@ export interface AvailableModelsResponse {
   has_api_keys: boolean
   api_key_count: number
   queryable_api_key_count: number
+  quota_paused: boolean
   models: AvailableModel[]
   errors: AvailableModelKeyError[]
 }

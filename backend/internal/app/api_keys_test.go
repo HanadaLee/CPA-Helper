@@ -255,6 +255,19 @@ func TestAccountModelRequestTestUsesCurrentUserAPIKey(t *testing.T) {
 		}
 	}))
 	defer cpa.Close()
+	extraCalls := 0
+	extra := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		extraCalls++
+		if r.URL.Path != "/v1/chat/completions" || r.Header.Get("Authorization") != expectedAuth {
+			http.Error(w, "unexpected extra endpoint request", http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{{"message": map[string]any{"role": "assistant", "content": "extra pong"}}},
+		})
+	}))
+	defer extra.Close()
 
 	app, err := backendApp.New()
 	if err != nil {
@@ -272,7 +285,7 @@ func TestAccountModelRequestTestUsesCurrentUserAPIKey(t *testing.T) {
 		"cliaproxy_url":     cpa.URL,
 		"model_request_url": cpa.URL,
 		"model_request_extra_endpoints": []map[string]any{
-			{"url": "https://unused.example.local/v1", "description": "仅展示线路"},
+			{"url": extra.URL + "/v1", "description": "备用线路"},
 		},
 		"management_key":    "test-management-key",
 		"collector_enabled": false,
@@ -309,6 +322,23 @@ func TestAccountModelRequestTestUsesCurrentUserAPIKey(t *testing.T) {
 	}
 	if chatCalls != 1 {
 		t.Fatalf("chat calls = %d, want 1", chatCalls)
+	}
+	requestJSON(t, handler, http.MethodPost, "/api/account/model-request/test", map[string]any{
+		"api_key_hash": created.APIKeyHash,
+		"base_url":     extra.URL + "/v1",
+		"model":        "gpt-test",
+		"message":      "ping",
+	}, cookies, &result)
+	if result.Reply != "extra pong" || extraCalls != 1 || chatCalls != 1 {
+		t.Fatalf("extra endpoint result = %#v, calls = %d/%d", result, extraCalls, chatCalls)
+	}
+	requestJSONExpectStatus(t, handler, http.MethodPost, "/api/account/model-request/test", map[string]any{
+		"api_key_hash": created.APIKeyHash,
+		"base_url":     "http://unconfigured.example.local/v1",
+		"model":        "gpt-test",
+	}, cookies, http.StatusUnprocessableEntity)
+	if extraCalls != 1 || chatCalls != 1 {
+		t.Fatalf("unconfigured endpoint was called: extra/default = %d/%d", extraCalls, chatCalls)
 	}
 }
 

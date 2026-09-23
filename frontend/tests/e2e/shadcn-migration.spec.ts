@@ -363,6 +363,61 @@ test('API key actions can temporarily disable and re-enable one key', async ({ p
   await expect(page.getByText(/已禁用|Disabled/)).toHaveCount(0)
 })
 
+test('request test uses the selected configured endpoint and usage analytics omits key-description filtering', async ({ page }) => {
+  await setupOrLogin(page)
+  await page.route('**/api/api-keys', async (route) => {
+    await route.fulfill({ json: [{
+      api_key_hash: 'fixture-key', api_key: 'sk-fixture-key', description: 'Test key', disabled: false,
+      user_id: 1, user_name: 'admin', created_at: '2026-09-03T00:00:00Z', updated_at: '2026-09-03T00:00:00Z',
+      records: 0, success_records: 0, failed_records: 0, total_tokens: 0, today_records: 0,
+      today_success_records: 0, today_failed_records: 0, today_input_tokens: 0, today_output_tokens: 0,
+      today_cached_tokens: 0, today_reasoning_tokens: 0, today_total_tokens: 0, today_estimated_cost_usd: 0,
+      today_unpriced_records: 0, first_seen_at: null, last_seen_at: null, last_provider: null, last_model: null,
+      providers: [], models: ['gpt-test'],
+    }] })
+  })
+  await page.route('**/api/account/model-request', async (route) => {
+    await route.fulfill({ json: {
+      model_request_url: 'https://primary.example.test',
+      openai_base_url: 'https://primary.example.test/v1',
+      chat_completions_url: 'https://primary.example.test/v1/chat/completions',
+      extra_endpoints: [{ url: 'https://backup.example.test/v1', description: 'Backup endpoint' }],
+    } })
+  })
+  await page.route('**/api/account/models', async (route) => {
+    await route.fulfill({ json: {
+      has_api_keys: true, api_key_count: 1, queryable_api_key_count: 1, quota_paused: false, errors: [],
+      models: [{ id: 'gpt-test', name: 'GPT Test', sources: [{ api_key_hash: 'fixture-key' }] }],
+    } })
+  })
+  let testPayload: Record<string, unknown> | null = null
+  await page.route('**/api/account/model-request/test', async (route) => {
+    testPayload = route.request().postDataJSON() as Record<string, unknown>
+    await route.fulfill({ json: {
+      endpoint: 'chat_completions', model: 'gpt-test', reply: 'pong', status_code: 200, duration_ms: 12,
+    } })
+  })
+
+  await page.goto('/account/keys')
+  await page.getByRole('button', { name: /打开 Test key 的操作菜单|Open actions for Test key/ }).click()
+  await page.getByRole('menuitem', { name: /请求测试|Request test/ }).click()
+  const dialog = page.getByRole('dialog', { name: /请求测试|Request test/ })
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByText(/请求测试使用默认 Endpoint|Request tests use the default endpoint/)).toHaveCount(0)
+  await dialog.getByRole('combobox', { name: /请求 Endpoint|Request endpoint/ }).click()
+  await page.getByRole('option', { name: 'Backup endpoint' }).click()
+  await expect(dialog).toContainText('https://backup.example.test/v1/chat/completions')
+  await dialog.getByRole('button', { name: /发送测试|Send test/ }).click()
+  await expect(dialog).toContainText('pong')
+  expect(testPayload?.base_url).toBe('https://backup.example.test/v1')
+
+  await page.goto('/admin/usage')
+  await expect(page.locator('.field-row .filter-combobox')).toHaveCount(4)
+  await expect(page.locator('.field-row')).not.toContainText(/KEY 描述|Key description/)
+  await page.goto('/account/usage')
+  await expect(page.locator('.field-row')).toContainText(/KEY 描述|Key description/)
+})
+
 test('all migrated routes render and core controls remain interactive', async ({ page }) => {
   const consoleErrors: string[] = []
   page.on('console', (message) => {
