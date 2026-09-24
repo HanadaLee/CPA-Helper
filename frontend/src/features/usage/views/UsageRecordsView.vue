@@ -320,16 +320,6 @@ function quickRangeFromQuery(): QuickRangeKey | null {
 const filterComboboxes = computed<UsageFilterCombobox[]>(() => {
   const items: UsageFilterCombobox[] = [
     {
-      key: 'api-key',
-      icon: KeyRound,
-      value: filterForm.api_key_description,
-      options: selectOptions.value.apiKeyDescriptions,
-      placeholder: t('KEY 描述', 'Key description'),
-      searchPlaceholder: t('搜索 KEY 描述', 'Search key descriptions'),
-      emptyText: t('没有匹配的 KEY 描述', 'No matching key descriptions'),
-      onChange: handleApiKeyChange,
-    },
-    {
       key: 'provider',
       icon: Server,
       value: filterForm.provider,
@@ -351,7 +341,18 @@ const filterComboboxes = computed<UsageFilterCombobox[]>(() => {
     },
   ]
 
-  if (!isAccountScope.value) {
+  if (isAccountScope.value) {
+    items.unshift({
+      key: 'api-key',
+      icon: KeyRound,
+      value: filterForm.api_key_description,
+      options: selectOptions.value.apiKeyDescriptions,
+      placeholder: t('KEY 描述', 'Key description'),
+      searchPlaceholder: t('搜索 KEY 描述', 'Search key descriptions'),
+      emptyText: t('没有匹配的 KEY 描述', 'No matching key descriptions'),
+      onChange: handleApiKeyChange,
+    })
+  } else {
     items.unshift({
       key: 'user',
       icon: UserRound,
@@ -388,10 +389,10 @@ const filterComboboxes = computed<UsageFilterCombobox[]>(() => {
   return items
 })
 
-const recordColumnCount = computed(() => isAccountScope.value ? 13 : 14)
+const recordColumnCount = computed(() => 13)
 const recordsTableClass = computed(() => cn(
   'table-fixed',
-  isAccountScope.value ? 'min-w-[1392px]' : 'min-w-[1510px]',
+  isAccountScope.value ? 'min-w-[1392px]' : 'min-w-[1400px]',
 ))
 
 const refreshStatusText = computed(() => {
@@ -428,7 +429,7 @@ function buildFilters(): UsageFilters {
     start,
     end,
     user_id: isAccountScope.value ? undefined : (filterForm.user_id ?? undefined),
-    api_key_description: filterForm.api_key_description ?? undefined,
+    api_key_description: isAccountScope.value ? (filterForm.api_key_description ?? undefined) : undefined,
     provider: filterForm.provider ?? undefined,
     model: filterForm.model ?? undefined,
     source_key: isAccountScope.value ? undefined : (filterForm.source_key ?? undefined),
@@ -909,7 +910,7 @@ onBeforeUnmount(() => {
             <TableRow>
               <TableHead class="w-[164px]">{{ t('时间', 'Time') }}</TableHead>
               <TableHead v-if="!isAccountScope" class="w-[106px]">{{ t('用户昵称', 'User nickname') }}</TableHead>
-              <TableHead class="w-[110px]">{{ t('KEY 描述', 'Key description') }}</TableHead>
+              <TableHead v-if="isAccountScope" class="w-[110px]">{{ t('KEY 描述', 'Key description') }}</TableHead>
               <TableHead class="w-[144px]">{{ t('模型', 'Model') }}</TableHead>
               <TableHead class="w-[72px]">{{ t('结果', 'Result') }}</TableHead>
               <TableHead class="w-[92px] text-right">{{ t('首字耗时', 'TTFT') }}</TableHead>
@@ -943,7 +944,7 @@ onBeforeUnmount(() => {
                   <span class="truncate">{{ userLabel(record.user_label) }}</span>
                 </Badge>
               </TableCell>
-              <TableCell>
+              <TableCell v-if="isAccountScope">
                 <span class="block truncate" :title="apiKeyDescriptionLabel(record.api_key_description)">
                   {{ apiKeyDescriptionLabel(record.api_key_description) }}
                 </span>
@@ -1084,7 +1085,7 @@ onBeforeUnmount(() => {
 
 .field-row {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr)) minmax(184px, 1.2fr);
+  grid-template-columns: repeat(5, minmax(0, 1fr)) minmax(184px, 1.2fr);
   gap: 10px;
   align-items: stretch;
   width: 100%;
