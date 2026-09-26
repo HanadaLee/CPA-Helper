@@ -66,6 +66,7 @@ import {
   updateUserQuota,
 } from '@/features/users/api/usersApi'
 import QuotaCardsPanel from '@/features/quota/components/QuotaCardsPanel.vue'
+import QuotaProgress from '@/features/quota/components/QuotaProgress.vue'
 import { getSettings } from '@/features/settings/api/settingsApi'
 import { resetQuotas, revokeQuotaCards } from '@/features/quota/api/quotaApi'
 import { useConfirmDialog } from '@/shared/ui/confirm-dialog'
@@ -148,27 +149,6 @@ const userMetrics = computed<UserMetricCard[]>(() => {
 
 function userLabel(row: UserSummary): string {
   return row.nickname.trim() || row.username.trim() || t('未知用户', 'Unknown user')
-}
-
-function quotaBalanceValue(row: UserSummary, bucket: 'weekly' | 'daily' | 'cards'): string {
-  if (row.quota.unlimited) {
-    return t('无限制', 'Unlimited')
-  }
-
-  const values = {
-    weekly: row.quota.weekly_remaining_usd,
-    daily: row.quota.daily_remaining_usd,
-    cards: row.quota.cards_remaining_usd,
-  }
-  const value = values[bucket]
-  return formatUsd(value)
-}
-
-function quotaBadgeVariant(row: UserSummary): 'destructive' | 'secondary' | 'outline' {
-  if (row.quota.paused || !row.quota.can_create_keys) {
-    return 'destructive'
-  }
-  return row.quota.unlimited ? 'secondary' : 'outline'
 }
 
 function quotaDetail(row: UserSummary): string | null {
@@ -367,7 +347,7 @@ function resetQuota(allUsers = false, userId?: number) {
   if (!allUsers && !ids.length) return
   confirm.warning({
     title: allUsers ? t('全站重置额度', 'Reset all quotas') : t('重置用户额度', 'Reset user quotas'),
-    content: t('清零所选用户的每日和每周已用额度，原周期和额度卡保持不变。', 'Clear daily and weekly usage for the selected users, preserving period boundaries and cards.'),
+    content: t('清零所选用户的日限额和周限额已用量，原周期和额度卡保持不变。', 'Clear daily and weekly limit usage for the selected users, preserving period boundaries and cards.'),
     positiveText: t('重置', 'Reset'),
     onPositiveClick: async () => {
       quotaBusy.value = true
@@ -445,7 +425,7 @@ onMounted(refresh)
               <TableHead class="w-[4%]"><Checkbox :model-value="allUsersSelected" :aria-label="t('选择本页用户', 'Select users on this page')" @update:model-value="selectPage" /></TableHead>
               <TableHead class="w-[17%]">{{ t('用户', 'User') }}</TableHead>
               <TableHead class="w-[10%]">{{ t('角色 / 状态', 'Role / status') }}</TableHead>
-              <TableHead class="w-[14%]">{{ t('余额', 'Balance') }}</TableHead>
+              <TableHead class="w-[14%]">{{ t('限额 / 额度卡', 'Limits / Cards') }}</TableHead>
               <TableHead class="w-[6%]">{{ t('密钥', 'Keys') }}</TableHead>
               <TableHead class="w-[9%]">{{ t('今日请求', 'Today requests') }}</TableHead>
               <TableHead class="w-[13%]">{{ t('今日 Token', 'Today tokens') }}</TableHead>
@@ -488,19 +468,10 @@ onMounted(refresh)
                 </div>
               </TableCell>
               <TableCell>
-                <div class="metric-stack quota-balance-stack">
-                  <Badge :variant="quotaBadgeVariant(row)" class="quota-balance-row">
-                    <span>{{ t('每日', 'Daily') }}</span>
-                    <strong>{{ quotaBalanceValue(row, 'daily') }}</strong>
-                  </Badge>
-                  <Badge :variant="quotaBadgeVariant(row)" class="quota-balance-row">
-                    <span>{{ t('每周', 'Weekly') }}</span>
-                    <strong>{{ quotaBalanceValue(row, 'weekly') }}</strong>
-                  </Badge>
-                  <Badge :variant="quotaBadgeVariant(row)" class="quota-balance-row">
-                    <span>{{ t('额度卡', 'Cards') }}</span>
-                    <strong>{{ formatUsd(row.quota.cards_remaining_usd) }}</strong>
-                  </Badge>
+                <div class="flex min-w-0 flex-col gap-2">
+                  <QuotaProgress compact :label="t('日限额', 'Daily limit')" :remaining="row.quota.daily_remaining_usd" :total="row.quota.daily_quota_usd" :unlimited="row.quota.unlimited" />
+                  <QuotaProgress compact :label="t('周限额', 'Weekly limit')" :remaining="row.quota.weekly_remaining_usd" :total="row.quota.weekly_quota_usd" :unlimited="row.quota.unlimited" />
+                  <QuotaProgress compact :label="t('额度卡', 'Cards')" :remaining="row.quota.cards_remaining_usd" :total="row.quota.cards_total_usd" />
                   <span
                     v-if="quotaDetail(row)"
                     class="metric-muted quota-balance-detail"
@@ -647,9 +618,9 @@ onMounted(refresh)
             </Field>
 
             <FieldSet class="quota-fieldset">
-              <FieldLegend>{{ t('余额设置', 'Balance settings') }}</FieldLegend>
+              <FieldLegend>{{ t('限额设置', 'Limit settings') }}</FieldLegend>
               <FieldDescription>
-                {{ t('每日、每周和额度卡按最早到期顺序抵扣；每日 0 点、每周一 0 点重置。', 'Daily, weekly and card credit are used by earliest expiration. Resets occur at midnight daily and on Mondays.') }}
+                {{ t('用量同时计入日限额和周限额，任一耗尽即暂停使用限额；额度卡按到期顺序抵扣，不占用限额。', 'Base usage counts toward both limits and stops when either is reached. Cards are used by expiration and do not consume the limits.') }}
               </FieldDescription>
               <FieldGroup>
                 <Field orientation="horizontal" class="switch-setting">
@@ -663,7 +634,7 @@ onMounted(refresh)
                 </Field>
                 <FieldGroup class="quota-editor-grid">
                   <Field>
-                    <FieldLabel for="quota-daily">{{ t('每日余额 USD', 'Daily balance USD') }}</FieldLabel>
+                    <FieldLabel for="quota-daily">{{ t('日限额 USD', 'Daily limit USD') }}</FieldLabel>
                     <Input
                       id="quota-daily"
                       type="number"
@@ -675,7 +646,7 @@ onMounted(refresh)
                     />
                   </Field>
                   <Field>
-                    <FieldLabel for="quota-weekly">{{ t('每周余额 USD', 'Weekly balance USD') }}</FieldLabel>
+                    <FieldLabel for="quota-weekly">{{ t('周限额 USD', 'Weekly limit USD') }}</FieldLabel>
                     <Input
                       id="quota-weekly"
                       type="number"
@@ -785,16 +756,6 @@ onMounted(refresh)
 
 .metric-stack.is-compact {
   align-items: start;
-}
-
-.quota-balance-stack {
-  gap: 4px;
-}
-
-.quota-balance-row {
-  width: 100%;
-  min-width: 0;
-  justify-content: space-between;
 }
 
 .metric-primary {

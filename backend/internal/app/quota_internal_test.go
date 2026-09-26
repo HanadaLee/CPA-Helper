@@ -75,10 +75,10 @@ func TestQuotaDeductsAllBucketsByExpirationAndDedupes(t *testing.T) {
 		t.Fatalf("duplicate created=%v err=%v", created, err)
 	}
 	user, _ = a.getUser(ctx, userID)
-	if user.QuotaDayUsedUSD != 0.5 || user.QuotaWeekUsedUSD != 0.75 || user.QuotaCardsRemainingUSD != 0.75 {
+	if user.QuotaDayUsedUSD != 0.5 || user.QuotaWeekUsedUSD != 0.5 || user.QuotaCardsRemainingUSD != 0 {
 		t.Fatalf("bad allocation: %+v", user)
 	}
-	for id, want := range map[int]float64{earlyID: 0.25, lateID: 0.75, permanentID: 0.25, expiredID: 0, revokedID: 0} {
+	for id, want := range map[int]float64{earlyID: 0.25, lateID: 0.75, permanentID: 1, expiredID: 0, revokedID: 0} {
 		var got float64
 		if err := a.db.QueryRow("SELECT used_usd FROM quota_cards WHERE id = ?", id).Scan(&got); err != nil {
 			t.Fatal(err)
@@ -106,7 +106,10 @@ func TestQuotaDeductsAllBucketsByExpirationAndDedupes(t *testing.T) {
 		t.Fatalf("missing deduction history: %+v", history)
 	}
 	for _, charge := range history.Items {
-		if math.Abs(charge.AmountUSD-charge.DailyUSD-charge.WeeklyUSD-charge.CardsUSD-charge.UncoveredUSD) > 1e-8 {
+		if charge.DailyUSD != charge.LimitUSD || charge.WeeklyUSD != charge.LimitUSD {
+			t.Fatalf("limits did not count the same spend: %+v", charge)
+		}
+		if math.Abs(charge.AmountUSD-charge.LimitUSD-charge.CardsUSD-charge.UncoveredUSD) > 1e-8 {
 			t.Fatalf("charge breakdown does not match cost: %+v", charge)
 		}
 		cardTotal := 0.0
@@ -152,8 +155,8 @@ func TestQuotaConcurrentChargesDoNotLoseBalanceUpdates(t *testing.T) {
 	if err := a.db.QueryRow("SELECT used_usd FROM quota_cards WHERE id = ?", cardID).Scan(&used); err != nil {
 		t.Fatal(err)
 	}
-	if math.Abs(used-1.2) > 1e-8 {
-		t.Fatalf("card used=%v want=1.2", used)
+	if math.Abs(used-2.2) > 1e-8 {
+		t.Fatalf("card used=%v want=2.2", used)
 	}
 	user, _ := a.getUser(ctx, userID)
 	if user.QuotaDayUsedUSD != 1 || user.QuotaWeekUsedUSD != 1 {
@@ -266,7 +269,7 @@ func TestQuotaBulkIssueRevokeAndGlobalReset(t *testing.T) {
 		t.Fatalf("reset=%v err=%v", reset, err)
 	}
 	status, _ = a.userQuotaStatus(ctx, id)
-	if status.Paused || status.AvailableUSD != 3 {
+	if status.Paused || status.AvailableUSD != 1 {
 		t.Fatalf("global reset failed: %+v", status)
 	}
 }
@@ -324,7 +327,7 @@ func TestQuotaChargesImageAndUnpricedUsage(t *testing.T) {
 		}
 	}
 	user, _ := a.getUser(ctx, id)
-	if user.QuotaDayUsedUSD != 1 || user.QuotaWeekUsedUSD != 0.25 || user.QuotaUnpricedRecords != 1 {
+	if user.QuotaDayUsedUSD != 1 || user.QuotaWeekUsedUSD != 1 || user.QuotaUnpricedRecords != 1 {
 		t.Fatalf("image/unpriced charge=%+v", user)
 	}
 }

@@ -58,6 +58,8 @@ func scanQuotaCard(row userScanner, now time.Time) (QuotaCardResponse, error) {
 		card.Status = "exhausted"
 	case card.ExpiresAt != nil && !card.ExpiresAt.After(now):
 		card.Status = "expired"
+	case card.Kind == "reset":
+		card.Status = "unused"
 	default:
 		card.Status = "active"
 	}
@@ -242,7 +244,8 @@ func (a *App) listQuotaCards(w http.ResponseWriter, r *http.Request, userID int)
 			"used":      "c.revoked_at IS NULL AND c.used_at IS NOT NULL",
 			"exhausted": "c.revoked_at IS NULL AND c.used_at IS NULL AND c.kind = 'credit' AND c.amount_usd <= c.used_usd",
 			"expired":   "c.revoked_at IS NULL AND c.used_at IS NULL AND (c.kind = 'reset' OR c.amount_usd > c.used_usd) AND julianday(c.expires_at) <= julianday('now')",
-			"active":    "c.revoked_at IS NULL AND c.used_at IS NULL AND (c.kind = 'reset' OR c.amount_usd > c.used_usd) AND (c.expires_at IS NULL OR julianday(c.expires_at) > julianday('now'))",
+			"active":    "c.revoked_at IS NULL AND c.used_at IS NULL AND c.kind = 'credit' AND c.amount_usd > c.used_usd AND (c.expires_at IS NULL OR julianday(c.expires_at) > julianday('now'))",
+			"unused":    "c.revoked_at IS NULL AND c.used_at IS NULL AND c.kind = 'reset' AND (c.expires_at IS NULL OR julianday(c.expires_at) > julianday('now'))",
 		}
 		condition, ok := conditions[status]
 		if !ok {
@@ -503,7 +506,7 @@ func (a *App) resetUserQuotas(ctx context.Context, actorID int, target quotaTarg
 		if err != nil {
 			return 0, err
 		}
-		if card.Kind != "reset" || card.Status != "active" {
+		if card.Kind != "reset" || card.Status != "unused" {
 			return 0, conflictError("重置卡不可用或已使用")
 		}
 		if _, err := tx.ExecContext(ctx, "UPDATE quota_cards SET used_at = ?, updated_at = ? WHERE id = ?", dbTime(now), dbTime(now), cardID); err != nil {
@@ -583,6 +586,7 @@ type QuotaChargeResponse struct {
 	AmountUSD    float64              `json:"amount_usd"`
 	DailyUSD     float64              `json:"daily_usd"`
 	WeeklyUSD    float64              `json:"weekly_usd"`
+	LimitUSD     float64              `json:"limit_usd"`
 	CardsUSD     float64              `json:"cards_usd"`
 	LegacyUSD    float64              `json:"legacy_usd"`
 	UncoveredUSD float64              `json:"uncovered_usd"`
@@ -604,7 +608,7 @@ func (a *App) quotaHistory(w http.ResponseWriter, r *http.Request, userID int) e
 	if err := a.db.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM user_quota_charges WHERE user_id = ?", userID).Scan(&total); err != nil {
 		return err
 	}
-	rows, err := a.db.QueryContext(r.Context(), `SELECT id, amount_usd, daily_deducted_usd, weekly_deducted_usd,
+	rows, err := a.db.QueryContext(r.Context(), `SELECT id, amount_usd, daily_deducted_usd, weekly_deducted_usd, limit_deducted_usd,
 		cards_deducted_usd, monthly_deducted_usd + lifetime_deducted_usd, uncovered_usd, unpriced, CAST(usage_timestamp AS TEXT), CAST(created_at AS TEXT)
 		FROM user_quota_charges WHERE user_id = ? ORDER BY id DESC LIMIT ? OFFSET ?`, userID, size, (page-1)*size)
 	if err != nil {
@@ -614,7 +618,7 @@ func (a *App) quotaHistory(w http.ResponseWriter, r *http.Request, userID int) e
 	for rows.Next() {
 		var item QuotaChargeResponse
 		var timestamp, created sql.NullString
-		if err := rows.Scan(&item.ID, &item.AmountUSD, &item.DailyUSD, &item.WeeklyUSD, &item.CardsUSD, &item.LegacyUSD, &item.UncoveredUSD, &item.Unpriced, &timestamp, &created); err != nil {
+		if err := rows.Scan(&item.ID, &item.AmountUSD, &item.DailyUSD, &item.WeeklyUSD, &item.LimitUSD, &item.CardsUSD, &item.LegacyUSD, &item.UncoveredUSD, &item.Unpriced, &timestamp, &created); err != nil {
 			rows.Close()
 			return err
 		}

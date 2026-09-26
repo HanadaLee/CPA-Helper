@@ -76,7 +76,7 @@ func TestQuotaCardsAPIPermissionsAndUserIsolation(t *testing.T) {
 	requestJSON(t, h, http.MethodPut, "/api/quota/cards/"+strconv.Itoa(creditID), map[string]any{"name": "Edited", "amount_usd": 12}, admin, nil)
 	requestJSON(t, h, http.MethodPost, "/api/quota/cards/issue", map[string]any{"user_ids": []int{member.ID}, "kind": "reset", "count": 1}, admin, nil)
 	requestJSON(t, h, http.MethodGet, "/api/account/quota/cards?kind=reset", nil, memberCookies, &list)
-	if len(list.Items) != 1 {
+	if len(list.Items) != 1 || list.Items[0].Status != "unused" {
 		t.Fatalf("reset list=%+v", list)
 	}
 	path := "/api/account/quota/cards/" + strconv.Itoa(list.Items[0].ID) + "/use"

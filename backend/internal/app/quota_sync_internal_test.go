@@ -168,8 +168,20 @@ func TestQuotaExpiredCardRetriesPauseAndResetRestoresOnlyEnabledKeys(t *testing.
 	if remaining != 0 {
 		t.Fatal("failed pause was not retried")
 	}
-	// A natural daily rollover must restore the enabled key even without a page visit.
+	// A daily rollover alone cannot bypass an exhausted weekly limit.
 	if _, err := a.db.Exec("UPDATE users SET quota_day = '2000-01-01' WHERE id = ?", id); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.reconcileQuotaUsers(ctx); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	remaining = len(keys)
+	mu.Unlock()
+	if remaining != 0 {
+		t.Fatal("daily rollover bypassed the weekly limit")
+	}
+	if _, err := a.db.Exec("UPDATE users SET quota_week = '2000-W01' WHERE id = ?", id); err != nil {
 		t.Fatal(err)
 	}
 	if err := a.reconcileQuotaUsers(ctx); err != nil {

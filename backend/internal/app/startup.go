@@ -241,6 +241,7 @@ func requireSchemaShape(ctx context.Context, db *sql.DB) error {
 		{"user_quota_charges", "lifetime_deducted_usd"},
 		{"user_quota_charges", "usage_dedupe_key"},
 		{"user_quota_charges", "cards_deducted_usd"},
+		{"user_quota_charges", "limit_deducted_usd"},
 		{"quota_cards", "expires_at"},
 		{"quota_card_deductions", "charge_id"},
 		{"quota_resets", "card_id"},

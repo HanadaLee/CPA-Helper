@@ -37,9 +37,10 @@ import {
 } from '@/components/ui/table'
 import FilterCombobox from '@/shared/ui/FilterCombobox.vue'
 import TablePaginationFooter from '@/shared/ui/TablePaginationFooter.vue'
+import QuotaProgress from './QuotaProgress.vue'
 import { useConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { useI18n } from '@/shared/i18n'
-import { formatDateTime, formatUsd } from '@/shared/utils/format'
+import { formatDateTime } from '@/shared/utils/format'
 import type { QuotaCard, QuotaTargets, UserSummary } from '@/shared/types/api'
 import {
   editQuotaCard,
@@ -69,10 +70,12 @@ const busy = ref(false)
 const kind = ref('credit')
 const statusFilter = ref<string | number | null>(null)
 const statusOptions = computed(() => [
-  { value: 'active', label: t('生效中', 'Active') },
+  kind.value === 'credit'
+    ? { value: 'active', label: t('生效中', 'Active') }
+    : { value: 'unused', label: t('未使用', 'Unused') },
   ...(kind.value === 'credit'
     ? [{ value: 'exhausted', label: t('已用完', 'Depleted') }]
-    : [{ value: 'used', label: t('已用完', 'Depleted') }]),
+    : [{ value: 'used', label: t('已使用', 'Used') }]),
   { value: 'expired', label: t('已过期', 'Expired') },
   { value: 'revoked', label: t('已失效', 'Invalidated') },
 ])
@@ -155,9 +158,10 @@ function selectCard(id: number, checked: boolean | 'indeterminate') {
 function statusLabel(status: QuotaCard['status']) {
   return {
     active: t('生效中', 'Active'),
+    unused: t('未使用', 'Unused'),
     expired: t('已过期', 'Expired'),
     exhausted: t('已用完', 'Depleted'),
-    used: t('已用完', 'Depleted'),
+    used: t('已使用', 'Used'),
     revoked: t('已失效', 'Invalidated'),
   }[status]
 }
@@ -258,7 +262,7 @@ function useCard(card: QuotaCard) {
   confirm.warning({
     title: t('使用重置卡', 'Use reset card'),
     content: t(
-      '将清零每日和每周已用额度，原重置时间保持不变。此卡只能使用一次。',
+      '将清零日限额和周限额已用量，原重置时间保持不变。此卡只能使用一次。',
       'Clear daily and weekly usage without changing their reset times. This card can only be used once.',
     ),
     positiveText: t('使用', 'Use'),
@@ -266,7 +270,7 @@ function useCard(card: QuotaCard) {
       busy.value = true
       try {
         await useResetCard(card.id)
-        toast.success(t('日限与周限已重置', 'Daily and weekly quotas reset'))
+        toast.success(t('日限额与周限额已重置', 'Daily and weekly limits reset'))
         await load()
         emit('changed')
       } catch (error) {
@@ -292,8 +296,8 @@ defineExpose({ refresh: load })
       <CardDescription>
         {{
           t(
-            '日额度、周额度和额度卡按最早到期顺序抵扣；永久额度卡排在最后。',
-            'Daily, weekly, and card credit are deducted by earliest expiration; permanent cards are used last.',
+            '额度卡与可用限额按最早到期顺序抵扣；限额受限时仍可使用额度卡。',
+            'Cards and available limits are used by earliest expiration. Cards remain usable when a limit is reached.',
           )
         }}
       </CardDescription>
@@ -366,7 +370,7 @@ defineExpose({ refresh: load })
             </template>
             <TableEmpty v-else-if="!cards.length" :colspan="7">
               {{
-                t('暂无额度卡', 'No cards')
+                kind === 'credit' ? t('暂无额度卡', 'No credit cards') : t('暂无重置卡', 'No reset cards')
               }}
             </TableEmpty>
             <TableRow v-for="card in cards" :key="card.id">
@@ -400,9 +404,7 @@ defineExpose({ refresh: load })
                 </Badge>
               </TableCell>
               <TableCell v-if="kind === 'credit'" class="tabular-nums">
-                <div class="flex flex-col gap-1">
-                  <span>{{ formatUsd(card.remaining_usd) }} / {{ formatUsd(card.amount_usd) }}</span><span class="text-xs text-muted-foreground">{{ t('已扣', 'Deducted') }} {{ formatUsd(card.used_usd) }}</span>
-                </div>
+                <QuotaProgress :label="t('额度卡', 'Credit card')" :remaining="card.remaining_usd" :total="card.amount_usd" :inactive="card.status === 'expired' || card.status === 'revoked'" class="min-w-40" />
               </TableCell>
               <TableCell>
                 {{
@@ -432,7 +434,7 @@ defineExpose({ refresh: load })
                     </Button>
                   </template>
                   <Button
-                    v-else-if="!admin && card.kind === 'reset' && card.status === 'active'"
+                    v-else-if="!admin && card.kind === 'reset' && card.status === 'unused'"
                     variant="outline"
                     size="sm"
                     :disabled="busy"

@@ -649,15 +649,15 @@ onMounted(() => refresh(false))
                 class="settings-section"
                 :data-disabled="settingsForm.new_user_quota_unlimited || undefined"
               >
-                <FieldLegend>{{ t('初始额度（USD）', 'Initial quotas (USD)') }}</FieldLegend>
-                <FieldDescription>{{ t('默认均为 0；每日 0 点、每周一 0 点按北京时间重置。', 'Both default to 0; resets occur at midnight daily and on Mondays, Beijing time.') }}</FieldDescription>
+                <FieldLegend>{{ t('默认限额（USD）', 'Default limits (USD)') }}</FieldLegend>
+                <FieldDescription>{{ t('默认均为 0；用量同时计入日限额和周限额。按北京时间每日 0 点、每周一 0 点重置。', 'Both default to 0 and count the same base usage. Resets occur at midnight daily and on Mondays, Beijing time.') }}</FieldDescription>
                 <FieldGroup class="form-grid">
                   <Field :data-disabled="settingsForm.new_user_quota_unlimited || undefined">
-                    <FieldLabel for="new-user-daily-quota">{{ t('每日', 'Daily') }}</FieldLabel>
+                    <FieldLabel for="new-user-daily-quota">{{ t('日限额', 'Daily limit') }}</FieldLabel>
                     <Input id="new-user-daily-quota" type="number" :model-value="settingsForm.new_user_quota_daily_usd" :min="0" step="0.01" :disabled="settingsForm.new_user_quota_unlimited" @update:model-value="updateNumericSetting('new_user_quota_daily_usd', $event)" />
                   </Field>
                   <Field :data-disabled="settingsForm.new_user_quota_unlimited || undefined">
-                    <FieldLabel for="new-user-weekly-quota">{{ t('每周', 'Weekly') }}</FieldLabel>
+                    <FieldLabel for="new-user-weekly-quota">{{ t('周限额', 'Weekly limit') }}</FieldLabel>
                     <Input id="new-user-weekly-quota" type="number" :model-value="settingsForm.new_user_quota_weekly_usd" :min="0" step="0.01" :disabled="settingsForm.new_user_quota_unlimited" @update:model-value="updateNumericSetting('new_user_quota_weekly_usd', $event)" />
                   </Field>
                 </FieldGroup>

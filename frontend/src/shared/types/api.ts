@@ -707,6 +707,8 @@ export interface UserApiKeySummary {
 export interface UserQuotaStatus {
   unlimited: boolean
   cards_remaining_usd: number
+  cards_total_usd: number
+  limits_remaining_usd: number
   available_usd: number
   daily_resets_at: string
   weekly_resets_at: string
@@ -847,7 +849,7 @@ export interface QuotaCard {
   amount_usd: number
   used_usd: number
   remaining_usd: number
-  status: 'active' | 'expired' | 'exhausted' | 'used' | 'revoked'
+  status: 'active' | 'unused' | 'expired' | 'exhausted' | 'used' | 'revoked'
   expires_at: string | null
   activated_at: string | null
   used_at: string | null
@@ -878,6 +880,7 @@ export interface QuotaCharge {
   amount_usd: number
   daily_usd: number
   weekly_usd: number
+  limit_usd: number
   cards_usd: number
   legacy_usd: number
   uncovered_usd: number

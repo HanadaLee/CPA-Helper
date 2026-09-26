@@ -23,6 +23,7 @@ import type { QuotaCharge, QuotaReset, UserQuotaStatus } from '@/shared/types/ap
 import { getCurrentUserQuota } from '@/features/users/api/usersApi'
 import { listQuotaCharges, listQuotaResets } from '../api/quotaApi'
 import QuotaCardsPanel from '../components/QuotaCardsPanel.vue'
+import QuotaProgress from '../components/QuotaProgress.vue'
 
 const { t, errorText } = useI18n()
 const quota = ref<UserQuotaStatus | null>(null)
@@ -38,29 +39,7 @@ const metrics = computed(() => [
   {
     label: t('可用余额', 'Available balance'),
     value: quota.value?.available_usd,
-    detail: t('包含每日、每周和未过期额度卡', 'Daily, weekly and unexpired card credit'),
-  },
-  {
-    label: t('每日额度', 'Daily quota'),
-    value: quota.value?.daily_remaining_usd,
-    detail: quota.value
-      ? t(
-          `已用 ${formatUsd(quota.value.daily_used_usd)} / ${formatUsd(quota.value.daily_quota_usd)}`,
-          `Used ${formatUsd(quota.value.daily_used_usd)} / ${formatUsd(quota.value.daily_quota_usd)}`,
-        )
-      : '',
-    reset: quota.value?.daily_resets_at,
-  },
-  {
-    label: t('每周额度', 'Weekly quota'),
-    value: quota.value?.weekly_remaining_usd,
-    detail: quota.value
-      ? t(
-          `已用 ${formatUsd(quota.value.weekly_used_usd)} / ${formatUsd(quota.value.weekly_quota_usd)}`,
-          `Used ${formatUsd(quota.value.weekly_used_usd)} / ${formatUsd(quota.value.weekly_quota_usd)}`,
-        )
-      : '',
-    reset: quota.value?.weekly_resets_at,
+    detail: t('当前可用限额与有效额度卡之和', 'Available base limits plus active card credit'),
   },
   {
     label: t('额度卡余额', 'Card balance'),
@@ -136,7 +115,7 @@ onMounted(load)
         }}{{ quota.sync_error }}
       </AlertDescription>
     </Alert>
-    <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <div class="grid gap-4 sm:grid-cols-2">
       <Card v-for="metric in metrics" :key="metric.label">
         <CardHeader>
           <CardDescription>{{ metric.label }}</CardDescription><CardTitle v-if="quota">
@@ -148,10 +127,31 @@ onMounted(load)
           </CardTitle><Skeleton v-else class="h-7 w-28" />
         </CardHeader>
         <CardContent class="flex flex-col gap-2 text-sm text-muted-foreground">
-          <span>{{ metric.detail }}</span><span v-if="metric.reset">{{ t('下次重置', 'Next reset') }} {{ formatDateTime(metric.reset) }}</span>
+          <span>{{ metric.detail }}</span>
         </CardContent>
       </Card>
     </div>
+    <Card data-testid="quota-limits">
+      <CardHeader>
+        <CardTitle>{{ t('限额管理', 'Limit management') }}</CardTitle>
+        <CardDescription>{{ t('用量同时计入日限额和周限额，任一耗尽即暂停使用限额；额度卡不受此限制。', 'Base usage counts toward both limits. Reaching either blocks base usage, but cards remain available.') }}</CardDescription>
+      </CardHeader>
+      <CardContent class="grid gap-6 md:grid-cols-2">
+        <template v-if="quota">
+          <QuotaProgress :label="t('日限额', 'Daily limit')" :remaining="quota.daily_remaining_usd" :total="quota.daily_quota_usd" :unlimited="quota.unlimited">
+            <span>{{ t('重置', 'Resets') }} {{ formatDateTime(quota.daily_resets_at) }}</span>
+          </QuotaProgress>
+          <QuotaProgress :label="t('周限额', 'Weekly limit')" :remaining="quota.weekly_remaining_usd" :total="quota.weekly_quota_usd" :unlimited="quota.unlimited">
+            <span>{{ t('重置', 'Resets') }} {{ formatDateTime(quota.weekly_resets_at) }}</span>
+          </QuotaProgress>
+          <p v-if="!quota.unlimited" class="text-sm text-muted-foreground md:col-span-2">
+            {{ t('当前可用限额', 'Currently available base limit') }} {{ formatUsd(quota.limits_remaining_usd) }}
+            · {{ t('取日、周剩余限额中的较小值', 'The smaller of the two remaining limits') }}
+          </p>
+        </template>
+        <template v-else><Skeleton v-for="i in 2" :key="i" class="h-20 w-full" /></template>
+      </CardContent>
+    </Card>
     <QuotaCardsPanel ref="cardsPanel" @changed="load" />
     <Card>
       <CardHeader>
@@ -174,11 +174,11 @@ onMounted(load)
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>{{ t('请求时间', 'Request time') }}</TableHead><TableHead>{{ t('费用', 'Cost') }}</TableHead><TableHead>{{ t('每日', 'Daily') }}</TableHead><TableHead>{{ t('每周', 'Weekly') }}</TableHead><TableHead>{{ t('额度卡抵扣', 'Card deductions') }}</TableHead><TableHead>{{ t('未覆盖', 'Uncovered') }}</TableHead>
+                    <TableHead>{{ t('请求时间', 'Request time') }}</TableHead><TableHead>{{ t('费用', 'Cost') }}</TableHead><TableHead>{{ t('限额抵扣', 'Base limit deduction') }}</TableHead><TableHead>{{ t('额度卡抵扣', 'Card deductions') }}</TableHead><TableHead>{{ t('未覆盖', 'Uncovered') }}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  <TableEmpty v-if="!charges.length" :colspan="6">
+                  <TableEmpty v-if="!charges.length" :colspan="5">
                     {{
                       loading ? t('加载中', 'Loading') : t('暂无扣款记录', 'No deductions')
                     }}
@@ -189,7 +189,7 @@ onMounted(load)
                           charge.unpriced ? t('未定价', 'Unpriced') : formatUsd(charge.amount_usd)
                         }}</span><span v-if="charge.legacy_usd > 0" class="text-xs text-muted-foreground">{{ t('原额度扣款', 'Legacy quota deduction') }} {{ formatUsd(charge.legacy_usd) }}</span>
                       </div>
-                    </TableCell><TableCell>{{ formatUsd(charge.daily_usd) }}</TableCell><TableCell>{{ formatUsd(charge.weekly_usd) }}</TableCell>
+                    </TableCell><TableCell>{{ formatUsd(charge.limit_usd) }}</TableCell>
                     <TableCell>
                       <div class="flex flex-col gap-1">
                         <span>{{ formatUsd(charge.cards_usd) }}</span><span
@@ -215,9 +215,9 @@ onMounted(load)
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>{{ t('时间', 'Time') }}</TableHead><TableHead>{{ t('来源', 'Source') }}</TableHead><TableHead>{{ t('恢复每日额度', 'Daily credit restored') }}</TableHead><TableHead>
+                    <TableHead>{{ t('时间', 'Time') }}</TableHead><TableHead>{{ t('来源', 'Source') }}</TableHead><TableHead>{{ t('恢复日限额', 'Daily limit restored') }}</TableHead><TableHead>
                       {{
-                        t('恢复每周额度', 'Weekly credit restored')
+                        t('恢复周限额', 'Weekly limit restored')
                       }}
                     </TableHead>
                   </TableRow>

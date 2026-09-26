@@ -55,6 +55,7 @@ type UserRecord struct {
 	QuotaSyncError         *string
 	QuotaUnpricedRecords   int
 	QuotaCardsRemainingUSD float64
+	QuotaCardsTotalUSD     float64
 }
 
 type UserAPIKey struct {
@@ -787,6 +788,9 @@ const userSelectColumns = `id, username, is_admin, nickname, CAST(disabled_at AS
 	quota_pause_reason, quota_sync_error, quota_unpriced_records,
 	(SELECT COALESCE(SUM(amount_usd - used_usd), 0) FROM quota_cards
 	 WHERE user_id = users.id AND kind = 'credit' AND revoked_at IS NULL
+	 AND activated_at IS NOT NULL AND (expires_at IS NULL OR julianday(expires_at) > julianday('now'))),
+	(SELECT COALESCE(SUM(amount_usd), 0) FROM quota_cards
+	 WHERE user_id = users.id AND kind = 'credit' AND revoked_at IS NULL
 	 AND activated_at IS NOT NULL AND (expires_at IS NULL OR julianday(expires_at) > julianday('now')))`
 
 func (a *App) allUsers(ctx context.Context) ([]UserRecord, error) {
@@ -822,7 +826,7 @@ func scanUser(scanner userScanner) (UserRecord, error) {
 		&quotaWeekly, &quotaDaily, &quotaStartedAt,
 		&user.QuotaWeek, &quotaWeekUsed,
 		&user.QuotaDay, &quotaDayUsed,
-		&quotaPausedAt, &quotaPauseReason, &quotaSyncError, &quotaUnpriced, &user.QuotaCardsRemainingUSD,
+		&quotaPausedAt, &quotaPauseReason, &quotaSyncError, &quotaUnpriced, &user.QuotaCardsRemainingUSD, &user.QuotaCardsTotalUSD,
 	)
 	if err != nil {
 		return UserRecord{}, err

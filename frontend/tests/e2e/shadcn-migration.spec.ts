@@ -462,8 +462,8 @@ test('all migrated routes render and core controls remain interactive', async ({
     has: page.getByText(/新用户默认配额|Default quotas for new users/i, { exact: true }),
   })
   await expect(newUserQuotaCard.getByText(/不限制余额|Unlimited balance/i, { exact: true })).toBeVisible()
-  await expect(newUserQuotaCard.getByLabel(/每日|Daily/i)).toHaveValue('0')
-  await expect(newUserQuotaCard.getByLabel(/每周|Weekly/i)).toHaveValue('0')
+  await expect(newUserQuotaCard.getByLabel(/日限额|Daily limit/i)).toHaveValue('0')
+  await expect(newUserQuotaCard.getByLabel(/周限额|Weekly limit/i)).toHaveValue('0')
   await expect(newUserQuotaCard.getByLabel(/每月|Monthly/i)).toHaveCount(0)
   await expect(newUserQuotaCard.getByLabel(/不限时|Lifetime/i)).toHaveCount(0)
 

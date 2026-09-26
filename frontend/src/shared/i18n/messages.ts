@@ -4,7 +4,7 @@ type MessagePair = readonly [zh: string, en: string]
 type ServerMessagePattern = readonly [RegExp, (match: RegExpMatchArray) => string]
 
 const exactServerMessages: MessagePair[] = [
-  ['配额仅支持每日和每周额度', 'Only daily and weekly quotas are supported'],
+  ['配额仅支持日限额和周限额', 'Only daily and weekly limits are supported'],
   ['不能同时指定全部用户和用户列表', 'Choose either all users or specific users'],
   ['请选择 1 至 1000 位用户', 'Select between 1 and 1000 users'],
   ['用户 ID 无效', 'Invalid user ID'],

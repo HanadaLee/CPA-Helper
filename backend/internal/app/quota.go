@@ -26,7 +26,7 @@ func decodeUserQuota(r *http.Request, payload *userQuotaPayload) error {
 	decoder := json.NewDecoder(io.LimitReader(r.Body, 4096))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(payload); err != nil {
-		return validationError("配额仅支持每日和每周额度")
+		return validationError("配额仅支持日限额和周限额")
 	}
 	return nil
 }
@@ -34,6 +34,8 @@ func decodeUserQuota(r *http.Request, payload *userQuotaPayload) error {
 type UserQuotaStatusResponse struct {
 	Unlimited          bool       `json:"unlimited"`
 	CardsRemainingUSD  float64    `json:"cards_remaining_usd"`
+	CardsTotalUSD      float64    `json:"cards_total_usd"`
+	LimitsRemainingUSD float64    `json:"limits_remaining_usd"`
 	AvailableUSD       float64    `json:"available_usd"`
 	DailyResetsAt      time.Time  `json:"daily_resets_at"`
 	WeeklyResetsAt     time.Time  `json:"weekly_resets_at"`
@@ -199,10 +201,9 @@ func (a *App) applyQuotaCharge(ctx context.Context, record UsageRecord) error {
 		remaining float64
 		deducted  float64
 	}
-	dayEnd, weekEnd := quotaPeriodEnds(now)
+	dayEnd, _ := quotaPeriodEnds(now)
 	buckets := []bucket{
-		{kind: "daily", expires: dayEnd, remaining: quotaValue(quotaDailyRemaining(user))},
-		{kind: "weekly", expires: weekEnd, remaining: quotaValue(quotaWeeklyRemaining(user))},
+		{kind: "limit", expires: dayEnd, remaining: quotaLimitsRemaining(user)},
 	}
 	for _, card := range cards {
 		if card.Status != "active" || card.Kind != "credit" {
@@ -214,12 +215,13 @@ func (a *App) applyQuotaCharge(ctx context.Context, record UsageRecord) error {
 		}
 		buckets = append(buckets, bucket{kind: "card", id: card.ID, expires: expiry, remaining: card.RemainingUSD})
 	}
-	// Stable ordering gives daily/weekly first on equal deadlines, then card ID.
+	// Daily and weekly constrain one shared bucket. Its next expiry is midnight.
+	// Equal deadlines prefer the base limit, then card ID.
 	sort.SliceStable(buckets, func(i, j int) bool { return buckets[i].expires.Before(buckets[j].expires) })
 	amount, unpriced := recordCost(record, nil)
 	amount = mathRound(amount, 8)
 	remaining := amount
-	dailyDeducted, weeklyDeducted, cardsDeducted := 0.0, 0.0, 0.0
+	limitDeducted, cardsDeducted := 0.0, 0.0
 	if !unpriced {
 		for i := range buckets {
 			b := &buckets[i]
@@ -229,10 +231,8 @@ func (a *App) applyQuotaCharge(ctx context.Context, record UsageRecord) error {
 			}
 			remaining = mathRound(remaining-b.deducted, 8)
 			switch b.kind {
-			case "daily":
-				dailyDeducted += b.deducted
-			case "weekly":
-				weeklyDeducted += b.deducted
+			case "limit":
+				limitDeducted += b.deducted
 			case "card":
 				cardsDeducted = mathRound(cardsDeducted+b.deducted, 8)
 			}
@@ -243,11 +243,11 @@ func (a *App) applyQuotaCharge(ctx context.Context, record UsageRecord) error {
 	result, err := tx.ExecContext(ctx, `
 		INSERT INTO user_quota_charges (
 			usage_record_id, usage_dedupe_key, usage_timestamp, user_id, usage_username, amount_usd,
-			daily_deducted_usd, weekly_deducted_usd, cards_deducted_usd, uncovered_usd, unpriced,
+			daily_deducted_usd, weekly_deducted_usd, limit_deducted_usd, cards_deducted_usd, uncovered_usd, unpriced,
 			quota_day, quota_week, quota_month, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?)
 	`, record.ID, record.DedupeKey, dbTime(record.Timestamp), user.ID, user.Username, amount,
-		dailyDeducted, weeklyDeducted, cardsDeducted, remaining, unpriced, user.QuotaDay, user.QuotaWeek, dbTime(now))
+		limitDeducted, limitDeducted, limitDeducted, cardsDeducted, remaining, unpriced, user.QuotaDay, user.QuotaWeek, dbTime(now))
 	if err != nil {
 		return err
 	}
@@ -269,8 +269,8 @@ func (a *App) applyQuotaCharge(ctx context.Context, record UsageRecord) error {
 	_, err = tx.ExecContext(ctx, `
 		UPDATE users SET quota_day = ?, quota_day_used_usd = ?, quota_week = ?, quota_week_used_usd = ?,
 		    quota_unpriced_records = ?, updated_at = ? WHERE id = ?
-	`, user.QuotaDay, mathRound(user.QuotaDayUsedUSD+dailyDeducted, 8),
-		user.QuotaWeek, mathRound(user.QuotaWeekUsedUSD+weeklyDeducted, 8), user.QuotaUnpricedRecords, dbTime(now), user.ID)
+	`, user.QuotaDay, mathRound(user.QuotaDayUsedUSD+limitDeducted, 8),
+		user.QuotaWeek, mathRound(user.QuotaWeekUsedUSD+limitDeducted, 8), user.QuotaUnpricedRecords, dbTime(now), user.ID)
 	if err != nil {
 		return err
 	}
@@ -420,10 +420,12 @@ func (a *App) setQuotaSyncMessage(ctx context.Context, userID int, message strin
 func quotaStatusFromUser(user UserRecord) UserQuotaStatusResponse {
 	dayEnd, weekEnd := quotaPeriodEnds(time.Now())
 	return UserQuotaStatusResponse{
-		Unlimited:         quotaIsUnlimited(user),
-		CardsRemainingUSD: mathRound(user.QuotaCardsRemainingUSD, 8),
-		AvailableUSD:      mathRound(quotaValue(quotaDailyRemaining(user))+quotaValue(quotaWeeklyRemaining(user))+user.QuotaCardsRemainingUSD, 8),
-		DailyResetsAt:     dayEnd, WeeklyResetsAt: weekEnd,
+		Unlimited:          quotaIsUnlimited(user),
+		CardsRemainingUSD:  mathRound(user.QuotaCardsRemainingUSD, 8),
+		CardsTotalUSD:      mathRound(user.QuotaCardsTotalUSD, 8),
+		LimitsRemainingUSD: quotaLimitsRemaining(user),
+		AvailableUSD:       mathRound(quotaLimitsRemaining(user)+user.QuotaCardsRemainingUSD, 8),
+		DailyResetsAt:      dayEnd, WeeklyResetsAt: weekEnd,
 		WeeklyQuotaUSD: user.QuotaWeeklyUSD, WeeklyUsedUSD: mathRound(user.QuotaWeekUsedUSD, 8),
 		WeeklyRemainingUSD: quotaWeeklyRemaining(user), QuotaWeek: user.QuotaWeek,
 		DailyQuotaUSD: user.QuotaDailyUSD, DailyUsedUSD: mathRound(user.QuotaDayUsedUSD, 8),
@@ -441,8 +443,11 @@ func quotaIsUnlimited(user UserRecord) bool {
 }
 
 func quotaHasAvailable(user UserRecord) bool {
-	return quotaIsUnlimited(user) || quotaValue(quotaDailyRemaining(user)) > 0 ||
-		quotaValue(quotaWeeklyRemaining(user)) > 0 || user.QuotaCardsRemainingUSD > 0
+	return quotaIsUnlimited(user) || quotaLimitsRemaining(user) > 0 || user.QuotaCardsRemainingUSD > 0
+}
+
+func quotaLimitsRemaining(user UserRecord) float64 {
+	return minQuotaAmount(quotaValue(quotaDailyRemaining(user)), quotaValue(quotaWeeklyRemaining(user)))
 }
 
 func quotaDailyRemaining(user UserRecord) *float64 {
