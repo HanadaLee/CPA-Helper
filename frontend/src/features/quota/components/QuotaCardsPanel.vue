@@ -4,7 +4,7 @@ import { toast } from 'vue-sonner'
 import { Pencil, Plus, RefreshCw, RotateCcw, Ban } from '@lucide/vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
@@ -293,14 +293,6 @@ defineExpose({ refresh: load })
           admin ? t('配额卡管理', 'Quota cards') : t('额度管理', 'Quota management')
         }}
       </CardTitle>
-      <CardDescription>
-        {{
-          t(
-            '额度卡与可用限额按最早到期顺序抵扣；限额受限时仍可使用额度卡。',
-            'Cards and available limits are used by earliest expiration. Cards remain usable when a limit is reached.',
-          )
-        }}
-      </CardDescription>
     </CardHeader>
     <CardContent class="flex min-w-0 flex-col gap-4">
       <div class="flex flex-wrap items-center gap-2">

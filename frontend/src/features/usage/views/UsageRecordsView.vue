@@ -770,6 +770,10 @@ function uncachedInputTokens(row: UsageRecordListItem): number {
   return Math.max(0, row.input_tokens - row.cached_tokens)
 }
 
+function formatRecordCost(record: UsageRecordListItem): string {
+  return record.unpriced ? t('未定价', 'Unpriced') : formatUsd(record.estimated_cost_usd)
+}
+
 const detailRows = computed(() => {
   const record = selectedRecord.value
   if (!record) {
@@ -793,7 +797,7 @@ const detailRows = computed(() => {
     { label: t('输出 Token', 'Output tokens'), value: formatOutputWithTps(record) },
     { label: t('思考 Token', 'Reasoning tokens'), value: formatInteger(record.reasoning_tokens) },
     { label: t('总 Token', 'Total tokens'), value: formatInteger(record.total_tokens) },
-    { label: t('费用', 'Cost'), value: formatUsd(record.estimated_cost_usd) },
+    { label: t('费用', 'Cost'), value: formatRecordCost(record) },
   ]
   if (!isAccountScope.value) {
     rows.splice(
@@ -919,7 +923,7 @@ onBeforeUnmount(() => {
               <TableHead class="w-[124px] text-right">{{ t('输出', 'Output') }}</TableHead>
               <TableHead class="w-[106px] text-right">{{ t('缓存', 'Cache') }}</TableHead>
               <TableHead class="w-[108px] text-right">{{ t('总 Token', 'Total tokens') }}</TableHead>
-              <TableHead class="w-[100px]">{{ t('服务商', 'Provider') }}</TableHead>
+              <TableHead class="w-[100px] text-right">{{ t('费用', 'Cost') }}</TableHead>
               <TableHead class="w-[122px]">{{ t('请求 ID', 'Request ID') }}</TableHead>
               <TableHead class="w-[72px]"><span class="sr-only">{{ t('操作', 'Actions') }}</span></TableHead>
             </TableRow>
@@ -972,8 +976,8 @@ onBeforeUnmount(() => {
               </TableCell>
               <TableCell class="text-right tabular-nums">{{ formatCacheTokens(record) }}</TableCell>
               <TableCell class="text-right tabular-nums">{{ formatInteger(record.total_tokens) }}</TableCell>
-              <TableCell>
-                <span class="block truncate" :title="textOrDash(record.provider)">{{ textOrDash(record.provider) }}</span>
+              <TableCell class="text-right tabular-nums">
+                <span class="block truncate" :title="formatRecordCost(record)">{{ formatRecordCost(record) }}</span>
               </TableCell>
               <TableCell class="font-mono text-xs">
                 <span class="block truncate" :title="textOrDash(record.request_id)">{{ textOrDash(record.request_id) }}</span>

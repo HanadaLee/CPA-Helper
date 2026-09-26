@@ -91,10 +91,20 @@ test('my quota exposes card credit and single-use reset cards without admin oper
     ).ok(),
   ).toBeTruthy()
   await login(page, user.username, 'member-password')
+  const chargeHistoryRequests: string[] = []
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname === '/api/account/quota/history') {
+      chargeHistoryRequests.push(request.url())
+    }
+  })
   await page.goto('/account/quota')
   await expect(page.getByRole('heading', { name: '我的配额', exact: true })).toBeVisible()
   await expect(page.getByText('额度管理', { exact: true })).toBeVisible()
   await expect(page.getByText('我的卡片', { exact: true })).toHaveCount(0)
+  await expect(page.getByText(/用量同时计入日限额和周限额|取日、周剩余限额中的较小值|额度卡与可用限额按最早到期顺序抵扣|每日 0 点、每周一 0 点按北京时间重置/)).toHaveCount(0)
+  await expect(page.getByRole('tab', { name: '扣款记录', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('columnheader', { name: '未覆盖', exact: true })).toHaveCount(0)
+  await expect(page.getByText('重置记录', { exact: true })).toBeVisible()
   await expect(page.getByText('$22.00', { exact: true })).toBeVisible()
   await expect(page.getByTestId('quota-limits').getByRole('progressbar')).toHaveCount(2)
   await expect(page.getByTestId('quota-limits').getByRole('progressbar', { name: '日限额', exact: true })).toHaveAttribute('aria-valuenow', '100')
@@ -114,8 +124,8 @@ test('my quota exposes card credit and single-use reset cards without admin oper
   expect(after.daily_resets_at).toBe(before.daily_resets_at)
   expect(after.weekly_resets_at).toBe(before.weekly_resets_at)
   expect(after.cards_remaining_usd).toBe(20)
-  await page.getByRole('tab', { name: '重置记录', exact: true }).click()
   await expect(page.getByText(/重置卡 #/)).toBeVisible()
+  expect(chargeHistoryRequests).toHaveLength(0)
   await page.screenshot({ path: 'test-results/quota-account.png', fullPage: true })
   await page.setViewportSize({ width: 390, height: 844 })
   await expect(page.getByRole('heading', { name: '我的配额', exact: true })).toBeVisible()

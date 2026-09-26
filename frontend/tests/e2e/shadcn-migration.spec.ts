@@ -900,7 +900,9 @@ test('all migrated routes render and core controls remain interactive', async ({
   await expect(page.getByRole('columnheader', { name: /^(来源|Source)$/ })).toHaveCount(0)
   await expect(page.getByRole('columnheader', { name: /^(思考|Reasoning)$/ })).toHaveCount(0)
   await expect(page.getByRole('columnheader', { name: /^(接口|Endpoint)$/ })).toHaveCount(0)
-  await expect(page.getByRole('columnheader', { name: /^(费用|Cost)$/ })).toHaveCount(0)
+  await expect(page.getByRole('columnheader', { name: /^(费用|Cost)$/ })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: /^(服务商|Provider)$/ })).toHaveCount(0)
+  await expect(page.getByRole('cell', { name: '$0.012', exact: true })).toBeVisible()
   await expect(page.getByRole('columnheader', { name: /^(KEY 描述|Key description)$/ })).toHaveCount(0)
   await expect(page.locator('.records-table')).toHaveCSS('border-top-left-radius', /[1-9]/)
   await expectTableInsidePanel(page, '.records-table', '.records-table-panel')
@@ -917,6 +919,7 @@ test('all migrated routes render and core controls remain interactive', async ({
   await expect(requestDetailSheet.locator('.mono-json')).toHaveCSS('overflow-x', 'auto')
   await expect(requestDetailSheet).toContainText(/API KEY 描述|API key description/)
   await expect(requestDetailSheet).toContainText('E2E key')
+  await expect(requestDetailSheet).toContainText('openai')
   await requestDetailSheet.getByRole('button', { name: /Close/ }).click()
 
   await page.goto('/account/records')
@@ -925,6 +928,20 @@ test('all migrated routes render and core controls remain interactive', async ({
   const accountTimeHeaderBox = await page.getByRole('columnheader', { name: /^(时间|Time)$/ }).boundingBox()
   expect(accountTimeHeaderBox?.width ?? 0).toBeGreaterThanOrEqual(160)
   await expect(page.getByRole('columnheader', { name: /^(用户昵称|User nickname)$/ })).toHaveCount(0)
+  await expect(page.getByRole('columnheader', { name: /^(费用|Cost)$/ })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: /^(服务商|Provider)$/ })).toHaveCount(0)
+  await expect(page.getByRole('cell', { name: '$0.012', exact: true })).toBeVisible()
+  await page.getByRole('cell', { name: '$0.012', exact: true }).scrollIntoViewIfNeeded()
+  await page.screenshot({ path: 'test-results/account-records-cost.png', fullPage: true })
+
+  usageRecordFixture.estimated_cost_usd = 0
+  for (const unpriced of [true, false]) {
+    usageRecordFixture.unpriced = unpriced
+    for (const path of ['/admin/records', '/account/records']) {
+      await page.goto(path)
+      await expect(page.getByRole('cell', { name: unpriced ? /^(未定价|Unpriced)$/ : '$0.00', exact: true })).toBeVisible()
+    }
+  }
 
   await page.goto('/admin/settings')
   const brandingSection = page.locator('.settings-section').filter({ hasText: /界面品牌|Interface branding/ })

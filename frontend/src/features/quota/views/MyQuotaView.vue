@@ -6,7 +6,6 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import {
   Table,
   TableHeader,
@@ -19,9 +18,9 @@ import {
 import TablePaginationFooter from '@/shared/ui/TablePaginationFooter.vue'
 import { useI18n } from '@/shared/i18n'
 import { formatDateTime, formatUsd } from '@/shared/utils/format'
-import type { QuotaCharge, QuotaReset, UserQuotaStatus } from '@/shared/types/api'
+import type { QuotaReset, UserQuotaStatus } from '@/shared/types/api'
 import { getCurrentUserQuota } from '@/features/users/api/usersApi'
-import { listQuotaCharges, listQuotaResets } from '../api/quotaApi'
+import { listQuotaResets } from '../api/quotaApi'
 import QuotaCardsPanel from '../components/QuotaCardsPanel.vue'
 import QuotaProgress from '../components/QuotaProgress.vue'
 
@@ -29,11 +28,8 @@ const { t, errorText } = useI18n()
 const quota = ref<UserQuotaStatus | null>(null)
 const loading = ref(true)
 const cardsPanel = ref<InstanceType<typeof QuotaCardsPanel> | null>(null)
-const charges = ref<QuotaCharge[]>([])
 const resets = ref<QuotaReset[]>([])
-const chargePage = ref(1)
 const resetPage = ref(1)
-const chargeTotal = ref(0)
 const resetTotal = ref(0)
 const metrics = computed(() => [
   {
@@ -49,11 +45,6 @@ const metrics = computed(() => [
   },
 ])
 
-async function loadCharges() {
-  const result = await listQuotaCharges(chargePage.value)
-  charges.value = result.items
-  chargeTotal.value = result.total
-}
 async function loadResets() {
   const result = await listQuotaResets(resetPage.value)
   resets.value = result.items
@@ -66,7 +57,6 @@ async function load() {
       getCurrentUserQuota().then((value) => {
         quota.value = value
       }),
-      loadCharges(),
       loadResets(),
     ])
   } catch (error) {
@@ -78,11 +68,6 @@ async function load() {
 async function refresh() {
   await Promise.all([load(), cardsPanel.value?.refresh()])
 }
-watch(chargePage, () => {
-  void loadCharges().catch((error) =>
-    toast.error(errorText(error, '加载扣款记录失败', 'Failed to load deductions')),
-  )
-})
 watch(resetPage, () => {
   void loadResets().catch((error) =>
     toast.error(errorText(error, '加载重置记录失败', 'Failed to load resets')),
@@ -134,7 +119,6 @@ onMounted(load)
     <Card data-testid="quota-limits">
       <CardHeader>
         <CardTitle>{{ t('限额管理', 'Limit management') }}</CardTitle>
-        <CardDescription>{{ t('用量同时计入日限额和周限额，任一耗尽即暂停使用限额；额度卡不受此限制。', 'Base usage counts toward both limits. Reaching either blocks base usage, but cards remain available.') }}</CardDescription>
       </CardHeader>
       <CardContent class="grid gap-6 md:grid-cols-2">
         <template v-if="quota">
@@ -144,10 +128,6 @@ onMounted(load)
           <QuotaProgress :label="t('周限额', 'Weekly limit')" :remaining="quota.weekly_remaining_usd" :total="quota.weekly_quota_usd" :unlimited="quota.unlimited">
             <span>{{ t('重置', 'Resets') }} {{ formatDateTime(quota.weekly_resets_at) }}</span>
           </QuotaProgress>
-          <p v-if="!quota.unlimited" class="text-sm text-muted-foreground md:col-span-2">
-            {{ t('当前可用限额', 'Currently available base limit') }} {{ formatUsd(quota.limits_remaining_usd) }}
-            · {{ t('取日、周剩余限额中的较小值', 'The smaller of the two remaining limits') }}
-          </p>
         </template>
         <template v-else><Skeleton v-for="i in 2" :key="i" class="h-20 w-full" /></template>
       </CardContent>
@@ -155,96 +135,40 @@ onMounted(load)
     <QuotaCardsPanel ref="cardsPanel" @changed="load" />
     <Card>
       <CardHeader>
-        <CardTitle>{{ t('配额记录', 'Quota history') }}</CardTitle><CardDescription>
-          {{
-            t(
-              '每日 0 点、每周一 0 点按北京时间重置。使用重置卡不会延后这些时间。',
-              'Resets occur at midnight daily and on Mondays, Beijing time. Reset cards do not postpone these times.',
-            )
-          }}
-        </CardDescription>
+        <CardTitle>{{ t('重置记录', 'Reset history') }}</CardTitle>
       </CardHeader>
       <CardContent>
-        <Tabs default-value="charges" class="flex flex-col gap-4">
-          <TabsList class="self-start">
-            <TabsTrigger value="charges">{{ t('扣款记录', 'Deductions') }}</TabsTrigger><TabsTrigger value="resets">{{ t('重置记录', 'Resets') }}</TabsTrigger>
-          </TabsList>
-          <TabsContent value="charges">
-            <div class="overflow-hidden rounded-lg border border-border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>{{ t('请求时间', 'Request time') }}</TableHead><TableHead>{{ t('费用', 'Cost') }}</TableHead><TableHead>{{ t('限额抵扣', 'Base limit deduction') }}</TableHead><TableHead>{{ t('额度卡抵扣', 'Card deductions') }}</TableHead><TableHead>{{ t('未覆盖', 'Uncovered') }}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  <TableEmpty v-if="!charges.length" :colspan="5">
-                    {{
-                      loading ? t('加载中', 'Loading') : t('暂无扣款记录', 'No deductions')
-                    }}
-                  </TableEmpty><TableRow v-for="charge in charges" :key="charge.id">
-                    <TableCell>{{ formatDateTime(charge.timestamp) }}</TableCell><TableCell>
-                      <div class="flex flex-col gap-1">
-                        <span>{{
-                          charge.unpriced ? t('未定价', 'Unpriced') : formatUsd(charge.amount_usd)
-                        }}</span><span v-if="charge.legacy_usd > 0" class="text-xs text-muted-foreground">{{ t('原额度扣款', 'Legacy quota deduction') }} {{ formatUsd(charge.legacy_usd) }}</span>
-                      </div>
-                    </TableCell><TableCell>{{ formatUsd(charge.limit_usd) }}</TableCell>
-                    <TableCell>
-                      <div class="flex flex-col gap-1">
-                        <span>{{ formatUsd(charge.cards_usd) }}</span><span
-                          v-for="card in charge.cards"
-                          :key="card.card_id"
-                          class="text-xs text-muted-foreground"
-                        >{{ card.name || t('额度卡', 'Credit card') }} #{{ card.card_id }} ·
-                          {{ formatUsd(card.amount_usd) }}</span>
-                      </div>
-                    </TableCell><TableCell>{{ formatUsd(charge.uncovered_usd) }}</TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table><TablePaginationFooter
-                v-model:page="chargePage"
-                :page-size="20"
-                :page-size-options="[20]"
-                :total="chargeTotal"
-              />
-            </div>
-          </TabsContent>
-          <TabsContent value="resets">
-            <div class="overflow-hidden rounded-lg border border-border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>{{ t('时间', 'Time') }}</TableHead><TableHead>{{ t('来源', 'Source') }}</TableHead><TableHead>{{ t('恢复日限额', 'Daily limit restored') }}</TableHead><TableHead>
-                      {{
-                        t('恢复周限额', 'Weekly limit restored')
-                      }}
-                    </TableHead>
-                  </TableRow>
-                </TableHeader><TableBody>
-                  <TableEmpty v-if="!resets.length" :colspan="4">
-                    {{
-                      t('暂无重置记录', 'No resets')
-                    }}
-                  </TableEmpty><TableRow v-for="reset in resets" :key="reset.id">
-                    <TableCell>{{ formatDateTime(reset.created_at) }}</TableCell><TableCell>
-                      {{
-                        reset.card_id
-                          ? t(`重置卡 #${reset.card_id}`, `Reset card #${reset.card_id}`)
-                          : t('管理员重置', 'Administrator reset')
-                      }}
-                    </TableCell><TableCell>{{ formatUsd(reset.daily_used_usd) }}</TableCell><TableCell>{{ formatUsd(reset.weekly_used_usd) }}</TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table><TablePaginationFooter
-                v-model:page="resetPage"
-                :page-size="20"
-                :page-size-options="[20]"
-                :total="resetTotal"
-              />
-            </div>
-          </TabsContent>
-        </Tabs>
+        <div class="overflow-hidden rounded-lg border border-border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{{ t('时间', 'Time') }}</TableHead>
+                <TableHead>{{ t('来源', 'Source') }}</TableHead>
+                <TableHead>{{ t('恢复日限额', 'Daily limit restored') }}</TableHead>
+                <TableHead>{{ t('恢复周限额', 'Weekly limit restored') }}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableEmpty v-if="!resets.length" :colspan="4">
+                {{ loading ? t('加载中', 'Loading') : t('暂无重置记录', 'No resets') }}
+              </TableEmpty>
+              <TableRow v-for="reset in resets" :key="reset.id">
+                <TableCell>{{ formatDateTime(reset.created_at) }}</TableCell>
+                <TableCell>
+                  {{ reset.card_id ? t(`重置卡 #${reset.card_id}`, `Reset card #${reset.card_id}`) : t('管理员重置', 'Administrator reset') }}
+                </TableCell>
+                <TableCell>{{ formatUsd(reset.daily_used_usd) }}</TableCell>
+                <TableCell>{{ formatUsd(reset.weekly_used_usd) }}</TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+          <TablePaginationFooter
+            v-model:page="resetPage"
+            :page-size="20"
+            :page-size-options="[20]"
+            :total="resetTotal"
+          />
+        </div>
       </CardContent>
     </Card>
   </section>
