@@ -462,8 +462,8 @@ test('all migrated routes render and core controls remain interactive', async ({
     has: page.getByText(/新用户默认配额|Default quotas for new users/i, { exact: true }),
   })
   await expect(newUserQuotaCard.getByText(/不限制余额|Unlimited balance/i, { exact: true })).toBeVisible()
-  await expect(newUserQuotaCard.getByLabel(/日限额|Daily limit/i)).toHaveValue('0')
-  await expect(newUserQuotaCard.getByLabel(/周限额|Weekly limit/i)).toHaveValue('0')
+  await expect(newUserQuotaCard.getByLabel(/日配额|Daily quota/i)).toHaveValue('0')
+  await expect(newUserQuotaCard.getByLabel(/周配额|Weekly quota/i)).toHaveValue('0')
   await expect(newUserQuotaCard.getByLabel(/每月|Monthly/i)).toHaveCount(0)
   await expect(newUserQuotaCard.getByLabel(/不限时|Lifetime/i)).toHaveCount(0)
 
@@ -625,7 +625,7 @@ test('all migrated routes render and core controls remain interactive', async ({
   await expect(codexCredentialRow.getByText('Codex', { exact: true })).toBeVisible()
   await expect(codexCredentialRow.getByText(/启用中|Enabled/, { exact: true })).toBeVisible()
   await expect(codexCredentialRow.getByText(/额度耗尽|Quota Exhausted/, { exact: true })).toBeVisible()
-  await expect(codexCredentialRow.getByText(/周限额|Weekly Limit/, { exact: true })).toBeVisible()
+  await expect(codexCredentialRow.getByText(/周配额|Weekly Quota/, { exact: true })).toBeVisible()
   await expect(codexCredentialRow.getByText('OAuth', { exact: true })).toBeVisible()
   await expect(codexCredentialRow.getByText(/不可用|Unavailable/, { exact: true })).toHaveCount(0)
   await expect(codexCredentialRow.getByText('error', { exact: true })).toHaveCount(0)

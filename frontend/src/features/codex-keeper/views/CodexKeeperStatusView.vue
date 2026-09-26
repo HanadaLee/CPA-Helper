@@ -1019,7 +1019,7 @@ function hasSingleProWeeklyQuotaWindow(account: CodexKeeperAccount): boolean {
 
 function quotaWindowLabels(account: CodexKeeperAccount): { primary: string; secondary: string } {
   if (isFreeQuotaWindow(account)) {
-    return { primary: t('月限额', 'Monthly Limit'), secondary: t('次限额', 'Secondary Limit') }
+    return { primary: t('月配额', 'Monthly Quota'), secondary: t('次配额', 'Secondary Quota') }
   }
   if (isPaidQuotaWindow(account)) {
     // The upstream usage payload decides the real window length; the plan
@@ -1030,9 +1030,9 @@ function quotaWindowLabels(account: CodexKeeperAccount): { primary: string; seco
     const secondaryLabel = quotaWindowLabelForSeconds(quotaWindowSecondsFor(account, 'secondary'))
     return {
       primary: primaryLabel ?? (hasSingleProWeeklyQuotaWindow(account)
-        ? t('周限额', 'Weekly Limit')
-        : t('5小时限额', '5-Hour Limit')),
-      secondary: secondaryLabel ?? t('周限额', 'Weekly Limit'),
+        ? t('周配额', 'Weekly Quota')
+        : t('5小时配额', '5-Hour Quota')),
+      secondary: secondaryLabel ?? t('周配额', 'Weekly Quota'),
     }
   }
   return { primary: t('主', 'Primary'), secondary: t('次', 'Secondary') }
@@ -1040,13 +1040,13 @@ function quotaWindowLabels(account: CodexKeeperAccount): { primary: string; seco
 
 function quotaWindowLabelForSeconds(seconds: number | null): string | null {
   if (seconds === CODEX_FIVE_HOUR_WINDOW_SECONDS) {
-    return t('5小时限额', '5-Hour Limit')
+    return t('5小时配额', '5-Hour Quota')
   }
   if (seconds === CODEX_WEEK_WINDOW_SECONDS) {
-    return t('周限额', 'Weekly Limit')
+    return t('周配额', 'Weekly Quota')
   }
   if (seconds === CODEX_MONTH_WINDOW_SECONDS) {
-    return t('月限额', 'Monthly Limit')
+    return t('月配额', 'Monthly Quota')
   }
   return null
 }
@@ -1176,7 +1176,7 @@ function quotaWindowPredictionTitle(item: QuotaWindowItem): string {
   }
   const projectedCost = quotaWindowProjectedCost(item)
   if (projectedCost === null) {
-    return t(`${item.label} 已用限额为 0%，暂无窗口预测`, `${item.label} usage is 0%; no projection yet`)
+    return t(`${item.label} 已用配额为 0%，暂无窗口预测`, `${item.label} usage is 0%; no projection yet`)
   }
   const currentCost = item.usage?.estimated_cost_usd ?? 0
   return t(

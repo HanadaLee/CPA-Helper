@@ -71,6 +71,44 @@ test('administrator issues, edits and revokes cards in bulk and resets quotas', 
   await page.screenshot({ path: 'test-results/quota-admin.png', fullPage: true })
 })
 
+test('card revocation confirmation stays above the user management dialog', async ({ page }) => {
+  await login(page)
+  const user = await member(page, 'nested-dialog')
+  for (const kind of ['reset', 'credit']) {
+    const issued = await page.request.post('/api/quota/cards/issue', {
+      data: { user_ids: [user.id], kind, name: `Nested ${kind}`, amount_usd: 10 },
+    })
+    expect(issued.ok()).toBeTruthy()
+  }
+  const cards = (await (await page.request.get(`/api/quota/cards?user_id=${user.id}`)).json()).items as Array<{ id: number; kind: string; status: string }>
+  await page.goto('/admin/users')
+  await page.getByRole('button', { name: `管理 ${user.username} 的额度卡`, exact: true }).click()
+  const manager = page.getByRole('dialog', { name: '配额卡管理', exact: true })
+  for (const kind of ['reset', 'credit']) {
+    const card = cards.find((item) => item.kind === kind)!
+    await manager.getByRole('tab', { name: kind === 'reset' ? '重置卡' : '额度卡', exact: true }).click()
+    await manager.getByRole('button', { name: `吊销卡片 ${card.id}`, exact: true }).click()
+    const confirmation = page.getByRole('alertdialog', { name: '吊销卡片', exact: true })
+    const revokeButton = confirmation.getByRole('button', { name: '吊销', exact: true })
+    await expect(revokeButton).toBeVisible()
+    await expect.poll(() => revokeButton.evaluate((element) => {
+      const box = element.getBoundingClientRect()
+      return element.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2))
+    })).toBe(true)
+    await page.screenshot({ path: `test-results/quota-revoke-${kind}.png`, fullPage: true })
+    await confirmation.getByRole('button', { name: '取消', exact: true }).click()
+    await expect(confirmation).toHaveCount(0)
+    await expect(manager).toBeVisible()
+    await manager.getByRole('button', { name: `吊销卡片 ${card.id}`, exact: true }).click()
+    await revokeButton.click()
+    await expect(manager.getByText('已失效', { exact: true })).toBeVisible()
+    const updated = (await (await page.request.get(`/api/quota/cards?user_id=${user.id}`)).json()).items as typeof cards
+    expect(updated.find((item) => item.id === card.id)?.status).toBe('revoked')
+  }
+  await manager.getByRole('button', { name: 'Close', exact: true }).click()
+  await expect(manager).toHaveCount(0)
+})
+
 test('my quota exposes card credit and single-use reset cards without admin operations', async ({
   page,
 }) => {
@@ -101,30 +139,37 @@ test('my quota exposes card credit and single-use reset cards without admin oper
   await expect(page.getByRole('heading', { name: '我的配额', exact: true })).toBeVisible()
   await expect(page.getByText('额度管理', { exact: true })).toBeVisible()
   await expect(page.getByText('我的卡片', { exact: true })).toHaveCount(0)
-  await expect(page.getByText(/用量同时计入日限额和周限额|取日、周剩余限额中的较小值|额度卡与可用限额按最早到期顺序抵扣|每日 0 点、每周一 0 点按北京时间重置/)).toHaveCount(0)
+  await expect(page.getByText(/用量同时计入日配额和周配额|取日、周剩余配额中的较小值|额度卡与可用配额按最早到期顺序抵扣|每日 0 点、每周一 0 点按北京时间重置/)).toHaveCount(0)
   await expect(page.getByRole('tab', { name: '扣款记录', exact: true })).toHaveCount(0)
   await expect(page.getByRole('columnheader', { name: '未覆盖', exact: true })).toHaveCount(0)
-  await expect(page.getByText('重置记录', { exact: true })).toBeVisible()
+  const limitsPanel = page.getByTestId('quota-limits')
+  const resetHeading = limitsPanel.getByRole('heading', { name: '重置记录', exact: true })
+  await expect(resetHeading).toBeVisible()
+  expect(await resetHeading.evaluate((element) => element.closest('[data-slot="card"]')?.getAttribute('data-testid'))).toBe('quota-limits')
+  await expect(limitsPanel.getByRole('columnheader', { name: '恢复日配额', exact: true })).toBeVisible()
+  await expect(limitsPanel.locator('[data-slot="table-pagination-footer"]')).toBeVisible()
   await expect(page.getByText('$22.00', { exact: true })).toBeVisible()
   await expect(page.getByTestId('quota-limits').getByRole('progressbar')).toHaveCount(2)
-  await expect(page.getByTestId('quota-limits').getByRole('progressbar', { name: '日限额', exact: true })).toHaveAttribute('aria-valuenow', '100')
+  await expect(page.getByTestId('quota-limits').getByRole('progressbar', { name: '日配额', exact: true })).toHaveAttribute('aria-valuenow', '100')
   await expect(page.getByText(/Personal credit #/)).toBeVisible()
   await expect(page.getByRole('progressbar', { name: '额度卡', exact: true })).toHaveAttribute('aria-valuenow', '100')
   await expect(page.getByText('生效中', { exact: true })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: '操作', exact: true })).toHaveCount(0)
   await expect(page.getByRole('button', { name: '发放卡片', exact: true })).toHaveCount(0)
   const before = await (await page.request.get('/api/account/quota')).json()
   await page.getByRole('tab', { name: '重置卡', exact: true }).click()
+  await expect(page.getByRole('columnheader', { name: '操作', exact: true })).toBeVisible()
   await expect(page.getByText('未使用', { exact: true })).toBeVisible()
   await expect(page.getByText('生效中', { exact: true })).toHaveCount(0)
   await page.getByRole('button', { name: '使用', exact: true }).click()
   await page.getByRole('alertdialog').getByRole('button', { name: '使用', exact: true }).click()
-  await expect(page.getByText('日限额与周限额已重置', { exact: true })).toBeVisible()
+  await expect(page.getByText('日配额与周配额已重置', { exact: true })).toBeVisible()
   await expect(page.getByText('已使用', { exact: true })).toBeVisible()
   const after = await (await page.request.get('/api/account/quota')).json()
   expect(after.daily_resets_at).toBe(before.daily_resets_at)
   expect(after.weekly_resets_at).toBe(before.weekly_resets_at)
   expect(after.cards_remaining_usd).toBe(20)
-  await expect(page.getByText(/重置卡 #/)).toBeVisible()
+  await expect(limitsPanel.getByText(/重置卡 #/)).toBeVisible()
   expect(chargeHistoryRequests).toHaveLength(0)
   await page.screenshot({ path: 'test-results/quota-account.png', fullPage: true })
   await page.setViewportSize({ width: 390, height: 844 })

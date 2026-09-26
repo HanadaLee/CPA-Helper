@@ -831,12 +831,12 @@ function quotaStatusTitle(quota: UserQuotaStatus | null): string {
   }
   const balancesText = quota.unlimited
     ? t(
-        '日限额 无限制 / 周限额 无限制',
-        'Daily limit unlimited / Weekly limit unlimited',
+        '日配额 无限制 / 周配额 无限制',
+        'Daily quota unlimited / Weekly quota unlimited',
       )
     : t(
-        `日限额剩余 ${formatUsd(quota.daily_remaining_usd ?? 0)} / 周限额剩余 ${formatUsd(quota.weekly_remaining_usd ?? 0)} / 额度卡 ${formatUsd(quota.cards_remaining_usd ?? 0)}`,
-        `Daily limit remaining ${formatUsd(quota.daily_remaining_usd ?? 0)} / Weekly limit remaining ${formatUsd(quota.weekly_remaining_usd ?? 0)} / Cards ${formatUsd(quota.cards_remaining_usd ?? 0)}`,
+        `日配额剩余 ${formatUsd(quota.daily_remaining_usd ?? 0)} / 周配额剩余 ${formatUsd(quota.weekly_remaining_usd ?? 0)} / 额度卡 ${formatUsd(quota.cards_remaining_usd ?? 0)}`,
+        `Daily quota remaining ${formatUsd(quota.daily_remaining_usd ?? 0)} / Weekly quota remaining ${formatUsd(quota.weekly_remaining_usd ?? 0)} / Cards ${formatUsd(quota.cards_remaining_usd ?? 0)}`,
       )
   const notes: string[] = []
   if (quota.sync_error) {

@@ -68,6 +68,9 @@ const page = ref(1)
 const loading = ref(true)
 const busy = ref(false)
 const kind = ref('credit')
+const showActions = computed(() => props.admin || kind.value === 'reset')
+const tableColumnCount = computed(() => 3 + Number(props.admin) + Number(props.admin && !props.userId)
+  + Number(kind.value === 'credit') + Number(showActions.value))
 const statusFilter = ref<string | number | null>(null)
 const statusOptions = computed(() => [
   kind.value === 'credit'
@@ -262,7 +265,7 @@ function useCard(card: QuotaCard) {
   confirm.warning({
     title: t('使用重置卡', 'Use reset card'),
     content: t(
-      '将清零日限额和周限额已用量，原重置时间保持不变。此卡只能使用一次。',
+      '将清零日配额和周配额已用量，原重置时间保持不变。此卡只能使用一次。',
       'Clear daily and weekly usage without changing their reset times. This card can only be used once.',
     ),
     positiveText: t('使用', 'Use'),
@@ -270,7 +273,7 @@ function useCard(card: QuotaCard) {
       busy.value = true
       try {
         await useResetCard(card.id)
-        toast.success(t('日限额与周限额已重置', 'Daily and weekly limits reset'))
+        toast.success(t('日配额与周配额已重置', 'Daily and weekly quotas reset'))
         await load()
         emit('changed')
       } catch (error) {
@@ -290,7 +293,7 @@ defineExpose({ refresh: load })
     <CardHeader>
       <CardTitle>
         {{
-          admin ? t('配额卡管理', 'Quota cards') : t('额度管理', 'Quota management')
+          admin ? t('配额卡管理', 'Quota cards') : t('额度管理', 'Credit management')
         }}
       </CardTitle>
     </CardHeader>
@@ -351,16 +354,16 @@ defineExpose({ refresh: load })
                 }}
               </TableHead>
               <TableHead>{{ t('有效期至', 'Expires at') }}</TableHead>
-              <TableHead class="text-right">{{ t('操作', 'Actions') }}</TableHead>
+              <TableHead v-if="showActions" class="text-right">{{ t('操作', 'Actions') }}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             <template v-if="loading && !cards.length">
               <TableRow v-for="i in 4" :key="i">
-                <TableCell :colspan="7"><Skeleton class="h-8 w-full" /></TableCell>
+                <TableCell :colspan="tableColumnCount"><Skeleton class="h-8 w-full" /></TableCell>
               </TableRow>
             </template>
-            <TableEmpty v-else-if="!cards.length" :colspan="7">
+            <TableEmpty v-else-if="!cards.length" :colspan="tableColumnCount">
               {{
                 kind === 'credit' ? t('暂无额度卡', 'No credit cards') : t('暂无重置卡', 'No reset cards')
               }}
@@ -403,7 +406,7 @@ defineExpose({ refresh: load })
                   card.expires_at ? formatDateTime(card.expires_at) : t('永久有效', 'Never expires')
                 }}
               </TableCell>
-              <TableCell class="text-right">
+              <TableCell v-if="showActions" class="text-right">
                 <div class="flex justify-end gap-1">
                   <template v-if="admin && card.status !== 'revoked' && card.status !== 'used'">
                     <Button

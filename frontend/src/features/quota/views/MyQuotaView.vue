@@ -35,7 +35,7 @@ const metrics = computed(() => [
   {
     label: t('可用余额', 'Available balance'),
     value: quota.value?.available_usd,
-    detail: t('当前可用限额与有效额度卡之和', 'Available base limits plus active card credit'),
+    detail: t('当前可用配额与有效额度卡之和', 'Available base quota plus active card credit'),
   },
   {
     label: t('额度卡余额', 'Card balance'),
@@ -118,58 +118,54 @@ onMounted(load)
     </div>
     <Card data-testid="quota-limits">
       <CardHeader>
-        <CardTitle>{{ t('限额管理', 'Limit management') }}</CardTitle>
+        <CardTitle>{{ t('配额管理', 'Quota management') }}</CardTitle>
       </CardHeader>
       <CardContent class="grid gap-6 md:grid-cols-2">
         <template v-if="quota">
-          <QuotaProgress :label="t('日限额', 'Daily limit')" :remaining="quota.daily_remaining_usd" :total="quota.daily_quota_usd" :unlimited="quota.unlimited">
+          <QuotaProgress :label="t('日配额', 'Daily quota')" :remaining="quota.daily_remaining_usd" :total="quota.daily_quota_usd" :unlimited="quota.unlimited">
             <span>{{ t('重置', 'Resets') }} {{ formatDateTime(quota.daily_resets_at) }}</span>
           </QuotaProgress>
-          <QuotaProgress :label="t('周限额', 'Weekly limit')" :remaining="quota.weekly_remaining_usd" :total="quota.weekly_quota_usd" :unlimited="quota.unlimited">
+          <QuotaProgress :label="t('周配额', 'Weekly quota')" :remaining="quota.weekly_remaining_usd" :total="quota.weekly_quota_usd" :unlimited="quota.unlimited">
             <span>{{ t('重置', 'Resets') }} {{ formatDateTime(quota.weekly_resets_at) }}</span>
           </QuotaProgress>
         </template>
         <template v-else><Skeleton v-for="i in 2" :key="i" class="h-20 w-full" /></template>
-      </CardContent>
-    </Card>
-    <QuotaCardsPanel ref="cardsPanel" @changed="load" />
-    <Card>
-      <CardHeader>
-        <CardTitle>{{ t('重置记录', 'Reset history') }}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div class="overflow-hidden rounded-lg border border-border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{{ t('时间', 'Time') }}</TableHead>
-                <TableHead>{{ t('来源', 'Source') }}</TableHead>
-                <TableHead>{{ t('恢复日限额', 'Daily limit restored') }}</TableHead>
-                <TableHead>{{ t('恢复周限额', 'Weekly limit restored') }}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              <TableEmpty v-if="!resets.length" :colspan="4">
-                {{ loading ? t('加载中', 'Loading') : t('暂无重置记录', 'No resets') }}
-              </TableEmpty>
-              <TableRow v-for="reset in resets" :key="reset.id">
-                <TableCell>{{ formatDateTime(reset.created_at) }}</TableCell>
-                <TableCell>
-                  {{ reset.card_id ? t(`重置卡 #${reset.card_id}`, `Reset card #${reset.card_id}`) : t('管理员重置', 'Administrator reset') }}
-                </TableCell>
-                <TableCell>{{ formatUsd(reset.daily_used_usd) }}</TableCell>
-                <TableCell>{{ formatUsd(reset.weekly_used_usd) }}</TableCell>
-              </TableRow>
-            </TableBody>
-          </Table>
-          <TablePaginationFooter
-            v-model:page="resetPage"
-            :page-size="20"
-            :page-size-options="[20]"
-            :total="resetTotal"
-          />
+        <div class="flex min-w-0 flex-col gap-3 md:col-span-2">
+          <h3 class="text-sm font-medium">{{ t('重置记录', 'Reset history') }}</h3>
+          <div class="overflow-hidden rounded-lg border border-border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{{ t('时间', 'Time') }}</TableHead>
+                  <TableHead>{{ t('来源', 'Source') }}</TableHead>
+                  <TableHead>{{ t('恢复日配额', 'Daily quota restored') }}</TableHead>
+                  <TableHead>{{ t('恢复周配额', 'Weekly quota restored') }}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableEmpty v-if="!resets.length" :colspan="4">
+                  {{ loading ? t('加载中', 'Loading') : t('暂无重置记录', 'No resets') }}
+                </TableEmpty>
+                <TableRow v-for="reset in resets" :key="reset.id">
+                  <TableCell>{{ formatDateTime(reset.created_at) }}</TableCell>
+                  <TableCell>
+                    {{ reset.card_id ? t(`重置卡 #${reset.card_id}`, `Reset card #${reset.card_id}`) : t('管理员重置', 'Administrator reset') }}
+                  </TableCell>
+                  <TableCell>{{ formatUsd(reset.daily_used_usd) }}</TableCell>
+                  <TableCell>{{ formatUsd(reset.weekly_used_usd) }}</TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+            <TablePaginationFooter
+              v-model:page="resetPage"
+              :page-size="20"
+              :page-size-options="[20]"
+              :total="resetTotal"
+            />
+          </div>
         </div>
       </CardContent>
     </Card>
+    <QuotaCardsPanel ref="cardsPanel" @changed="load" />
   </section>
 </template>

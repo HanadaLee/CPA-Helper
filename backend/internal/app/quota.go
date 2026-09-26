@@ -26,7 +26,7 @@ func decodeUserQuota(r *http.Request, payload *userQuotaPayload) error {
 	decoder := json.NewDecoder(io.LimitReader(r.Body, 4096))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(payload); err != nil {
-		return validationError("配额仅支持日限额和周限额")
+		return validationError("配额仅支持日配额和周配额")
 	}
 	return nil
 }

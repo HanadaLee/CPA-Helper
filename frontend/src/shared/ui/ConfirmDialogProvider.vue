@@ -25,7 +25,8 @@ function cancel() {
 
 <template>
   <slot />
-  <AlertDialog v-model:open="state.open">
+  <!-- Mount the portal on demand so confirmations follow any already-open modal. -->
+  <AlertDialog v-if="state.open" v-model:open="state.open">
     <AlertDialogContent>
       <AlertDialogHeader>
         <AlertDialogTitle>{{ state.options?.title ?? '确认' }}</AlertDialogTitle>

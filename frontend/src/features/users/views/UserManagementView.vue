@@ -347,7 +347,7 @@ function resetQuota(allUsers = false, userId?: number) {
   if (!allUsers && !ids.length) return
   confirm.warning({
     title: allUsers ? t('全站重置额度', 'Reset all quotas') : t('重置用户额度', 'Reset user quotas'),
-    content: t('清零所选用户的日限额和周限额已用量，原周期和额度卡保持不变。', 'Clear daily and weekly limit usage for the selected users, preserving period boundaries and cards.'),
+    content: t('清零所选用户的日配额和周配额已用量，原周期和额度卡保持不变。', 'Clear daily and weekly quota usage for the selected users, preserving period boundaries and cards.'),
     positiveText: t('重置', 'Reset'),
     onPositiveClick: async () => {
       quotaBusy.value = true
@@ -425,7 +425,7 @@ onMounted(refresh)
               <TableHead class="w-[4%]"><Checkbox :model-value="allUsersSelected" :aria-label="t('选择本页用户', 'Select users on this page')" @update:model-value="selectPage" /></TableHead>
               <TableHead class="w-[17%]">{{ t('用户', 'User') }}</TableHead>
               <TableHead class="w-[10%]">{{ t('角色 / 状态', 'Role / status') }}</TableHead>
-              <TableHead class="w-[14%]">{{ t('限额 / 额度卡', 'Limits / Cards') }}</TableHead>
+              <TableHead class="w-[14%]">{{ t('配额 / 额度卡', 'Quotas / Cards') }}</TableHead>
               <TableHead class="w-[6%]">{{ t('密钥', 'Keys') }}</TableHead>
               <TableHead class="w-[9%]">{{ t('今日请求', 'Today requests') }}</TableHead>
               <TableHead class="w-[13%]">{{ t('今日 Token', 'Today tokens') }}</TableHead>
@@ -469,8 +469,8 @@ onMounted(refresh)
               </TableCell>
               <TableCell>
                 <div class="flex min-w-0 flex-col gap-2">
-                  <QuotaProgress compact :label="t('日限额', 'Daily limit')" :remaining="row.quota.daily_remaining_usd" :total="row.quota.daily_quota_usd" :unlimited="row.quota.unlimited" />
-                  <QuotaProgress compact :label="t('周限额', 'Weekly limit')" :remaining="row.quota.weekly_remaining_usd" :total="row.quota.weekly_quota_usd" :unlimited="row.quota.unlimited" />
+                  <QuotaProgress compact :label="t('日配额', 'Daily quota')" :remaining="row.quota.daily_remaining_usd" :total="row.quota.daily_quota_usd" :unlimited="row.quota.unlimited" />
+                  <QuotaProgress compact :label="t('周配额', 'Weekly quota')" :remaining="row.quota.weekly_remaining_usd" :total="row.quota.weekly_quota_usd" :unlimited="row.quota.unlimited" />
                   <QuotaProgress compact :label="t('额度卡', 'Cards')" :remaining="row.quota.cards_remaining_usd" :total="row.quota.cards_total_usd" />
                   <span
                     v-if="quotaDetail(row)"
@@ -618,9 +618,9 @@ onMounted(refresh)
             </Field>
 
             <FieldSet class="quota-fieldset">
-              <FieldLegend>{{ t('限额设置', 'Limit settings') }}</FieldLegend>
+              <FieldLegend>{{ t('配额设置', 'Quota settings') }}</FieldLegend>
               <FieldDescription>
-                {{ t('用量同时计入日限额和周限额，任一耗尽即暂停使用限额；额度卡按到期顺序抵扣，不占用限额。', 'Base usage counts toward both limits and stops when either is reached. Cards are used by expiration and do not consume the limits.') }}
+                {{ t('用量同时计入日配额和周配额，任一耗尽即暂停使用配额；额度卡按到期顺序抵扣，不占用配额。', 'Base usage counts toward both quotas and stops when either is exhausted. Cards are used by expiration and do not consume the quotas.') }}
               </FieldDescription>
               <FieldGroup>
                 <Field orientation="horizontal" class="switch-setting">
@@ -634,7 +634,7 @@ onMounted(refresh)
                 </Field>
                 <FieldGroup class="quota-editor-grid">
                   <Field>
-                    <FieldLabel for="quota-daily">{{ t('日限额 USD', 'Daily limit USD') }}</FieldLabel>
+                    <FieldLabel for="quota-daily">{{ t('日配额 USD', 'Daily quota USD') }}</FieldLabel>
                     <Input
                       id="quota-daily"
                       type="number"
@@ -646,7 +646,7 @@ onMounted(refresh)
                     />
                   </Field>
                   <Field>
-                    <FieldLabel for="quota-weekly">{{ t('周限额 USD', 'Weekly limit USD') }}</FieldLabel>
+                    <FieldLabel for="quota-weekly">{{ t('周配额 USD', 'Weekly quota USD') }}</FieldLabel>
                     <Input
                       id="quota-weekly"
                       type="number"
