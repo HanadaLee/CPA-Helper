@@ -808,8 +808,7 @@ function quotaValueText(quota: UserQuotaStatus | null): string {
   const total =
     (quota.daily_remaining_usd ?? 0) +
     (quota.weekly_remaining_usd ?? 0) +
-    (quota.monthly_remaining_usd ?? 0) +
-    (quota.lifetime_remaining_usd ?? 0)
+    (quota.cards_remaining_usd ?? 0)
   return t(`可用余额 ${formatUsd(total)}`, `Available balance ${formatUsd(total)}`)
 }
 
@@ -835,12 +834,12 @@ function quotaStatusTitle(quota: UserQuotaStatus | null): string {
   }
   const balancesText = quota.unlimited
     ? t(
-        '每日 无限制 / 每周 无限制 / 每月 无限制 / 不限时 无限制',
-        'Daily unlimited / Weekly unlimited / Monthly unlimited / Lifetime unlimited',
+        '每日 无限制 / 每周 无限制',
+        'Daily unlimited / Weekly unlimited',
       )
     : t(
-        `每日 ${formatUsd(quota.daily_remaining_usd ?? 0)} / 每周 ${formatUsd(quota.weekly_remaining_usd ?? 0)} / 每月 ${formatUsd(quota.monthly_remaining_usd ?? 0)} / 不限时 ${formatUsd(quota.lifetime_remaining_usd ?? 0)}`,
-        `Daily ${formatUsd(quota.daily_remaining_usd ?? 0)} / Weekly ${formatUsd(quota.weekly_remaining_usd ?? 0)} / Monthly ${formatUsd(quota.monthly_remaining_usd ?? 0)} / Lifetime ${formatUsd(quota.lifetime_remaining_usd ?? 0)}`,
+        `每日 ${formatUsd(quota.daily_remaining_usd ?? 0)} / 每周 ${formatUsd(quota.weekly_remaining_usd ?? 0)} / 额度卡 ${formatUsd(quota.cards_remaining_usd ?? 0)}`,
+        `Daily ${formatUsd(quota.daily_remaining_usd ?? 0)} / Weekly ${formatUsd(quota.weekly_remaining_usd ?? 0)} / Cards ${formatUsd(quota.cards_remaining_usd ?? 0)}`,
       )
   const notes: string[] = []
   if (quota.sync_error) {

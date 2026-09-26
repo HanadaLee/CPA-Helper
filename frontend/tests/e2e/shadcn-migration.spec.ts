@@ -464,8 +464,8 @@ test('all migrated routes render and core controls remain interactive', async ({
   await expect(newUserQuotaCard.getByText(/不限制余额|Unlimited balance/i, { exact: true })).toBeVisible()
   await expect(newUserQuotaCard.getByLabel(/每日|Daily/i)).toHaveValue('0')
   await expect(newUserQuotaCard.getByLabel(/每周|Weekly/i)).toHaveValue('0')
-  await expect(newUserQuotaCard.getByLabel(/每月|Monthly/i)).toHaveValue('0')
-  await expect(newUserQuotaCard.getByLabel(/不限时|Lifetime/i)).toHaveValue('0')
+  await expect(newUserQuotaCard.getByLabel(/每月|Monthly/i)).toHaveCount(0)
+  await expect(newUserQuotaCard.getByLabel(/不限时|Lifetime/i)).toHaveCount(0)
 
   await page.goto('/admin/usage')
   const headerLayout = await page.locator('.app-header').evaluate((header) => {

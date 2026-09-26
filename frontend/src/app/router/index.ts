@@ -123,6 +123,11 @@ export const router = createRouter({
           component: () => import('@/features/api-keys/views/ApiKeysView.vue'),
         },
         {
+          path: 'account/quota',
+          name: 'account-quota',
+          component: () => import('@/features/quota/views/MyQuotaView.vue'),
+        },
+        {
           path: 'account/models',
           name: 'account-models',
           component: () => import('@/features/models/views/AvailableModelsView.vue'),

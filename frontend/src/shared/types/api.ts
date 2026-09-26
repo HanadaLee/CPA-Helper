@@ -74,8 +74,6 @@ export interface SettingsResponse extends BrandingResponse {
   new_user_quota_unlimited: boolean
   new_user_quota_daily_usd: number
   new_user_quota_weekly_usd: number
-  new_user_quota_monthly_usd: number
-  new_user_quota_lifetime_usd: number
 }
 
 export interface SettingsUpdatePayload {
@@ -106,8 +104,6 @@ export interface SettingsUpdatePayload {
   new_user_quota_unlimited?: boolean
   new_user_quota_daily_usd?: number
   new_user_quota_weekly_usd?: number
-  new_user_quota_monthly_usd?: number
-  new_user_quota_lifetime_usd?: number
 }
 
 export interface ModelRequestGuide {
@@ -710,12 +706,10 @@ export interface UserApiKeySummary {
 
 export interface UserQuotaStatus {
   unlimited: boolean
-  lifetime_quota_usd: number | null
-  lifetime_remaining_usd: number | null
-  monthly_quota_usd: number | null
-  monthly_used_usd: number
-  monthly_remaining_usd: number | null
-  quota_month: string
+  cards_remaining_usd: number
+  available_usd: number
+  daily_resets_at: string
+  weekly_resets_at: string
   weekly_quota_usd: number | null
   weekly_used_usd: number
   weekly_remaining_usd: number | null
@@ -840,10 +834,65 @@ export interface UserPayload {
 }
 
 export interface UserQuotaPayload {
-  lifetime_quota_usd: number | null
-  monthly_quota_usd: number | null
   weekly_quota_usd: number | null
   daily_quota_usd: number | null
+}
+
+export interface QuotaCard {
+  id: number
+  user_id: number
+  username: string
+  kind: 'credit' | 'reset'
+  name: string
+  amount_usd: number
+  used_usd: number
+  remaining_usd: number
+  status: 'active' | 'expired' | 'exhausted' | 'used' | 'revoked'
+  expires_at: string | null
+  activated_at: string | null
+  used_at: string | null
+  revoked_at: string | null
+  created_at: string
+  batch_id: string
+}
+
+export interface QuotaPage<T> {
+  items: T[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export interface QuotaTargets { user_ids?: number[]; all_users?: boolean }
+
+export interface QuotaCardPayload extends QuotaTargets {
+  kind: 'credit' | 'reset'
+  name: string
+  amount_usd: number
+  expires_at: string | null
+  count?: number
+}
+
+export interface QuotaCharge {
+  id: number
+  amount_usd: number
+  daily_usd: number
+  weekly_usd: number
+  cards_usd: number
+  legacy_usd: number
+  uncovered_usd: number
+  unpriced: boolean
+  timestamp: string
+  created_at: string
+  cards: { card_id: number; name: string; amount_usd: number }[]
+}
+
+export interface QuotaReset {
+  id: number
+  card_id: number | null
+  daily_used_usd: number
+  weekly_used_usd: number
+  created_at: string
 }
 
 export interface UserApiKeyBindPayload {

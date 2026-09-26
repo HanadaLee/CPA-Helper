@@ -3,379 +3,349 @@ package app
 import (
 	"context"
 	"encoding/json"
-	"net/http"
+	"fmt"
+	"math"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 )
 
-func TestQuotaChargesMonthlyBeforeLifetimeBalanceAndDedupesUsage(t *testing.T) {
+func newQuotaTestApp(t *testing.T) *App {
+	t.Helper()
 	t.Setenv("CPA_HELPER_DATA_DIR", t.TempDir())
-	app, err := New()
-	if err != nil {
-		t.Fatalf("New() failed: %v", err)
-	}
-	defer app.Close()
-
-	ctx := context.Background()
-	userID := seedQuotaTestUser(t, app, "member")
-	apiKey := "sk-quota-monthly-lifetime"
-	seedQuotaTestAPIKey(t, app, userID, apiKey)
-	seedQuotaTestPrice(t, app, "openai", "gpt-quota", 1)
-	lifetime := 2.0
-	monthly := 1.0
-	if _, err := app.updateUserQuota(ctx, userID, userQuotaPayload{LifetimeQuotaUSD: &lifetime, MonthlyQuotaUSD: &monthly}); err != nil {
-		t.Fatalf("update quota: %v", err)
-	}
-
-	raw := `{"api_key":"` + apiKey + `","provider":"openai","model":"gpt-quota","input_tokens":1500000,"request_id":"quota-1"}`
-	if _, created, err := app.saveUsageMessage(ctx, []byte(raw)); err != nil || !created {
-		t.Fatalf("first usage created=%v err=%v", created, err)
-	}
-	user, err := app.getUser(ctx, userID)
+	a, err := NewWithOptions(context.Background(), NewOptions{Migrate: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if user.QuotaMonthUsedUSD != 1 || user.QuotaLifetimeUSD == nil || *user.QuotaLifetimeUSD != 1.5 {
-		t.Fatalf("quota after first charge month=%v lifetime=%v", user.QuotaMonthUsedUSD, user.QuotaLifetimeUSD)
-	}
-	var monthlyDeducted, lifetimeDeducted float64
-	if err := app.db.QueryRow(`SELECT monthly_deducted_usd, lifetime_deducted_usd FROM user_quota_charges WHERE usage_username = 'member'`).Scan(&monthlyDeducted, &lifetimeDeducted); err != nil {
-		t.Fatal(err)
-	}
-	if monthlyDeducted != 1 || lifetimeDeducted != 0.5 {
-		t.Fatalf("deductions = monthly %.2f lifetime %.2f, want 1.00 and 0.50", monthlyDeducted, lifetimeDeducted)
-	}
-
-	if _, created, err := app.saveUsageMessage(ctx, []byte(raw)); err != nil || created {
-		t.Fatalf("duplicate usage created=%v err=%v", created, err)
-	}
-	var charges int
-	if err := app.db.QueryRow(`SELECT COUNT(*) FROM user_quota_charges`).Scan(&charges); err != nil {
-		t.Fatal(err)
-	}
-	if charges != 1 {
-		t.Fatalf("charge count = %d, want 1", charges)
-	}
-
-	raw2 := `{"api_key":"` + apiKey + `","provider":"openai","model":"gpt-quota","input_tokens":1500000,"request_id":"quota-2"}`
-	if _, created, err := app.saveUsageMessage(ctx, []byte(raw2)); err != nil || !created {
-		t.Fatalf("second usage created=%v err=%v", created, err)
-	}
-	user, err = app.getUser(ctx, userID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if user.QuotaLifetimeUSD == nil || *user.QuotaLifetimeUSD != 0 || user.QuotaPausedAt == nil {
-		t.Fatalf("quota after exhaustion lifetime=%v paused=%v", user.QuotaLifetimeUSD, user.QuotaPausedAt)
-	}
+	t.Cleanup(a.Close)
+	return a
 }
 
-func TestQuotaChargesDailyThenWeeklyThenMonthlyThenLifetime(t *testing.T) {
-	t.Setenv("CPA_HELPER_DATA_DIR", t.TempDir())
-	app, err := New()
-	if err != nil {
-		t.Fatalf("New() failed: %v", err)
-	}
-	defer app.Close()
-
-	ctx := context.Background()
-	userID := seedQuotaTestUser(t, app, "member")
-	apiKey := "sk-quota-all-buckets"
-	seedQuotaTestAPIKey(t, app, userID, apiKey)
-	seedQuotaTestPrice(t, app, "openai", "gpt-quota-all", 1)
-	lifetime := 1.0
-	monthly := 0.75
-	weekly := 0.5
-	daily := 0.25
-	if _, err := app.updateUserQuota(ctx, userID, userQuotaPayload{
-		LifetimeQuotaUSD: &lifetime,
-		MonthlyQuotaUSD:  &monthly,
-		WeeklyQuotaUSD:   &weekly,
-		DailyQuotaUSD:    &daily,
-	}); err != nil {
-		t.Fatalf("update quota: %v", err)
-	}
-
-	raw := `{"api_key":"` + apiKey + `","provider":"openai","model":"gpt-quota-all","input_tokens":1750000,"request_id":"quota-all"}`
-	if _, created, err := app.saveUsageMessage(ctx, []byte(raw)); err != nil || !created {
-		t.Fatalf("usage created=%v err=%v", created, err)
-	}
-	user, err := app.getUser(ctx, userID)
+func seedQuotaCard(t *testing.T, a *App, userID int, kind string, amount float64, expires *time.Time) int {
+	t.Helper()
+	now := dbTime(time.Now())
+	result, err := a.db.Exec(`INSERT INTO quota_cards(user_id, kind, name, amount_usd, expires_at, activated_at, created_at, updated_at)
+		VALUES (?, ?, 'test card', ?, ?, ?, ?, ?)`, userID, kind, amount, dbTimePtr(expires), now, now, now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if user.QuotaDayUsedUSD != daily || user.QuotaWeekUsedUSD != weekly || user.QuotaMonthUsedUSD != monthly ||
-		user.QuotaLifetimeUSD == nil || *user.QuotaLifetimeUSD != 0.75 {
-		t.Fatalf(
-			"quota after charge daily=%v weekly=%v monthly=%v lifetime=%v",
-			user.QuotaDayUsedUSD,
-			user.QuotaWeekUsedUSD,
-			user.QuotaMonthUsedUSD,
-			user.QuotaLifetimeUSD,
-		)
-	}
-	var amount, dailyDeducted, weeklyDeducted, monthlyDeducted, lifetimeDeducted float64
-	var chargeDay, chargeWeek, chargeMonth string
-	if err := app.db.QueryRow(`
-		SELECT amount_usd, daily_deducted_usd, weekly_deducted_usd,
-		       monthly_deducted_usd, lifetime_deducted_usd, quota_day, quota_week, quota_month
-		FROM user_quota_charges WHERE usage_username = 'member'
-	`).Scan(&amount, &dailyDeducted, &weeklyDeducted, &monthlyDeducted, &lifetimeDeducted, &chargeDay, &chargeWeek, &chargeMonth); err != nil {
-		t.Fatal(err)
-	}
-	if amount != 1.75 || dailyDeducted != 0.25 || weeklyDeducted != 0.5 || monthlyDeducted != 0.75 || lifetimeDeducted != 0.25 {
-		t.Fatalf(
-			"deductions amount=%v daily=%v weekly=%v monthly=%v lifetime=%v",
-			amount,
-			dailyDeducted,
-			weeklyDeducted,
-			monthlyDeducted,
-			lifetimeDeducted,
-		)
-	}
-	if chargeDay != user.QuotaDay || chargeWeek != user.QuotaWeek || chargeMonth != user.QuotaMonth {
-		t.Fatalf("charge periods day=%q week=%q month=%q, want %q/%q/%q", chargeDay, chargeWeek, chargeMonth, user.QuotaDay, user.QuotaWeek, user.QuotaMonth)
-	}
+	id, _ := result.LastInsertId()
+	return int(id)
 }
 
-func TestQuotaChargesImageUsageByRequestPrice(t *testing.T) {
-	t.Setenv("CPA_HELPER_DATA_DIR", t.TempDir())
-	app, err := New()
-	if err != nil {
-		t.Fatalf("New() failed: %v", err)
-	}
-	defer app.Close()
-
+func TestQuotaDeductsAllBucketsByExpirationAndDedupes(t *testing.T) {
+	a := newQuotaTestApp(t)
 	ctx := context.Background()
-	userID := seedQuotaTestUser(t, app, "member")
-	apiKey := "sk-quota-image"
-	seedQuotaTestAPIKey(t, app, userID, apiKey)
-	seedQuotaTestRequestPrice(t, app, "openai", "gpt-image-2", 1.25)
-	lifetime := 2.0
-	monthly := 1.0
-	if _, err := app.updateUserQuota(ctx, userID, userQuotaPayload{LifetimeQuotaUSD: &lifetime, MonthlyQuotaUSD: &monthly}); err != nil {
-		t.Fatalf("update quota: %v", err)
-	}
-
-	raw := `{"api_key":"` + apiKey + `","provider":"openai","model":"gpt-image-2","request_id":"quota-image"}`
-	if _, created, err := app.saveUsageMessage(ctx, []byte(raw)); err != nil || !created {
-		t.Fatalf("image usage created=%v err=%v", created, err)
-	}
-	user, err := app.getUser(ctx, userID)
-	if err != nil {
+	userID := seedQuotaTestUser(t, a, "expiry-user")
+	daily, weekly := 0.5, 0.75
+	if _, err := a.updateUserQuota(ctx, userID, userQuotaPayload{DailyQuotaUSD: &daily, WeeklyQuotaUSD: &weekly}); err != nil {
 		t.Fatal(err)
 	}
-	if user.QuotaMonthUsedUSD != 1 || user.QuotaLifetimeUSD == nil || *user.QuotaLifetimeUSD != 1.75 {
-		t.Fatalf("quota after image charge month=%v lifetime=%v", user.QuotaMonthUsedUSD, user.QuotaLifetimeUSD)
-	}
-	var amount, monthlyDeducted, lifetimeDeducted float64
-	var unpriced bool
-	if err := app.db.QueryRow(`SELECT amount_usd, monthly_deducted_usd, lifetime_deducted_usd, unpriced FROM user_quota_charges`).Scan(&amount, &monthlyDeducted, &lifetimeDeducted, &unpriced); err != nil {
+	seedQuotaTestAPIKey(t, a, userID, "sk-expiry")
+	seedQuotaTestPrice(t, a, "openai", "quota-expiry", 1)
+	now := time.Now()
+	dayEnd, weekEnd := quotaPeriodEnds(now)
+	early := now.Add(dayEnd.Sub(now) / 2)
+	late := weekEnd.Add(time.Hour)
+	earlyID := seedQuotaCard(t, a, userID, "credit", 0.25, &early)
+	lateID := seedQuotaCard(t, a, userID, "credit", 0.75, &late)
+	permanentID := seedQuotaCard(t, a, userID, "credit", 1, nil)
+	expired := now.Add(-time.Hour)
+	expiredID := seedQuotaCard(t, a, userID, "credit", 100, &expired)
+	revokedID := seedQuotaCard(t, a, userID, "credit", 100, nil)
+	if _, err := a.db.Exec("UPDATE quota_cards SET revoked_at = ? WHERE id = ?", dbTime(now), revokedID); err != nil {
 		t.Fatal(err)
 	}
-	if amount != 1.25 || monthlyDeducted != 1 || lifetimeDeducted != 0.25 || unpriced {
-		t.Fatalf("image charge amount=%v monthly=%v lifetime=%v unpriced=%v, want 1.25/1/0.25/false", amount, monthlyDeducted, lifetimeDeducted, unpriced)
-	}
-}
 
-func TestQuotaUnpricedUsageDoesNotDeductBalance(t *testing.T) {
-	t.Setenv("CPA_HELPER_DATA_DIR", t.TempDir())
-	app, err := New()
-	if err != nil {
-		t.Fatalf("New() failed: %v", err)
-	}
-	defer app.Close()
-
-	ctx := context.Background()
-	userID := seedQuotaTestUser(t, app, "member")
-	apiKey := "sk-quota-unpriced"
-	seedQuotaTestAPIKey(t, app, userID, apiKey)
-	lifetime := 1.0
-	if _, err := app.updateUserQuota(ctx, userID, userQuotaPayload{LifetimeQuotaUSD: &lifetime}); err != nil {
-		t.Fatalf("update quota: %v", err)
-	}
-	raw := `{"api_key":"` + apiKey + `","provider":"unknown","model":"missing","input_tokens":1000,"request_id":"quota-unpriced"}`
-	if _, created, err := app.saveUsageMessage(ctx, []byte(raw)); err != nil || !created {
-		t.Fatalf("usage created=%v err=%v", created, err)
-	}
-	user, err := app.getUser(ctx, userID)
-	if err != nil {
+	// An earlier-expiring card must be used even though daily credit is still available.
+	raw := `{"api_key":"sk-expiry","provider":"openai","model":"quota-expiry","input_tokens":100000,"request_id":"early"}`
+	if _, _, err := a.saveUsageMessage(ctx, []byte(raw)); err != nil {
 		t.Fatal(err)
 	}
-	if user.QuotaLifetimeUSD == nil || *user.QuotaLifetimeUSD != 1 || user.QuotaUnpricedRecords != 1 {
-		t.Fatalf("quota after unpriced lifetime=%v unpriced=%d", user.QuotaLifetimeUSD, user.QuotaUnpricedRecords)
+	user, _ := a.getUser(ctx, userID)
+	if user.QuotaDayUsedUSD != 0 {
+		t.Fatalf("daily charged before earlier card: %v", user.QuotaDayUsedUSD)
 	}
-	var amount float64
-	var unpriced bool
-	if err := app.db.QueryRow(`SELECT amount_usd, unpriced FROM user_quota_charges`).Scan(&amount, &unpriced); err != nil {
-		t.Fatal(err)
+	raw = `{"api_key":"sk-expiry","provider":"openai","model":"quota-expiry","input_tokens":2400000,"request_id":"rest"}`
+	if _, created, err := a.saveUsageMessage(ctx, []byte(raw)); err != nil || !created {
+		t.Fatalf("created=%v err=%v", created, err)
 	}
-	if amount != 0 || !unpriced {
-		t.Fatalf("charge amount=%v unpriced=%v, want 0 true", amount, unpriced)
+	if _, created, err := a.saveUsageMessage(ctx, []byte(raw)); err != nil || created {
+		t.Fatalf("duplicate created=%v err=%v", created, err)
 	}
-}
-
-func TestQuotaMonthlyResetRestoresPausedKeys(t *testing.T) {
-	t.Setenv("CPA_HELPER_DATA_DIR", t.TempDir())
-	app, err := New()
-	if err != nil {
-		t.Fatalf("New() failed: %v", err)
+	user, _ = a.getUser(ctx, userID)
+	if user.QuotaDayUsedUSD != 0.5 || user.QuotaWeekUsedUSD != 0.75 || user.QuotaCardsRemainingUSD != 0.75 {
+		t.Fatalf("bad allocation: %+v", user)
 	}
-	defer app.Close()
-
-	remoteKeys := []string{}
-	cpa := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v0/management/api-keys" {
-			http.NotFound(w, r)
-			return
+	for id, want := range map[int]float64{earlyID: 0.25, lateID: 0.75, permanentID: 0.25, expiredID: 0, revokedID: 0} {
+		var got float64
+		if err := a.db.QueryRow("SELECT used_usd FROM quota_cards WHERE id = ?", id).Scan(&got); err != nil {
+			t.Fatal(err)
 		}
-		switch r.Method {
-		case http.MethodPatch:
-			var payload struct {
-				New string `json:"new"`
-			}
-			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
-			}
-			remoteKeys = append(remoteKeys, payload.New)
-			_ = json.NewEncoder(w).Encode(map[string]any{"api-keys": remoteKeys})
-		default:
-			_ = json.NewEncoder(w).Encode(map[string]any{"api-keys": remoteKeys})
+		if got != want {
+			t.Fatalf("card %d deducted=%v want=%v", id, got, want)
 		}
-	}))
-	defer cpa.Close()
-
-	ctx := context.Background()
-	cfg, err := app.loadConfig(ctx)
-	if err != nil {
+	}
+	var count int
+	if err := a.db.QueryRow("SELECT COUNT(*) FROM user_quota_charges").Scan(&count); err != nil || count != 2 {
+		t.Fatalf("dedup count=%v err=%v", count, err)
+	}
+	recorder := httptest.NewRecorder()
+	if err := a.quotaHistory(recorder, httptest.NewRequest("GET", "/api/account/quota/history", nil), userID); err != nil {
 		t.Fatal(err)
 	}
-	cfg.Collector.CLIProxyURL = cpa.URL
-	cfg.Collector.ManagementKey = "test-management-key"
-	if err := app.saveConfig(ctx, cfg); err != nil {
+	var history struct {
+		Items []QuotaChargeResponse `json:"items"`
+		Total int                   `json:"total"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &history); err != nil {
 		t.Fatal(err)
 	}
-	userID := seedQuotaTestUser(t, app, "member")
-	apiKey := "sk-quota-restore"
-	seedQuotaTestAPIKey(t, app, userID, apiKey)
-	monthly := 1.0
-	if _, err := app.updateUserQuota(ctx, userID, userQuotaPayload{MonthlyQuotaUSD: &monthly}); err != nil {
-		t.Fatalf("update quota: %v", err)
+	if history.Total != 2 || len(history.Items) != 2 || len(history.Items[0].Cards) != 3 {
+		t.Fatalf("missing deduction history: %+v", history)
 	}
-	if _, err := app.db.Exec(`UPDATE users SET quota_month = '2026-04', quota_month_used_usd = 1, quota_paused_at = ?, quota_pause_reason = ? WHERE id = ?`, dbTime(time.Now()), quotaPauseReasonExhausted, userID); err != nil {
-		t.Fatal(err)
-	}
-
-	status, err := app.userQuotaStatus(ctx, userID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if status.Paused || status.MonthlyUsedUSD != 0 {
-		t.Fatalf("status after reset paused=%v monthly_used=%v", status.Paused, status.MonthlyUsedUSD)
-	}
-	if len(remoteKeys) != 1 || remoteKeys[0] != apiKey {
-		t.Fatalf("remote keys = %#v, want restored key", remoteKeys)
+	for _, charge := range history.Items {
+		if math.Abs(charge.AmountUSD-charge.DailyUSD-charge.WeeklyUSD-charge.CardsUSD-charge.UncoveredUSD) > 1e-8 {
+			t.Fatalf("charge breakdown does not match cost: %+v", charge)
+		}
+		cardTotal := 0.0
+		for _, card := range charge.Cards {
+			cardTotal += card.AmountUSD
+		}
+		if math.Abs(cardTotal-charge.CardsUSD) > 1e-8 {
+			t.Fatalf("card deduction details do not match: %+v", charge)
+		}
 	}
 }
 
-func TestQuotaDailyAndWeeklyPeriodsResetIndependently(t *testing.T) {
-	t.Setenv("CPA_HELPER_DATA_DIR", t.TempDir())
-	app, err := New()
-	if err != nil {
-		t.Fatalf("New() failed: %v", err)
-	}
-	defer app.Close()
-
+func TestQuotaConcurrentChargesDoNotLoseBalanceUpdates(t *testing.T) {
+	a := newQuotaTestApp(t)
 	ctx := context.Background()
-	userID := seedQuotaTestUser(t, app, "member")
-	daily, weekly, monthly := 1.0, 2.0, 3.0
-	if _, err := app.updateUserQuota(ctx, userID, userQuotaPayload{
-		DailyQuotaUSD:   &daily,
-		WeeklyQuotaUSD:  &weekly,
-		MonthlyQuotaUSD: &monthly,
-	}); err != nil {
-		t.Fatalf("update quota: %v", err)
-	}
-	if _, err := app.db.Exec(`
-		UPDATE users
-		SET quota_day = '2000-01-01', quota_day_used_usd = 1,
-		    quota_week = '2000-W01', quota_week_used_usd = 2,
-		    quota_month_used_usd = 1
-		WHERE id = ?
-	`, userID); err != nil {
+	userID := seedQuotaTestUser(t, a, "parallel-user")
+	daily, weekly := 1.0, 1.0
+	if _, err := a.updateUserQuota(ctx, userID, userQuotaPayload{DailyQuotaUSD: &daily, WeeklyQuotaUSD: &weekly}); err != nil {
 		t.Fatal(err)
 	}
-
-	status, err := app.userQuotaStatus(ctx, userID)
-	if err != nil {
+	seedQuotaTestAPIKey(t, a, userID, "sk-parallel")
+	seedQuotaTestPrice(t, a, "openai", "quota-parallel", 1)
+	cardID := seedQuotaCard(t, a, userID, "credit", 10, nil)
+	var wg sync.WaitGroup
+	errs := make(chan error, 32)
+	for i := 0; i < 32; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			raw := fmt.Sprintf(`{"api_key":"sk-parallel","provider":"openai","model":"quota-parallel","input_tokens":100000,"request_id":"p-%d"}`, i)
+			_, _, err := a.saveUsageMessage(ctx, []byte(raw))
+			errs <- err
+		}(i)
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	var used float64
+	if err := a.db.QueryRow("SELECT used_usd FROM quota_cards WHERE id = ?", cardID).Scan(&used); err != nil {
 		t.Fatal(err)
 	}
-	if status.QuotaDay != quotaDay(time.Now()) || status.DailyUsedUSD != 0 || status.DailyRemainingUSD == nil || *status.DailyRemainingUSD != daily {
-		t.Fatalf("daily status after reset = %#v", status)
+	if math.Abs(used-1.2) > 1e-8 {
+		t.Fatalf("card used=%v want=1.2", used)
 	}
-	if status.QuotaWeek != quotaWeek(time.Now()) || status.WeeklyUsedUSD != 0 || status.WeeklyRemainingUSD == nil || *status.WeeklyRemainingUSD != weekly {
-		t.Fatalf("weekly status after reset = %#v", status)
-	}
-	if status.MonthlyUsedUSD != 1 || status.MonthlyRemainingUSD == nil || *status.MonthlyRemainingUSD != 2 {
-		t.Fatalf("monthly status should be preserved = %#v", status)
+	user, _ := a.getUser(ctx, userID)
+	if user.QuotaDayUsedUSD != 1 || user.QuotaWeekUsedUSD != 1 {
+		t.Fatalf("lost updates: %+v", user)
 	}
 }
 
-func TestQuotaWeekUsesISOWeekAcrossYearBoundary(t *testing.T) {
-	if got := quotaWeek(time.Date(2025, 12, 29, 0, 0, 0, 0, appTimeLocation)); got != "2026-W01" {
-		t.Fatalf("quotaWeek(2025-12-29) = %q, want 2026-W01", got)
+func TestQuotaResetCardSingleUseOwnershipAndFixedPeriods(t *testing.T) {
+	a := newQuotaTestApp(t)
+	ctx := context.Background()
+	id := seedQuotaTestUser(t, a, "reset-user")
+	other := seedQuotaTestUser(t, a, "other-user")
+	daily, weekly := 10.0, 20.0
+	if _, err := a.updateUserQuota(ctx, id, userQuotaPayload{DailyQuotaUSD: &daily, WeeklyQuotaUSD: &weekly}); err != nil {
+		t.Fatal(err)
 	}
-	if got := quotaWeek(time.Date(2026, 1, 4, 23, 59, 59, 0, appTimeLocation)); got != "2026-W01" {
-		t.Fatalf("quotaWeek(2026-01-04) = %q, want 2026-W01", got)
+	if _, err := a.db.Exec("UPDATE users SET quota_day_used_usd = 3, quota_week_used_usd = 7 WHERE id = ?", id); err != nil {
+		t.Fatal(err)
 	}
-	if got := quotaWeek(time.Date(2026, 1, 5, 0, 0, 0, 0, appTimeLocation)); got != "2026-W02" {
-		t.Fatalf("quotaWeek(2026-01-05) = %q, want 2026-W02", got)
+	before, _ := a.userQuotaStatus(ctx, id)
+	card := seedQuotaCard(t, a, id, "reset", 0, nil)
+	credit := seedQuotaCard(t, a, id, "credit", 9, nil)
+	if _, err := a.resetUserQuotas(ctx, other, quotaTargets{UserIDs: []int{other}}, card); err == nil {
+		t.Fatal("other user used reset card")
+	}
+	var wg sync.WaitGroup
+	errs := make(chan error, 2)
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := a.resetUserQuotas(ctx, id, quotaTargets{UserIDs: []int{id}}, card)
+			errs <- err
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	success := 0
+	for err := range errs {
+		if err == nil {
+			success++
+		}
+	}
+	if success != 1 {
+		t.Fatalf("reset success count=%v", success)
+	}
+	after, _ := a.userQuotaStatus(ctx, id)
+	if after.DailyUsedUSD != 0 || after.WeeklyUsedUSD != 0 || !after.DailyResetsAt.Equal(before.DailyResetsAt) || !after.WeeklyResetsAt.Equal(before.WeeklyResetsAt) {
+		t.Fatalf("reset shifted periods or did not clear usage: %+v", after)
+	}
+	var used float64
+	a.db.QueryRow("SELECT used_usd FROM quota_cards WHERE id = ?", credit).Scan(&used)
+	if used != 0 {
+		t.Fatal("reset changed credit card")
+	}
+	var auditDaily, auditWeekly float64
+	if err := a.db.QueryRow("SELECT daily_used_usd, weekly_used_usd FROM quota_resets WHERE card_id = ?", card).Scan(&auditDaily, &auditWeekly); err != nil {
+		t.Fatal(err)
+	}
+	if auditDaily != 3 || auditWeekly != 7 {
+		t.Fatalf("reset audit=%v/%v", auditDaily, auditWeekly)
+	}
+	expired := time.Now().Add(-time.Second)
+	expiredCard := seedQuotaCard(t, a, id, "reset", 0, &expired)
+	if _, err := a.resetUserQuotas(ctx, id, quotaTargets{UserIDs: []int{id}}, expiredCard); err == nil {
+		t.Fatal("expired reset used")
+	}
+}
+
+func TestQuotaBulkIssueRevokeAndGlobalReset(t *testing.T) {
+	a := newQuotaTestApp(t)
+	ctx := context.Background()
+	id := seedQuotaTestUser(t, a, "bulk1")
+	id2 := seedQuotaTestUser(t, a, "bulk2")
+	for _, uid := range []int{id, id2} {
+		daily, weekly := 1.0, 2.0
+		if _, err := a.updateUserQuota(ctx, uid, userQuotaPayload{DailyQuotaUSD: &daily, WeeklyQuotaUSD: &weekly}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := a.db.Exec("UPDATE users SET quota_day_used_usd = 1, quota_week_used_usd = 2 WHERE id = ?", uid); err != nil {
+			t.Fatal(err)
+		}
+	}
+	result, err := a.issueQuotaCards(ctx, id, quotaCardPayload{quotaTargets: quotaTargets{UserIDs: []int{id, id2}}, Kind: "credit", AmountUSD: 5, Count: 2})
+	if err != nil || result["issued"] != 4 {
+		t.Fatalf("bulk=%v err=%v", result, err)
+	}
+	if _, err := a.issueQuotaCards(ctx, id, quotaCardPayload{quotaTargets: quotaTargets{UserIDs: []int{id, 99999}}, Kind: "credit", AmountUSD: 5}); err == nil {
+		t.Fatal("unknown user accepted")
+	}
+	var count int
+	a.db.QueryRow("SELECT COUNT(*) FROM quota_cards").Scan(&count)
+	if count != 4 {
+		t.Fatal("partial issue persisted")
+	}
+	revoked, err := a.revokeQuotaCards(ctx, id, quotaRevokePayload{quotaTargets: quotaTargets{UserIDs: []int{id}}, Kind: "credit"})
+	if err != nil || revoked != 2 {
+		t.Fatalf("revoke=%v err=%v", revoked, err)
+	}
+	status, _ := a.userQuotaStatus(ctx, id)
+	if !status.Paused || status.CardsRemainingUSD != 0 {
+		t.Fatalf("revoked balance still available: %+v", status)
+	}
+	status, _ = a.userQuotaStatus(ctx, id2)
+	if status.Paused || status.CardsRemainingUSD != 10 {
+		t.Fatalf("other user affected: %+v", status)
+	}
+	reset, err := a.resetUserQuotas(ctx, id, quotaTargets{AllUsers: true}, 0)
+	if err != nil || reset != 2 {
+		t.Fatalf("reset=%v err=%v", reset, err)
+	}
+	status, _ = a.userQuotaStatus(ctx, id)
+	if status.Paused || status.AvailableUSD != 3 {
+		t.Fatalf("global reset failed: %+v", status)
+	}
+}
+
+func TestQuotaPeriodsAndMondayBoundary(t *testing.T) {
+	before := time.Date(2026, 1, 4, 23, 59, 59, 0, appTimeLocation)
+	day, week := quotaPeriodEnds(before)
+	want := time.Date(2026, 1, 5, 0, 0, 0, 0, appTimeLocation)
+	if !day.Equal(want) || !week.Equal(want) || quotaWeek(before) != "2026-W01" {
+		t.Fatalf("before Monday day=%v week=%v", day, week)
+	}
+	_, next := quotaPeriodEnds(want)
+	if !next.Equal(want.AddDate(0, 0, 7)) || quotaWeek(want) != "2026-W02" {
+		t.Fatal("Monday did not start fixed next week")
+	}
+	a := newQuotaTestApp(t)
+	ctx := context.Background()
+	id := seedQuotaTestUser(t, a, "period-user")
+	daily, weekly := 1.0, 2.0
+	if _, err := a.updateUserQuota(ctx, id, userQuotaPayload{DailyQuotaUSD: &daily, WeeklyQuotaUSD: &weekly}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.Exec("UPDATE users SET quota_day = '2000-01-01', quota_day_used_usd = 1, quota_week_used_usd = 1 WHERE id = ?", id); err != nil {
+		t.Fatal(err)
+	}
+	status, err := a.userQuotaStatus(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.DailyUsedUSD != 0 || status.WeeklyUsedUSD != 1 {
+		t.Fatalf("daily reset changed week: %+v", status)
+	}
+	if _, err := a.db.Exec("UPDATE users SET quota_week = '2000-W01' WHERE id = ?", id); err != nil {
+		t.Fatal(err)
+	}
+	status, err = a.userQuotaStatus(ctx, id)
+	if err != nil || status.WeeklyUsedUSD != 0 {
+		t.Fatalf("weekly reset=%+v %v", status, err)
+	}
+}
+
+func TestQuotaChargesImageAndUnpricedUsage(t *testing.T) {
+	a := newQuotaTestApp(t)
+	ctx := context.Background()
+	id := seedQuotaTestUser(t, a, "image-user")
+	daily, weekly := 1.0, 2.0
+	if _, err := a.updateUserQuota(ctx, id, userQuotaPayload{DailyQuotaUSD: &daily, WeeklyQuotaUSD: &weekly}); err != nil {
+		t.Fatal(err)
+	}
+	seedQuotaTestAPIKey(t, a, id, "sk-image")
+	seedQuotaTestRequestPrice(t, a, "openai", "quota-image", 1.25)
+	for _, raw := range []string{`{"api_key":"sk-image","provider":"openai","model":"quota-image","request_id":"img"}`, `{"api_key":"sk-image","provider":"unknown","model":"unknown-model","input_tokens":1000,"request_id":"unpriced"}`} {
+		if _, _, err := a.saveUsageMessage(ctx, []byte(raw)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	user, _ := a.getUser(ctx, id)
+	if user.QuotaDayUsedUSD != 1 || user.QuotaWeekUsedUSD != 0.25 || user.QuotaUnpricedRecords != 1 {
+		t.Fatalf("image/unpriced charge=%+v", user)
 	}
 }
 
 func TestQuotaUnlimitedUsageSkipsCharges(t *testing.T) {
-	t.Setenv("CPA_HELPER_DATA_DIR", t.TempDir())
-	app, err := New()
-	if err != nil {
-		t.Fatalf("New() failed: %v", err)
-	}
-	defer app.Close()
-
+	a := newQuotaTestApp(t)
 	ctx := context.Background()
-	userID := seedQuotaTestUser(t, app, "member")
-	apiKey := "sk-quota-unlimited"
-	seedQuotaTestAPIKey(t, app, userID, apiKey)
-	seedQuotaTestPrice(t, app, "openai", "gpt-unlimited", 1)
-	raw := `{"api_key":"` + apiKey + `","provider":"openai","model":"gpt-unlimited","input_tokens":1000000,"request_id":"quota-unlimited"}`
-	if _, created, err := app.saveUsageMessage(ctx, []byte(raw)); err != nil || !created {
-		t.Fatalf("usage created=%v err=%v", created, err)
-	}
-	var charges int
-	if err := app.db.QueryRow(`SELECT COUNT(*) FROM user_quota_charges`).Scan(&charges); err != nil {
+	id := seedQuotaTestUser(t, a, "unlimited")
+	seedQuotaTestAPIKey(t, a, id, "sk-unlimited")
+	seedQuotaTestPrice(t, a, "openai", "unlimited-model", 1)
+	if _, _, err := a.saveUsageMessage(ctx, []byte(`{"api_key":"sk-unlimited","provider":"openai","model":"unlimited-model","input_tokens":1000000}`)); err != nil {
 		t.Fatal(err)
 	}
-	if charges != 0 {
-		t.Fatalf("charge count = %d, want 0 for unlimited quota", charges)
+	var count int
+	a.db.QueryRow("SELECT COUNT(*) FROM user_quota_charges").Scan(&count)
+	if count != 0 {
+		t.Fatal("unlimited user was charged")
 	}
-}
-
-func TestQuotaNullFieldsMeanUnlimited(t *testing.T) {
-	t.Setenv("CPA_HELPER_DATA_DIR", t.TempDir())
-	app, err := New()
-	if err != nil {
-		t.Fatalf("New() failed: %v", err)
-	}
-	defer app.Close()
-
-	userID := seedQuotaTestUser(t, app, "member")
-	status, err := app.userQuotaStatus(context.Background(), userID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !status.Unlimited || !status.CanCreateKeys {
-		t.Fatalf("null-field quota status = %#v, want unlimited and creatable", status)
+	status, err := a.userQuotaStatus(ctx, id)
+	if err != nil || !status.Unlimited || !status.CanCreateKeys {
+		t.Fatalf("unlimited status=%+v %v", status, err)
 	}
 }
 

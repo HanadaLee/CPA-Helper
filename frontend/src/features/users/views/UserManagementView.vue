@@ -29,6 +29,7 @@ import {
   FieldLegend,
   FieldSet,
 } from '@/components/ui/field'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
@@ -51,6 +52,9 @@ import {
   RefreshCw,
   ShieldCheck,
   UserRound,
+  WalletCards,
+  RotateCcw,
+  Ban,
 } from '@lucide/vue'
 
 import {
@@ -61,12 +65,22 @@ import {
   updateUser,
   updateUserQuota,
 } from '@/features/users/api/usersApi'
+import QuotaCardsPanel from '@/features/quota/components/QuotaCardsPanel.vue'
+import { getSettings } from '@/features/settings/api/settingsApi'
+import { resetQuotas, revokeQuotaCards } from '@/features/quota/api/quotaApi'
+import { useConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { useI18n } from '@/shared/i18n'
 import type { UserSummary } from '@/shared/types/api'
 import TablePaginationFooter from '@/shared/ui/TablePaginationFooter.vue'
 import { formatCompact, formatDateTime, formatInteger, formatUsd } from '@/shared/utils/format'
 
 const message = toast
+const confirm = useConfirmDialog()
+const selectedUsers = ref<number[]>([])
+const cardsVisible = ref(false)
+const cardsUserId = ref<number | undefined>()
+const quotaBusy = ref(false)
+const allUsersSelected = computed(() => pagedUsers.value.length > 0 && pagedUsers.value.every(user => selectedUsers.value.includes(user.id)))
 const { errorText, t } = useI18n()
 const isLoading = ref(false)
 const isSavingUser = ref(false)
@@ -79,9 +93,7 @@ const isUserAdmin = ref(false)
 const userEnabled = ref(true)
 const originalUserEnabled = ref(true)
 const userNickname = ref('')
-const quotaUnlimited = ref(true)
-const quotaLifetimeUsd = ref(0)
-const quotaMonthlyUsd = ref(0)
+const quotaUnlimited = ref(false)
 const quotaWeeklyUsd = ref(0)
 const quotaDailyUsd = ref(0)
 const page = ref(1)
@@ -138,16 +150,15 @@ function userLabel(row: UserSummary): string {
   return row.nickname.trim() || row.username.trim() || t('未知用户', 'Unknown user')
 }
 
-function quotaBalanceValue(row: UserSummary, bucket: 'monthly' | 'weekly' | 'daily' | 'lifetime'): string {
+function quotaBalanceValue(row: UserSummary, bucket: 'weekly' | 'daily' | 'cards'): string {
   if (row.quota.unlimited) {
     return t('无限制', 'Unlimited')
   }
 
   const values = {
-    monthly: row.quota.monthly_remaining_usd,
     weekly: row.quota.weekly_remaining_usd,
     daily: row.quota.daily_remaining_usd,
-    lifetime: row.quota.lifetime_remaining_usd,
+    cards: row.quota.cards_remaining_usd,
   }
   const value = values[bucket]
   return formatUsd(value)
@@ -204,14 +215,6 @@ function normalizeQuotaInput(value: string | number): number {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0
 }
 
-function setQuotaLifetimeUsd(value: string | number) {
-  quotaLifetimeUsd.value = normalizeQuotaInput(value)
-}
-
-function setQuotaMonthlyUsd(value: string | number) {
-  quotaMonthlyUsd.value = normalizeQuotaInput(value)
-}
-
 function todayTokenDetail(row: UserSummary): string {
   return t(
     `入 ${formatCompact(row.today_input_tokens)} · 出 ${formatCompact(row.today_output_tokens)} · 缓 ${formatCompact(row.today_cached_tokens)}`,
@@ -249,16 +252,23 @@ function resetEditor() {
   userEnabled.value = true
   originalUserEnabled.value = true
   userNickname.value = ''
-  quotaUnlimited.value = true
-  quotaLifetimeUsd.value = 0
-  quotaMonthlyUsd.value = 0
+  quotaUnlimited.value = false
   quotaWeeklyUsd.value = 0
   quotaDailyUsd.value = 0
 }
 
-function openCreateUser() {
+async function openCreateUser() {
   resetEditor()
   userPassword.value = 'password'
+  try {
+    const settings = await getSettings()
+    quotaUnlimited.value = settings.new_user_quota_unlimited
+    quotaDailyUsd.value = settings.new_user_quota_daily_usd
+    quotaWeeklyUsd.value = settings.new_user_quota_weekly_usd
+  } catch (error) {
+    message.error(errorText(error, '加载默认配额失败', 'Failed to load default quotas'))
+    return
+  }
   editorVisible.value = true
 }
 
@@ -271,8 +281,6 @@ function editUser(row: UserSummary) {
   originalUserEnabled.value = userEnabled.value
   userNickname.value = row.nickname
   quotaUnlimited.value = row.quota.unlimited
-  quotaLifetimeUsd.value = row.quota.lifetime_quota_usd ?? 0
-  quotaMonthlyUsd.value = row.quota.monthly_quota_usd ?? 0
   quotaWeeklyUsd.value = row.quota.weekly_quota_usd ?? 0
   quotaDailyUsd.value = row.quota.daily_quota_usd ?? 0
   editorVisible.value = true
@@ -325,8 +333,6 @@ async function saveUser() {
         ? await updateUser(editingUserId.value, payload)
         : await createUser(payload)
     await updateUserQuota(saved.id, {
-      lifetime_quota_usd: quotaUnlimited.value ? null : quotaLifetimeUsd.value,
-      monthly_quota_usd: quotaUnlimited.value ? null : quotaMonthlyUsd.value,
       weekly_quota_usd: quotaUnlimited.value ? null : quotaWeeklyUsd.value,
       daily_quota_usd: quotaUnlimited.value ? null : quotaDailyUsd.value,
     })
@@ -345,6 +351,47 @@ async function saveUser() {
   }
 }
 
+function selectUser(id: number, checked: boolean | 'indeterminate') {
+  selectedUsers.value = checked === true ? [...new Set([...selectedUsers.value, id])] : selectedUsers.value.filter(value => value !== id)
+}
+
+function selectPage(checked: boolean | 'indeterminate') {
+  const ids = pagedUsers.value.map(user => user.id)
+  selectedUsers.value = checked === true ? [...new Set([...selectedUsers.value, ...ids])] : selectedUsers.value.filter(id => !ids.includes(id))
+}
+
+function manageCards(userId?: number) { cardsUserId.value = userId; cardsVisible.value = true }
+
+function resetQuota(allUsers = false, userId?: number) {
+  const ids = userId ? [userId] : selectedUsers.value
+  if (!allUsers && !ids.length) return
+  confirm.warning({
+    title: allUsers ? t('全站重置额度', 'Reset all quotas') : t('重置用户额度', 'Reset user quotas'),
+    content: t('清零所选用户的每日和每周已用额度，原周期和额度卡保持不变。', 'Clear daily and weekly usage for the selected users, preserving period boundaries and cards.'),
+    positiveText: t('重置', 'Reset'),
+    onPositiveClick: async () => {
+      quotaBusy.value = true
+      try { await resetQuotas(allUsers ? { all_users: true } : { user_ids: ids }); message.success(t('额度已重置', 'Quotas reset')); await refresh() }
+      catch (error) { message.error(errorText(error, '重置额度失败', 'Failed to reset quotas')) }
+      finally { quotaBusy.value = false }
+    },
+  })
+}
+
+function revokeUsersCards() {
+  confirm.warning({
+    title: t('吊销所选用户的额度卡', 'Revoke credit cards for selected users'),
+    content: t('这些用户的所有额度卡将立即失效，已扣款记录会保留。', 'All credit cards for these users will be revoked immediately. Past deductions are retained.'),
+    positiveText: t('吊销', 'Revoke'),
+    onPositiveClick: async () => {
+      quotaBusy.value = true
+      try { await revokeQuotaCards({ user_ids: selectedUsers.value, kind: 'credit' }); message.success(t('额度卡已吊销', 'Credit cards revoked')); await refresh() }
+      catch (error) { message.error(errorText(error, '吊销失败', 'Failed to revoke cards')) }
+      finally { quotaBusy.value = false }
+    },
+  })
+}
+
 onMounted(refresh)
 </script>
 
@@ -358,6 +405,8 @@ onMounted(refresh)
           <RefreshCw v-else data-icon="inline-start" />
           {{ t('刷新', 'Refresh') }}
         </Button>
+        <Button variant="outline" :disabled="quotaBusy" @click="resetQuota(true)"><RotateCcw data-icon="inline-start" />{{ t('全站重置额度', 'Reset all quotas') }}</Button>
+        <Button variant="outline" @click="manageCards()"><WalletCards data-icon="inline-start" />{{ t('配额卡管理', 'Quota cards') }}</Button>
         <Button @click="openCreateUser">
           <Plus data-icon="inline-start" />
           {{ t('增加用户', 'Add user') }}
@@ -383,19 +432,26 @@ onMounted(refresh)
     </div>
 
     <section class="panel table-panel user-table-panel">
+      <div class="flex flex-wrap items-center gap-2 p-4">
+        <span class="mr-auto text-sm text-muted-foreground">{{ t(`已选择 ${selectedUsers.length} 位用户`, `${selectedUsers.length} users selected`) }}</span>
+        <Button variant="outline" :disabled="!selectedUsers.length || quotaBusy" @click="manageCards()"><WalletCards data-icon="inline-start" />{{ t('发放卡片', 'Issue cards') }}</Button>
+        <Button variant="outline" :disabled="!selectedUsers.length || quotaBusy" @click="revokeUsersCards"><Ban data-icon="inline-start" />{{ t('吊销额度卡', 'Revoke credit cards') }}</Button>
+        <Button variant="outline" :disabled="!selectedUsers.length || quotaBusy" @click="resetQuota()"><RotateCcw data-icon="inline-start" />{{ t('重置额度', 'Reset quotas') }}</Button>
+      </div>
       <div class="user-table">
-        <Table class="min-w-[1056px] table-fixed">
+        <Table class="min-w-[1000px] table-fixed">
           <TableHeader>
             <TableRow>
-              <TableHead class="w-[145px]">{{ t('用户', 'User') }}</TableHead>
-              <TableHead class="w-[110px]">{{ t('角色 / 状态', 'Role / status') }}</TableHead>
-              <TableHead class="w-[150px]">{{ t('余额', 'Balance') }}</TableHead>
-              <TableHead class="w-[72px]">{{ t('API KEY 数量', 'API keys') }}</TableHead>
-              <TableHead class="w-[95px]">{{ t('今日请求', 'Today requests') }}</TableHead>
-              <TableHead class="w-[145px]">{{ t('今日 Token', 'Today tokens') }}</TableHead>
-              <TableHead class="w-[105px]">{{ t('今日费用', 'Today cost') }}</TableHead>
-              <TableHead class="w-[178px]">{{ t('最近使用', 'Last used') }}</TableHead>
-              <TableHead class="w-[56px]">
+              <TableHead class="w-[4%]"><Checkbox :model-value="allUsersSelected" :aria-label="t('选择本页用户', 'Select users on this page')" @update:model-value="selectPage" /></TableHead>
+              <TableHead class="w-[17%]">{{ t('用户', 'User') }}</TableHead>
+              <TableHead class="w-[10%]">{{ t('角色 / 状态', 'Role / status') }}</TableHead>
+              <TableHead class="w-[14%]">{{ t('余额', 'Balance') }}</TableHead>
+              <TableHead class="w-[6%]">{{ t('密钥', 'Keys') }}</TableHead>
+              <TableHead class="w-[9%]">{{ t('今日请求', 'Today requests') }}</TableHead>
+              <TableHead class="w-[13%]">{{ t('今日 Token', 'Today tokens') }}</TableHead>
+              <TableHead class="w-[9%]">{{ t('今日费用', 'Today cost') }}</TableHead>
+              <TableHead class="w-[10%]">{{ t('最近使用', 'Last used') }}</TableHead>
+              <TableHead class="w-[8%]">
                 <span class="sr-only">{{ t('操作', 'Actions') }}</span>
               </TableHead>
             </TableRow>
@@ -403,20 +459,21 @@ onMounted(refresh)
           <TableBody>
             <template v-if="isLoading && users.length === 0">
               <TableRow v-for="rowIndex in 8" :key="`user-skeleton-${rowIndex}`">
-                <TableCell v-for="columnIndex in 9" :key="columnIndex">
+                <TableCell v-for="columnIndex in 10" :key="columnIndex">
                   <Skeleton class="h-4 w-full" />
                 </TableCell>
               </TableRow>
             </template>
 
-            <TableEmpty v-else-if="users.length === 0" :colspan="9">
+            <TableEmpty v-else-if="users.length === 0" :colspan="10">
               {{ t('暂无用户', 'No users') }}
             </TableEmpty>
 
             <TableRow v-for="row in pagedUsers" v-else :key="row.id">
+              <TableCell><Checkbox :model-value="selectedUsers.includes(row.id)" :aria-label="t(`选择 ${userLabel(row)}`, `Select ${userLabel(row)}`)" @update:model-value="selectUser(row.id, $event)" /></TableCell>
               <TableCell>
-                <div class="metric-stack">
-                  <span class="metric-primary">{{ userLabel(row) }}</span>
+                <div class="metric-stack overflow-hidden">
+                  <span class="metric-primary truncate" :title="userLabel(row)">{{ userLabel(row) }}</span>
                   <span class="metric-muted" :title="row.username">{{ row.username }}</span>
                 </div>
               </TableCell>
@@ -441,12 +498,8 @@ onMounted(refresh)
                     <strong>{{ quotaBalanceValue(row, 'weekly') }}</strong>
                   </Badge>
                   <Badge :variant="quotaBadgeVariant(row)" class="quota-balance-row">
-                    <span>{{ t('每月', 'Monthly') }}</span>
-                    <strong>{{ quotaBalanceValue(row, 'monthly') }}</strong>
-                  </Badge>
-                  <Badge :variant="quotaBadgeVariant(row)" class="quota-balance-row">
-                    <span>{{ t('不限时', 'Lifetime') }}</span>
-                    <strong>{{ quotaBalanceValue(row, 'lifetime') }}</strong>
+                    <span>{{ t('额度卡', 'Cards') }}</span>
+                    <strong>{{ formatUsd(row.quota.cards_remaining_usd) }}</strong>
                   </Badge>
                   <span
                     v-if="quotaDetail(row)"
@@ -486,6 +539,7 @@ onMounted(refresh)
                 </div>
               </TableCell>
               <TableCell class="text-right">
+                <Button variant="ghost" size="icon-sm" :aria-label="t(`管理 ${userLabel(row)} 的额度卡`, `Manage cards for ${userLabel(row)}`)" @click="manageCards(row.id)"><WalletCards /></Button>
                 <Button
                   variant="ghost"
                   size="icon-sm"
@@ -595,7 +649,7 @@ onMounted(refresh)
             <FieldSet class="quota-fieldset">
               <FieldLegend>{{ t('余额设置', 'Balance settings') }}</FieldLegend>
               <FieldDescription>
-                {{ t('扣费顺序为每日、每周、每月、不限时。', 'Charges are deducted from daily, weekly, monthly, then lifetime balance.') }}
+                {{ t('每日、每周和额度卡按最早到期顺序抵扣；每日 0 点、每周一 0 点重置。', 'Daily, weekly and card credit are used by earliest expiration. Resets occur at midnight daily and on Mondays.') }}
               </FieldDescription>
               <FieldGroup>
                 <Field orientation="horizontal" class="switch-setting">
@@ -632,35 +686,15 @@ onMounted(refresh)
                       @update:model-value="setQuotaWeeklyUsd"
                     />
                   </Field>
-                  <Field>
-                    <FieldLabel for="quota-monthly">{{ t('每月余额 USD', 'Monthly balance USD') }}</FieldLabel>
-                    <Input
-                      id="quota-monthly"
-                      type="number"
-                      min="0"
-                      step="0.00000001"
-                      :model-value="quotaMonthlyUsd"
-                      :disabled="quotaUnlimited"
-                      @update:model-value="setQuotaMonthlyUsd"
-                    />
-                  </Field>
-                  <Field>
-                    <FieldLabel for="quota-lifetime">{{ t('不限时余额 USD', 'Lifetime balance USD') }}</FieldLabel>
-                    <Input
-                      id="quota-lifetime"
-                      type="number"
-                      min="0"
-                      step="0.00000001"
-                      :model-value="quotaLifetimeUsd"
-                      :disabled="quotaUnlimited"
-                      @update:model-value="setQuotaLifetimeUsd"
-                    />
-                  </Field>
                 </FieldGroup>
               </FieldGroup>
             </FieldSet>
           </FieldGroup>
 
+          <div v-if="editingUserId" class="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" :disabled="quotaBusy" @click="resetQuota(false, editingUserId)"><RotateCcw data-icon="inline-start" />{{ t('重置额度', 'Reset quotas') }}</Button>
+            <Button type="button" variant="outline" @click="editorVisible = false; manageCards(editingUserId)"><WalletCards data-icon="inline-start" />{{ t('管理额度卡', 'Manage credit cards') }}</Button>
+          </div>
           <DialogFooter>
             <Button type="button" variant="outline" :disabled="isSavingUser" @click="editorVisible = false">
               {{ t('取消', 'Cancel') }}
@@ -671,6 +705,12 @@ onMounted(refresh)
             </Button>
           </DialogFooter>
         </form>
+      </DialogContent>
+    </Dialog>
+    <Dialog v-model:open="cardsVisible">
+      <DialogContent class="max-h-[calc(100svh-2rem)] overflow-y-auto sm:max-w-6xl">
+        <DialogHeader><DialogTitle>{{ t('配额卡管理', 'Quota cards') }}</DialogTitle><DialogDescription>{{ cardsUserId ? userLabel(users.find(user => user.id === cardsUserId)!) : t('支持单人和批量发放、编辑及吊销额度卡。', 'Issue, edit and revoke cards for individual users or in bulk.') }}</DialogDescription></DialogHeader>
+        <QuotaCardsPanel v-if="cardsVisible" admin :user-id="cardsUserId" :target-user-ids="selectedUsers" :users="users" @changed="refresh" />
       </DialogContent>
     </Dialog>
   </section>

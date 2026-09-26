@@ -302,7 +302,8 @@ func TestTutorialTitleMigrationPreservesArticles(t *testing.T) {
 		}
 	}
 	for range 2 {
-		if err := a.runMigrations(ctx); err != nil {
+		// Exercise tutorial rollback before later, irreversible balance migrations.
+		if err := goose.UpToContext(ctx, db, ".", 202609210004); err != nil {
 			t.Fatal(err)
 		}
 		verify()

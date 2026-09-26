@@ -89,8 +89,6 @@ const settingsForm = reactive({
   new_user_quota_unlimited: false,
   new_user_quota_daily_usd: 0,
   new_user_quota_weekly_usd: 0,
-  new_user_quota_monthly_usd: 0,
-  new_user_quota_lifetime_usd: 0,
 })
 
 const remoteStatusType = computed(() => {
@@ -126,8 +124,7 @@ function removeModelRequestExtraEndpoint(index: number) {
 
 function updateNumericSetting(
   key: 'batch_size' | 'poll_interval_seconds' | 'retry_interval_seconds' | 'usage_detail_retention_days'
-    | 'new_user_quota_daily_usd' | 'new_user_quota_weekly_usd'
-    | 'new_user_quota_monthly_usd' | 'new_user_quota_lifetime_usd',
+    | 'new_user_quota_daily_usd' | 'new_user_quota_weekly_usd',
   value: string | number,
 ) {
   const nextValue = Number(value)
@@ -182,8 +179,6 @@ async function refresh(reloadPanels = false) {
     settingsForm.new_user_quota_unlimited = settings.new_user_quota_unlimited
     settingsForm.new_user_quota_daily_usd = settings.new_user_quota_daily_usd
     settingsForm.new_user_quota_weekly_usd = settings.new_user_quota_weekly_usd
-    settingsForm.new_user_quota_monthly_usd = settings.new_user_quota_monthly_usd
-    settingsForm.new_user_quota_lifetime_usd = settings.new_user_quota_lifetime_usd
     collectorStatus.value = status
   } catch (error) {
     message.error(errorText(error, '加载设置失败', 'Failed to load settings'))
@@ -206,8 +201,6 @@ async function saveSettings() {
     const quotaAmounts = [
       settingsForm.new_user_quota_daily_usd,
       settingsForm.new_user_quota_weekly_usd,
-      settingsForm.new_user_quota_monthly_usd,
-      settingsForm.new_user_quota_lifetime_usd,
     ]
     if (quotaAmounts.some((value) => !Number.isFinite(value) || value < 0)) {
       throw new Error(t('新用户默认配额不能小于 0', 'Default quotas for new users cannot be negative'))
@@ -240,8 +233,6 @@ async function saveSettings() {
       new_user_quota_unlimited: settingsForm.new_user_quota_unlimited,
       new_user_quota_daily_usd: settingsForm.new_user_quota_daily_usd,
       new_user_quota_weekly_usd: settingsForm.new_user_quota_weekly_usd,
-      new_user_quota_monthly_usd: settingsForm.new_user_quota_monthly_usd,
-      new_user_quota_lifetime_usd: settingsForm.new_user_quota_lifetime_usd,
     }
     const saved = await updateSettings(payload)
     await Promise.all([
@@ -649,7 +640,7 @@ onMounted(() => refresh(false))
               <Field orientation="horizontal" class="settings-switch">
                 <FieldContent>
                   <FieldTitle>{{ t('不限制余额', 'Unlimited balance') }}</FieldTitle>
-                  <FieldDescription>{{ t('开启后，新用户不受额度限制，下面四项额度不会写入用户记录。', 'New users are not quota-limited and the four amounts below are not applied.') }}</FieldDescription>
+                  <FieldDescription>{{ t('开启后，新用户不受额度限制，下面两项额度不会写入用户记录。', 'New users are not quota-limited and the two amounts below are not applied.') }}</FieldDescription>
                 </FieldContent>
                 <Switch v-model="settingsForm.new_user_quota_unlimited" />
               </Field>
@@ -659,7 +650,7 @@ onMounted(() => refresh(false))
                 :data-disabled="settingsForm.new_user_quota_unlimited || undefined"
               >
                 <FieldLegend>{{ t('初始额度（USD）', 'Initial quotas (USD)') }}</FieldLegend>
-                <FieldDescription>{{ t('默认均为 0；每日、每周、每月与不限时额度相互独立。', 'All default to 0; daily, weekly, monthly, and lifetime quotas are independent.') }}</FieldDescription>
+                <FieldDescription>{{ t('默认均为 0；每日 0 点、每周一 0 点按北京时间重置。', 'Both default to 0; resets occur at midnight daily and on Mondays, Beijing time.') }}</FieldDescription>
                 <FieldGroup class="form-grid">
                   <Field :data-disabled="settingsForm.new_user_quota_unlimited || undefined">
                     <FieldLabel for="new-user-daily-quota">{{ t('每日', 'Daily') }}</FieldLabel>
@@ -668,14 +659,6 @@ onMounted(() => refresh(false))
                   <Field :data-disabled="settingsForm.new_user_quota_unlimited || undefined">
                     <FieldLabel for="new-user-weekly-quota">{{ t('每周', 'Weekly') }}</FieldLabel>
                     <Input id="new-user-weekly-quota" type="number" :model-value="settingsForm.new_user_quota_weekly_usd" :min="0" step="0.01" :disabled="settingsForm.new_user_quota_unlimited" @update:model-value="updateNumericSetting('new_user_quota_weekly_usd', $event)" />
-                  </Field>
-                  <Field :data-disabled="settingsForm.new_user_quota_unlimited || undefined">
-                    <FieldLabel for="new-user-monthly-quota">{{ t('每月', 'Monthly') }}</FieldLabel>
-                    <Input id="new-user-monthly-quota" type="number" :model-value="settingsForm.new_user_quota_monthly_usd" :min="0" step="0.01" :disabled="settingsForm.new_user_quota_unlimited" @update:model-value="updateNumericSetting('new_user_quota_monthly_usd', $event)" />
-                  </Field>
-                  <Field :data-disabled="settingsForm.new_user_quota_unlimited || undefined">
-                    <FieldLabel for="new-user-lifetime-quota">{{ t('不限时', 'Lifetime') }}</FieldLabel>
-                    <Input id="new-user-lifetime-quota" type="number" :model-value="settingsForm.new_user_quota_lifetime_usd" :min="0" step="0.01" :disabled="settingsForm.new_user_quota_unlimited" @update:model-value="updateNumericSetting('new_user_quota_lifetime_usd', $event)" />
                   </Field>
                 </FieldGroup>
               </FieldSet>

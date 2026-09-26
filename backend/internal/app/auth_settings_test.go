@@ -147,16 +147,14 @@ func TestSettingsConfigureNewUserQuota(t *testing.T) {
 	}, nil, nil)
 
 	type quotaSettingsResponse struct {
-		Unlimited   bool    `json:"new_user_quota_unlimited"`
-		DailyUSD    float64 `json:"new_user_quota_daily_usd"`
-		WeeklyUSD   float64 `json:"new_user_quota_weekly_usd"`
-		MonthlyUSD  float64 `json:"new_user_quota_monthly_usd"`
-		LifetimeUSD float64 `json:"new_user_quota_lifetime_usd"`
+		Unlimited bool    `json:"new_user_quota_unlimited"`
+		DailyUSD  float64 `json:"new_user_quota_daily_usd"`
+		WeeklyUSD float64 `json:"new_user_quota_weekly_usd"`
 	}
 	settings := quotaSettingsResponse{}
 	requestJSON(t, handler, http.MethodGet, "/api/settings", nil, cookies, &settings)
-	if settings.Unlimited || settings.DailyUSD != 0 || settings.WeeklyUSD != 0 || settings.MonthlyUSD != 0 || settings.LifetimeUSD != 0 {
-		t.Fatalf("default new-user quota settings = %+v, want four zero quotas", settings)
+	if settings.Unlimited || settings.DailyUSD != 0 || settings.WeeklyUSD != 0 {
+		t.Fatalf("default new-user quota settings = %+v, want two zero quotas", settings)
 	}
 
 	requestJSONExpectStatus(t, handler, http.MethodPut, "/api/settings", map[string]any{
@@ -164,12 +162,10 @@ func TestSettingsConfigureNewUserQuota(t *testing.T) {
 	}, cookies, http.StatusUnprocessableEntity)
 
 	requestJSON(t, handler, http.MethodPut, "/api/settings", map[string]any{
-		"new_user_quota_daily_usd":    1.25,
-		"new_user_quota_weekly_usd":   5.5,
-		"new_user_quota_monthly_usd":  20.75,
-		"new_user_quota_lifetime_usd": 100.125,
+		"new_user_quota_daily_usd":  1.25,
+		"new_user_quota_weekly_usd": 5.5,
 	}, cookies, &settings)
-	if settings.Unlimited || settings.DailyUSD != 1.25 || settings.WeeklyUSD != 5.5 || settings.MonthlyUSD != 20.75 || settings.LifetimeUSD != 100.125 {
+	if settings.Unlimited || settings.DailyUSD != 1.25 || settings.WeeklyUSD != 5.5 {
 		t.Fatalf("updated new-user quota settings = %+v", settings)
 	}
 
@@ -180,9 +176,7 @@ func TestSettingsConfigureNewUserQuota(t *testing.T) {
 		"nickname": "Configured member",
 		"is_admin": false,
 	}, cookies, &member)
-	if member.Quota.Unlimited || member.Quota.LifetimeQuotaUSD == nil || *member.Quota.LifetimeQuotaUSD != 100.125 ||
-		member.Quota.MonthlyQuotaUSD == nil || *member.Quota.MonthlyQuotaUSD != 20.75 ||
-		member.Quota.WeeklyQuotaUSD == nil || *member.Quota.WeeklyQuotaUSD != 5.5 ||
+	if member.Quota.Unlimited || member.Quota.WeeklyQuotaUSD == nil || *member.Quota.WeeklyQuotaUSD != 5.5 ||
 		member.Quota.DailyQuotaUSD == nil || *member.Quota.DailyQuotaUSD != 1.25 {
 		t.Fatalf("configured member quota = %#v", member.Quota)
 	}

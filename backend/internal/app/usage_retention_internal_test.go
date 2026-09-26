@@ -28,9 +28,10 @@ func TestStoredUsageCostRollupCleanupAndPermanentDedup(t *testing.T) {
 	}
 	userID := seedQuotaTestUser(t, app, "fixed-cost-user")
 	seedQuotaTestAPIKey(t, app, userID, "sk-fixed-cost")
-	if _, err := app.db.Exec(`UPDATE users SET quota_lifetime_usd = 100 WHERE id = ?`, userID); err != nil {
+	if _, err := app.db.Exec(`UPDATE users SET quota_daily_usd = 0, quota_weekly_usd = 0 WHERE id = ?`, userID); err != nil {
 		t.Fatalf("enable test quota: %v", err)
 	}
+	cardID := seedQuotaCard(t, app, userID, "credit", 100, nil)
 
 	usageTime := time.Now().In(appTimeLocation).AddDate(0, 0, -40).Truncate(time.Hour)
 	raw := fmt.Sprintf(`{
@@ -119,6 +120,10 @@ func TestStoredUsageCostRollupCleanupAndPermanentDedup(t *testing.T) {
 	}
 	if chargeUsageRecordID != nil || math.Abs(chargedAmount-1) > 0.00000001 {
 		t.Fatalf("quota audit after cleanup = usage record %v, amount %.8f; want nil/1", chargeUsageRecordID, chargedAmount)
+	}
+	var cardDeduction float64
+	if err := app.db.QueryRow(`SELECT amount_usd FROM quota_card_deductions WHERE card_id = ?`, cardID).Scan(&cardDeduction); err != nil || cardDeduction != 1 {
+		t.Fatalf("card audit must survive detail cleanup: %v %v", cardDeduction, err)
 	}
 	options, err := app.loadUsageOptionsResponse(context.Background(), usageAccessScope{IsAdmin: true}, UsageFilters{Start: &start, End: &end})
 	if err != nil {

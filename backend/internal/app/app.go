@@ -20,6 +20,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"cpa-helper/backend/internal/app/web"
@@ -69,6 +70,10 @@ type App struct {
 	keeperUsageCache          keeperWindowUsageCache
 	keeperResetCache          keeperResetCreditCache
 	usageCache                usageQueryCache
+	quotaSyncMu               sync.Mutex
+	remoteAPIKeysMu           sync.Mutex
+	quotaMaintenanceCancel    context.CancelFunc
+	quotaMaintenanceDone      chan struct{}
 }
 
 type AppError struct {
@@ -173,9 +178,14 @@ func (a *App) startBackground(ctx context.Context) {
 	a.keeper.LoadPersistedState(ctx)
 	a.keeper.StartAutoIfConfigured()
 	a.usageMaintenance.Start()
+	a.startQuotaMaintenance(ctx)
 }
 
 func (a *App) Close() {
+	if a.quotaMaintenanceCancel != nil {
+		a.quotaMaintenanceCancel()
+		<-a.quotaMaintenanceDone
+	}
 	if a.pricingCalendarSyncCancel != nil {
 		a.pricingCalendarSyncCancel()
 		<-a.pricingCalendarSyncDone
@@ -295,6 +305,8 @@ func (a *App) Routes() http.Handler {
 	mux.HandleFunc("/api/users", a.wrap(a.handleUsers))
 	mux.HandleFunc("/api/users/", a.wrap(a.handleUserByPath))
 	mux.HandleFunc("/api/account/quota", a.wrap(a.handleCurrentUserQuota))
+	mux.HandleFunc("/api/account/quota/", a.wrap(a.handleAccountQuotaByPath))
+	mux.HandleFunc("/api/quota/", a.wrap(a.handleAdminQuota))
 	mux.HandleFunc("/api/api-keys", a.wrap(a.handleCurrentUserAPIKeys))
 	mux.HandleFunc("/api/api-keys/", a.wrap(a.handleCurrentUserAPIKeyByHash))
 	mux.HandleFunc("/api/account/models", a.wrap(a.handleAvailableModels))
@@ -536,11 +548,9 @@ type CASConfig struct {
 }
 
 type NewUserQuotaConfig struct {
-	Unlimited   bool    `json:"unlimited"`
-	DailyUSD    float64 `json:"daily_usd"`
-	WeeklyUSD   float64 `json:"weekly_usd"`
-	MonthlyUSD  float64 `json:"monthly_usd"`
-	LifetimeUSD float64 `json:"lifetime_usd"`
+	Unlimited bool    `json:"unlimited"`
+	DailyUSD  float64 `json:"daily_usd"`
+	WeeklyUSD float64 `json:"weekly_usd"`
 }
 
 type AppConfig struct {
@@ -635,7 +645,7 @@ func (a *App) loadConfig(ctx context.Context) (AppConfig, error) {
 		       cas_enabled, cas_default_login, cas_base_url, cas_validation_url, cas_validation_host,
 		       cas_public_url, cas_auto_create_users,
 		       new_user_quota_unlimited, new_user_quota_daily_usd, new_user_quota_weekly_usd,
-		       new_user_quota_monthly_usd, new_user_quota_lifetime_usd, session_secret
+		       session_secret
 		FROM app_settings WHERE id = 1
 	`)
 	var collectorEnabled, litellmProxyEnabled, allowUserAccountStatus, allowUserUsageHistory bool
@@ -644,8 +654,8 @@ func (a *App) loadConfig(ctx context.Context) (AppConfig, error) {
 	var casBaseURL, casValidationURL, casValidationHost, casPublicURL string
 	var batchSize, usageDetailRetentionDays int
 	var pollInterval, retryInterval float64
-	var newUserQuotaDailyUSD, newUserQuotaWeeklyUSD, newUserQuotaMonthlyUSD, newUserQuotaLifetimeUSD float64
-	if err := row.Scan(&collectorEnabled, &cliaproxyURL, &managementKey, &queueName, &batchSize, &pollInterval, &retryInterval, &keeperJSON, &rulesJSON, &litellmProxyEnabled, &litellmProxyURL, &modelRequestURL, &modelRequestExtraEndpointsJSON, &cpamcURL, &brandNameZH, &brandNameEN, &brandSubtitleZH, &brandSubtitleEN, &allowUserAccountStatus, &allowUserUsageHistory, &usageDetailRetentionDays, &casEnabled, &casDefaultLogin, &casBaseURL, &casValidationURL, &casValidationHost, &casPublicURL, &casAutoCreateUsers, &newUserQuotaUnlimited, &newUserQuotaDailyUSD, &newUserQuotaWeeklyUSD, &newUserQuotaMonthlyUSD, &newUserQuotaLifetimeUSD, &sessionSecret); err != nil {
+	var newUserQuotaDailyUSD, newUserQuotaWeeklyUSD float64
+	if err := row.Scan(&collectorEnabled, &cliaproxyURL, &managementKey, &queueName, &batchSize, &pollInterval, &retryInterval, &keeperJSON, &rulesJSON, &litellmProxyEnabled, &litellmProxyURL, &modelRequestURL, &modelRequestExtraEndpointsJSON, &cpamcURL, &brandNameZH, &brandNameEN, &brandSubtitleZH, &brandSubtitleEN, &allowUserAccountStatus, &allowUserUsageHistory, &usageDetailRetentionDays, &casEnabled, &casDefaultLogin, &casBaseURL, &casValidationURL, &casValidationHost, &casPublicURL, &casAutoCreateUsers, &newUserQuotaUnlimited, &newUserQuotaDailyUSD, &newUserQuotaWeeklyUSD, &sessionSecret); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return AppConfig{}, fmt.Errorf("%w: app_settings id=1 is missing; run `cpa-helper migrate`", ErrAppSettingsMissing)
 		}
@@ -708,11 +718,9 @@ func (a *App) loadConfig(ctx context.Context) (AppConfig, error) {
 		AutoCreateUsers: casAutoCreateUsers,
 	}
 	cfg.NewUserQuota = NewUserQuotaConfig{
-		Unlimited:   newUserQuotaUnlimited,
-		DailyUSD:    newUserQuotaDailyUSD,
-		WeeklyUSD:   newUserQuotaWeeklyUSD,
-		MonthlyUSD:  newUserQuotaMonthlyUSD,
-		LifetimeUSD: newUserQuotaLifetimeUSD,
+		Unlimited: newUserQuotaUnlimited,
+		DailyUSD:  newUserQuotaDailyUSD,
+		WeeklyUSD: newUserQuotaWeeklyUSD,
 	}
 	return cfg, nil
 }
@@ -782,9 +790,9 @@ func (a *App) saveConfig(ctx context.Context, cfg AppConfig) error {
 		    cas_enabled = ?, cas_default_login = ?, cas_base_url = ?, cas_validation_url = ?, cas_validation_host = ?,
 		    cas_public_url = ?, cas_auto_create_users = ?,
 		    new_user_quota_unlimited = ?, new_user_quota_daily_usd = ?, new_user_quota_weekly_usd = ?,
-		    new_user_quota_monthly_usd = ?, new_user_quota_lifetime_usd = ?, session_secret = ?, updated_at = ?
+		    new_user_quota_monthly_usd = 0, new_user_quota_lifetime_usd = 0, session_secret = ?, updated_at = ?
 		WHERE id = 1
-	`, cfg.Collector.Enabled, strings.TrimRight(strings.TrimSpace(cfg.Collector.CLIProxyURL), "/"), strings.TrimSpace(cfg.Collector.ManagementKey), strings.TrimSpace(cfg.Collector.QueueName), cfg.Collector.BatchSize, cfg.Collector.PollIntervalSeconds, cfg.Collector.RetryIntervalSeconds, string(keeperBytes), string(rulesBytes), cfg.LiteLLMProxy.Enabled, strings.TrimSpace(cfg.LiteLLMProxy.ProxyURL), strings.TrimRight(strings.TrimSpace(cfg.ModelRequestURL), "/"), string(extraEndpointBytes), strings.TrimSpace(cfg.CPAMCURL), nonBlank(strings.TrimSpace(cfg.BrandNameZH), defaultBrandNameZH), nonBlank(strings.TrimSpace(cfg.BrandNameEN), defaultBrandNameEN), nonBlank(strings.TrimSpace(cfg.BrandSubtitleZH), defaultBrandSubtitleZH), nonBlank(strings.TrimSpace(cfg.BrandSubtitleEN), defaultBrandSubtitleEN), cfg.AllowUserAccountStatus, cfg.AllowUserUsageHistory, cfg.UsageDetailRetentionDays, cfg.CAS.Enabled, cfg.CAS.DefaultLogin, strings.TrimSpace(cfg.CAS.BaseURL), strings.TrimSpace(cfg.CAS.ValidationURL), strings.TrimSpace(cfg.CAS.ValidationHost), strings.TrimSpace(cfg.CAS.PublicURL), cfg.CAS.AutoCreateUsers, cfg.NewUserQuota.Unlimited, cfg.NewUserQuota.DailyUSD, cfg.NewUserQuota.WeeklyUSD, cfg.NewUserQuota.MonthlyUSD, cfg.NewUserQuota.LifetimeUSD, cfg.SessionSecret, dbTime(time.Now()))
+	`, cfg.Collector.Enabled, strings.TrimRight(strings.TrimSpace(cfg.Collector.CLIProxyURL), "/"), strings.TrimSpace(cfg.Collector.ManagementKey), strings.TrimSpace(cfg.Collector.QueueName), cfg.Collector.BatchSize, cfg.Collector.PollIntervalSeconds, cfg.Collector.RetryIntervalSeconds, string(keeperBytes), string(rulesBytes), cfg.LiteLLMProxy.Enabled, strings.TrimSpace(cfg.LiteLLMProxy.ProxyURL), strings.TrimRight(strings.TrimSpace(cfg.ModelRequestURL), "/"), string(extraEndpointBytes), strings.TrimSpace(cfg.CPAMCURL), nonBlank(strings.TrimSpace(cfg.BrandNameZH), defaultBrandNameZH), nonBlank(strings.TrimSpace(cfg.BrandNameEN), defaultBrandNameEN), nonBlank(strings.TrimSpace(cfg.BrandSubtitleZH), defaultBrandSubtitleZH), nonBlank(strings.TrimSpace(cfg.BrandSubtitleEN), defaultBrandSubtitleEN), cfg.AllowUserAccountStatus, cfg.AllowUserUsageHistory, cfg.UsageDetailRetentionDays, cfg.CAS.Enabled, cfg.CAS.DefaultLogin, strings.TrimSpace(cfg.CAS.BaseURL), strings.TrimSpace(cfg.CAS.ValidationURL), strings.TrimSpace(cfg.CAS.ValidationHost), strings.TrimSpace(cfg.CAS.PublicURL), cfg.CAS.AutoCreateUsers, cfg.NewUserQuota.Unlimited, cfg.NewUserQuota.DailyUSD, cfg.NewUserQuota.WeeklyUSD, cfg.SessionSecret, dbTime(time.Now()))
 	return err
 }
 

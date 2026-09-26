@@ -174,6 +174,7 @@ const accountMenuItems = computed<NavigationItem[]>(() => [
     : []),
   { label: t('我的用量', 'My Usage'), key: '/account/usage', icon: BarChart3 },
   { label: t('我的明细', 'My Records'), key: '/account/records', icon: List },
+  { label: t('我的配额', 'My Quota'), key: '/account/quota', icon: DollarSign },
   { label: t('API 密钥', 'API Keys'), key: '/account/keys', icon: KeyRound },
   { label: t('可用模型', 'Available Models'), key: '/account/models', icon: Cpu },
   ...(showAccountStatusForUser.value

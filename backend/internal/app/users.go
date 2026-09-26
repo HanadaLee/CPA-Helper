@@ -34,30 +34,27 @@ type apiKeyPayload struct {
 }
 
 type UserRecord struct {
-	ID                   int
-	Username             string
-	IsAdmin              bool
-	Nickname             string
-	DisabledAt           *time.Time
-	PasswordHash         *string
-	PasswordSalt         *string
-	CreatedAt            time.Time
-	UpdatedAt            time.Time
-	QuotaLifetimeUSD     *float64
-	QuotaMonthlyUSD      *float64
-	QuotaWeeklyUSD       *float64
-	QuotaDailyUSD        *float64
-	QuotaStartedAt       *time.Time
-	QuotaMonth           string
-	QuotaMonthUsedUSD    float64
-	QuotaWeek            string
-	QuotaWeekUsedUSD     float64
-	QuotaDay             string
-	QuotaDayUsedUSD      float64
-	QuotaPausedAt        *time.Time
-	QuotaPauseReason     *string
-	QuotaSyncError       *string
-	QuotaUnpricedRecords int
+	ID                     int
+	Username               string
+	IsAdmin                bool
+	Nickname               string
+	DisabledAt             *time.Time
+	PasswordHash           *string
+	PasswordSalt           *string
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
+	QuotaWeeklyUSD         *float64
+	QuotaDailyUSD          *float64
+	QuotaStartedAt         *time.Time
+	QuotaWeek              string
+	QuotaWeekUsedUSD       float64
+	QuotaDay               string
+	QuotaDayUsedUSD        float64
+	QuotaPausedAt          *time.Time
+	QuotaPauseReason       *string
+	QuotaSyncError         *string
+	QuotaUnpricedRecords   int
+	QuotaCardsRemainingUSD float64
 }
 
 type UserAPIKey struct {
@@ -234,7 +231,7 @@ func (a *App) handleUserByPath(w http.ResponseWriter, r *http.Request) error {
 			return err
 		}
 		var payload userQuotaPayload
-		if err := decodeJSON(r, &payload); err != nil {
+		if err := decodeUserQuota(r, &payload); err != nil {
 			return err
 		}
 		status, err := a.updateUserQuota(r.Context(), userID, payload)
@@ -511,7 +508,7 @@ func (a *App) enableUser(ctx context.Context, id int) error {
 	if err != nil {
 		return err
 	}
-	if user.QuotaPausedAt != nil && !quotaHasAvailable(user) {
+	if !quotaHasAvailable(user) {
 		return conflictError("用户额度已用尽，请补充额度后再恢复 API KEY")
 	}
 	keys, err := a.userAPIKeys(ctx, id)
@@ -783,11 +780,14 @@ func (a *App) generateUniqueAPIKey(ctx context.Context) (string, error) {
 }
 
 const userSelectColumns = `id, username, is_admin, nickname, CAST(disabled_at AS TEXT), password_hash, password_salt,
-	CAST(created_at AS TEXT), CAST(updated_at AS TEXT), quota_lifetime_usd, quota_monthly_usd,
+	CAST(created_at AS TEXT), CAST(updated_at AS TEXT),
 	quota_weekly_usd, quota_daily_usd, CAST(quota_started_at AS TEXT),
-	quota_month, quota_month_used_usd, quota_week, quota_week_used_usd, quota_day, quota_day_used_usd,
+	quota_week, quota_week_used_usd, quota_day, quota_day_used_usd,
 	CAST(quota_paused_at AS TEXT),
-	quota_pause_reason, quota_sync_error, quota_unpriced_records`
+	quota_pause_reason, quota_sync_error, quota_unpriced_records,
+	(SELECT COALESCE(SUM(amount_usd - used_usd), 0) FROM quota_cards
+	 WHERE user_id = users.id AND kind = 'credit' AND revoked_at IS NULL
+	 AND activated_at IS NOT NULL AND (expires_at IS NULL OR julianday(expires_at) > julianday('now')))`
 
 func (a *App) allUsers(ctx context.Context) ([]UserRecord, error) {
 	rows, err := a.db.QueryContext(ctx, `SELECT `+userSelectColumns+` FROM users ORDER BY id`)
@@ -813,16 +813,16 @@ type userScanner interface {
 func scanUser(scanner userScanner) (UserRecord, error) {
 	var user UserRecord
 	var disabledAt, passwordHash, passwordSalt, createdAt, updatedAt, quotaStartedAt, quotaPausedAt, quotaPauseReason, quotaSyncError sql.NullString
-	var quotaLifetime, quotaMonthly, quotaWeekly, quotaDaily sql.NullFloat64
-	var quotaMonthUsed, quotaWeekUsed, quotaDayUsed sql.NullFloat64
+	var quotaWeekly, quotaDaily sql.NullFloat64
+	var quotaWeekUsed, quotaDayUsed sql.NullFloat64
 	var quotaUnpriced sql.NullInt64
 	err := scanner.Scan(
 		&user.ID, &user.Username, &user.IsAdmin, &user.Nickname, &disabledAt,
-		&passwordHash, &passwordSalt, &createdAt, &updatedAt, &quotaLifetime,
-		&quotaMonthly, &quotaWeekly, &quotaDaily, &quotaStartedAt,
-		&user.QuotaMonth, &quotaMonthUsed, &user.QuotaWeek, &quotaWeekUsed,
+		&passwordHash, &passwordSalt, &createdAt, &updatedAt,
+		&quotaWeekly, &quotaDaily, &quotaStartedAt,
+		&user.QuotaWeek, &quotaWeekUsed,
 		&user.QuotaDay, &quotaDayUsed,
-		&quotaPausedAt, &quotaPauseReason, &quotaSyncError, &quotaUnpriced,
+		&quotaPausedAt, &quotaPauseReason, &quotaSyncError, &quotaUnpriced, &user.QuotaCardsRemainingUSD,
 	)
 	if err != nil {
 		return UserRecord{}, err
@@ -830,14 +830,9 @@ func scanUser(scanner userScanner) (UserRecord, error) {
 	user.DisabledAt = timePtr(disabledAt)
 	user.PasswordHash = nullableString(passwordHash)
 	user.PasswordSalt = nullableString(passwordSalt)
-	user.QuotaLifetimeUSD = nullableFloat(quotaLifetime)
-	user.QuotaMonthlyUSD = nullableFloat(quotaMonthly)
 	user.QuotaWeeklyUSD = nullableFloat(quotaWeekly)
 	user.QuotaDailyUSD = nullableFloat(quotaDaily)
 	user.QuotaStartedAt = timePtr(quotaStartedAt)
-	if quotaMonthUsed.Valid {
-		user.QuotaMonthUsedUSD = quotaMonthUsed.Float64
-	}
 	if quotaWeekUsed.Valid {
 		user.QuotaWeekUsedUSD = quotaWeekUsed.Float64
 	}

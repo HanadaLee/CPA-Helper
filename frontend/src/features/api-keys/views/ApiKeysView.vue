@@ -488,8 +488,7 @@ function quotaValueText(quota: UserQuotaStatus | null): string {
   const total =
     (quota.daily_remaining_usd ?? 0) +
     (quota.weekly_remaining_usd ?? 0) +
-    (quota.monthly_remaining_usd ?? 0) +
-    (quota.lifetime_remaining_usd ?? 0)
+    (quota.cards_remaining_usd ?? 0)
   return formatUsd(total)
 }
 
@@ -499,13 +498,13 @@ function quotaFootnote(quota: UserQuotaStatus | null): string {
   }
   if (quota.unlimited) {
     return t(
-      '每日 无限制 / 每周 无限制 / 每月 无限制 / 不限时 无限制',
-      'Daily unlimited / Weekly unlimited / Monthly unlimited / Lifetime unlimited',
+      '每日 无限制 / 每周 无限制',
+      'Daily unlimited / Weekly unlimited',
     )
   }
   const balancesText = t(
-    `每日 ${formatUsd(quota.daily_remaining_usd ?? 0)} / 每周 ${formatUsd(quota.weekly_remaining_usd ?? 0)} / 每月 ${formatUsd(quota.monthly_remaining_usd ?? 0)} / 不限时 ${formatUsd(quota.lifetime_remaining_usd ?? 0)}`,
-    `Daily ${formatUsd(quota.daily_remaining_usd ?? 0)} / Weekly ${formatUsd(quota.weekly_remaining_usd ?? 0)} / Monthly ${formatUsd(quota.monthly_remaining_usd ?? 0)} / Lifetime ${formatUsd(quota.lifetime_remaining_usd ?? 0)}`,
+    `每日 ${formatUsd(quota.daily_remaining_usd ?? 0)} / 每周 ${formatUsd(quota.weekly_remaining_usd ?? 0)} / 额度卡 ${formatUsd(quota.cards_remaining_usd ?? 0)}`,
+    `Daily ${formatUsd(quota.daily_remaining_usd ?? 0)} / Weekly ${formatUsd(quota.weekly_remaining_usd ?? 0)} / Cards ${formatUsd(quota.cards_remaining_usd ?? 0)}`,
   )
   const notes: string[] = []
   if (quota.sync_error) {
@@ -940,7 +939,7 @@ onMounted(refresh)
           <Alert v-if="quotaStatus?.paused" variant="destructive">
             <AlertTitle>{{ t('额度已用尽', 'Quota exhausted') }}</AlertTitle>
             <AlertDescription>
-              {{ t('当前账号的 API 密钥已暂停。补充额度或进入新的日、周、月周期后，系统会自动恢复可用密钥。', 'API keys for this account are paused. They are restored automatically after quota is added or a new daily, weekly, or monthly period begins.') }}
+              {{ t('当前账号的 API 密钥已暂停。补充额度或进入新的日、周周期后，系统会自动恢复可用密钥。', 'API keys for this account are paused. They are restored automatically after quota is added or a new daily or weekly period begins.') }}
             </AlertDescription>
           </Alert>
           <Alert v-else-if="quotaStatus?.unpriced_records">

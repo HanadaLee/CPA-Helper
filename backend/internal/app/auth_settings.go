@@ -332,8 +332,6 @@ type settingsUpdateRequest struct {
 	NewUserQuotaUnlimited      *bool                        `json:"new_user_quota_unlimited"`
 	NewUserQuotaDailyUSD       *float64                     `json:"new_user_quota_daily_usd"`
 	NewUserQuotaWeeklyUSD      *float64                     `json:"new_user_quota_weekly_usd"`
-	NewUserQuotaMonthlyUSD     *float64                     `json:"new_user_quota_monthly_usd"`
-	NewUserQuotaLifetimeUSD    *float64                     `json:"new_user_quota_lifetime_usd"`
 }
 
 func normalizeBrandingText(value, label string, maxLength int) (string, error) {
@@ -577,20 +575,6 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) error {
 			}
 			cfg.NewUserQuota.WeeklyUSD = *value
 		}
-		if payload.NewUserQuotaMonthlyUSD != nil {
-			value, err := normalizedQuotaAmount(payload.NewUserQuotaMonthlyUSD)
-			if err != nil {
-				return err
-			}
-			cfg.NewUserQuota.MonthlyUSD = *value
-		}
-		if payload.NewUserQuotaLifetimeUSD != nil {
-			value, err := normalizedQuotaAmount(payload.NewUserQuotaLifetimeUSD)
-			if err != nil {
-				return err
-			}
-			cfg.NewUserQuota.LifetimeUSD = *value
-		}
 		cfg.CAS, err = normalizeCASConfig(cfg.CAS)
 		if err != nil {
 			return err
@@ -636,8 +620,6 @@ func settingsResponse(cfg AppConfig) map[string]any {
 		"new_user_quota_unlimited":      cfg.NewUserQuota.Unlimited,
 		"new_user_quota_daily_usd":      cfg.NewUserQuota.DailyUSD,
 		"new_user_quota_weekly_usd":     cfg.NewUserQuota.WeeklyUSD,
-		"new_user_quota_monthly_usd":    cfg.NewUserQuota.MonthlyUSD,
-		"new_user_quota_lifetime_usd":   cfg.NewUserQuota.LifetimeUSD,
 	}
 }
 
@@ -1089,6 +1071,8 @@ func (a *App) collectorState(ctx context.Context) (collectorState, error) {
 }
 
 func (a *App) addRemoteAPIKey(ctx context.Context, apiKey string) error {
+	a.remoteAPIKeysMu.Lock()
+	defer a.remoteAPIKeysMu.Unlock()
 	cfg, err := a.loadConfig(ctx)
 	if err != nil {
 		return err
@@ -1119,6 +1103,9 @@ func (a *App) addRemoteAPIKey(ctx context.Context, apiKey string) error {
 }
 
 func (a *App) removeRemoteAPIKeyHash(ctx context.Context, apiKeyHash string) error {
+	// Serialize read/modify/write with key creation and quota maintenance.
+	a.remoteAPIKeysMu.Lock()
+	defer a.remoteAPIKeysMu.Unlock()
 	cfg, err := a.loadConfig(ctx)
 	if err != nil {
 		return err
